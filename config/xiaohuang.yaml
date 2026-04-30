@@ -2,7 +2,7 @@ audio:
   sample_rate: 16000
   channels: 1
   dtype: int16
-  device_id: null
+  device_id: 0
 
 recording:
   duration_seconds: 5
@@ -17,4 +17,3 @@ stt:
 logging:
   directory: logs
   level: INFO
-

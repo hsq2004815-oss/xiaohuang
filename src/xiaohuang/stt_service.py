@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +63,11 @@ class SenseVoiceTranscriber:
             raise TranscriptionError(f"FunASR returned no text. Raw result: {result!r}")
         return text
 
+    def ensure_model_loaded(self) -> float:
+        start = time.perf_counter()
+        self._get_model()
+        return time.perf_counter() - start
+
     def _get_model(self):
         if self._model is not None:
             return self._model
@@ -108,6 +115,26 @@ def _extract_text(result: Any) -> str:
         parts = [_extract_text(item) for item in result]
         return " ".join(part for part in parts if part).strip()
     return ""
+
+
+def clean_command_text(text: str) -> str:
+    cleaned = _remove_emoji(text).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"[。！？!?；;：:、，,]+$", "", cleaned)
+    return cleaned.strip()
+
+
+def _remove_emoji(text: str) -> str:
+    return "".join(char for char in text if not _is_emoji(char))
+
+
+def _is_emoji(char: str) -> bool:
+    codepoint = ord(char)
+    return (
+        0x1F300 <= codepoint <= 0x1FAFF
+        or 0x2600 <= codepoint <= 0x27BF
+        or 0xFE00 <= codepoint <= 0xFE0F
+    )
 
 
 def _load_rich_transcription_postprocess():

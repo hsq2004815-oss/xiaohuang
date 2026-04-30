@@ -41,7 +41,8 @@ def main() -> int:
         print(
             f"[{device['id']}] {device['name']} | "
             f"max_input_channels={device['max_input_channels']} | "
-            f"default_samplerate={device['default_samplerate']} Hz"
+            f"default_samplerate={device['default_samplerate']} Hz | "
+            f"{device['recommendation']}"
         )
     logger.info("Listed %s input audio device(s).", len(devices))
     return 0
@@ -49,4 +50,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

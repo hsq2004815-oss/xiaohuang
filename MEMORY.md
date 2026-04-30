@@ -1,21 +1,34 @@
 # XiaoHuang Memory
 
 - Project: `E:\Projects\xiaohuang`
-- Current version: V0.1 minimal audio pipeline validation.
-- Current goal: microphone device listing, fixed-duration WAV recording, and FunASR / SenseVoiceSmall transcription from an existing WAV.
+- Current version: V0.6 console wake-word prototype plus energy-threshold VAD and local resident STT server.
+- Current goal: let `scripts/wake_loop.py` wait for short-window STT text matching of `小黄`, then record one VAD command and transcribe it through STT server.
 - Main scripts:
   - `scripts/check_audio_devices.py`
   - `scripts/record_test.py`
+  - `scripts/listen_once.py`
+  - `scripts/wake_loop.py`
   - `scripts/transcribe_test.py`
 - Main services:
   - `src/xiaohuang/audio_capture_service.py`
   - `src/xiaohuang/vad_service.py`
+  - `src/xiaohuang/vad_recording_service.py`
   - `src/xiaohuang/stt_service.py`
+  - `src/xiaohuang/wake_word_service.py`
   - `src/xiaohuang/config_service.py`
   - `src/xiaohuang/logging_service.py`
-- Setup: create a project-local venv or conda env, then run `python -m pip install -r requirements.txt`.
-- STT setup: install `funasr modelscope torch torchaudio` separately when ready to validate SenseVoiceSmall.
-- Verification used: unit tests, compileall, and CLI help checks.
-- Known gap: real microphone capture and FunASR transcription have not been validated until dependencies and hardware are available.
-- Do not add in V0.1: wake word, overlay UI, TTS, OpenCLI, opencode, QQ/WeChat, browser automation, crawler, downloader, or task scheduler.
-
+- Validated local runtime: `F:\for_xiaohuang\conda310\python.exe`, microphone `device 0`, ModelScope cache `F:\for_xiaohuang\models\modelscope`, ffmpeg installed through `winget`.
+- Validated V0.3 path: `device 0` recording -> WAV file -> FunASR / SenseVoiceSmall Chinese transcription, with one-shot timing diagnostics.
+- V0.6 boundary: console STT text-matching wake prototype + energy-threshold VAD + local-only STT server/client only; still not a full voice assistant.
+- Recommended VAD command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\listen_once.py --use-server --device 0 --vad --max-seconds 10 --silence-seconds 0.8 --countdown 3 --channels 1 --samplerate 16000`.
+- Recommended wake-loop command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\wake_loop.py --device 0 --once --debug`.
+- Current usable STT server command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\stt_server.py --host 127.0.0.1 --port 8766`.
+- Successful V0.6 wake test: say `小黄`, wait for `Wake word detected.`, then say `帮我测试一下唤醒后的命令识别。`; wake_loop prints `Listening for wake phrase...`, `Listening for command...`, and `Command transcription: ...`.
+- Server fallback policy: `--use-server` no longer falls back automatically; use `--allow-local-fallback` only for manual fallback testing.
+- Successful transcription output: `小黄小黄帮我测试一下语音识别功能，我们正在开发语音识别助手。`
+- Recommended setup helper: run `.\scripts\run_env.ps1` first; it only prints commands and does not record or transcribe automatically.
+- Verification used: real local audio/STT baseline plus unit tests and compileall.
+- Do not commit runtime artifacts: `data/recordings/*.wav`, `data/recordings/wake/`, `logs/`, `models/`, `.venv/`, or `__pycache__/`.
+- Do not add in V0.6: waveform overlay UI, TTS, OpenCLI, opencode, QQ/WeChat, browser automation, crawler, downloader, task scheduler, or real KWS training.
+  - `scripts/stt_server.py`
+  - `scripts/stt_client.py`
