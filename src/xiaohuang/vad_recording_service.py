@@ -6,8 +6,8 @@ from typing import Any, Iterable
 
 from xiaohuang.audio_capture_service import (
     compute_audio_levels,
-    _load_sounddevice,
-    _load_soundfile,
+    load_sounddevice,
+    load_soundfile,
 )
 
 
@@ -124,8 +124,8 @@ def record_until_silence(
     if channels <= 0:
         raise ValueError("channels must be greater than 0.")
 
-    sounddevice = _load_sounddevice()
-    soundfile = _load_soundfile()
+    sounddevice = load_sounddevice()
+    soundfile = load_soundfile()
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
 

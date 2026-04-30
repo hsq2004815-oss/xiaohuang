@@ -12,6 +12,8 @@ from xiaohuang.audio_capture_service import (
     classify_input_device,
     compute_audio_levels,
     build_recording_path,
+    load_sounddevice,
+    load_soundfile,
 )
 from xiaohuang.config_service import load_config
 from xiaohuang.listen_once_service import (
@@ -21,8 +23,9 @@ from xiaohuang.listen_once_service import (
     resolve_listen_once_options,
     should_allow_local_fallback,
 )
+from xiaohuang.overlay_state_service import build_server_unavailable_status, get_overlay_status_text
 from xiaohuang.stt_client_service import build_health_url, build_transcribe_payload
-from xiaohuang.stt_server_service import build_success_response
+from xiaohuang.stt_server_service import PathGuardError, build_success_response, resolve_recording_wav_path
 from xiaohuang.stt_service import MissingDependencyError, SenseVoiceTranscriber, clean_command_text
 from xiaohuang.vad_service import FixedDurationVad
 from xiaohuang.vad_recording_service import (
@@ -36,6 +39,7 @@ from xiaohuang.vad_recording_service import (
     update_vad_state,
 )
 from xiaohuang.wake_word_service import is_wake_phrase_detected, normalize_wake_text, parse_wake_phrases
+from xiaohuang.wake_loop_service import WakeLoopOptions, run_wake_loop_once
 
 
 class ConfigServiceTests(unittest.TestCase):
@@ -85,6 +89,10 @@ class AudioCaptureServiceTests(unittest.TestCase):
         for name in ("Speaker Output", "立体声混音"):
             with self.subTest(name=name):
                 self.assertEqual(classify_input_device(name), "not recommended")
+
+    def test_public_audio_dependency_loaders_are_available(self):
+        self.assertTrue(callable(load_sounddevice))
+        self.assertTrue(callable(load_soundfile))
 
 
 class VadServiceTests(unittest.TestCase):
@@ -327,6 +335,60 @@ class SttServerServiceTests(unittest.TestCase):
         self.assertEqual(response["transcribe_seconds"], 1.53)
         self.assertEqual(response["total_seconds"], 1.60)
 
+    def test_resolve_recording_wav_path_allows_recordings_wav(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            wav_path = project_root / "data" / "recordings" / "test.wav"
+            wav_path.parent.mkdir(parents=True)
+            wav_path.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+
+            resolved = resolve_recording_wav_path("data/recordings/test.wav", project_root)
+
+            self.assertEqual(resolved, wav_path.resolve())
+
+    def test_resolve_recording_wav_path_allows_wake_recordings_wav(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            wav_path = project_root / "data" / "recordings" / "wake" / "test.wav"
+            wav_path.parent.mkdir(parents=True)
+            wav_path.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+
+            resolved = resolve_recording_wav_path(wav_path, project_root)
+
+            self.assertEqual(resolved, wav_path.resolve())
+
+    def test_resolve_recording_wav_path_rejects_parent_escape(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            secret_path = project_root / "secret.wav"
+            secret_path.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+
+            with self.assertRaises(PathGuardError):
+                resolve_recording_wav_path("data/recordings/../secret.wav", project_root)
+
+    def test_resolve_recording_wav_path_rejects_absolute_path_outside_recordings(self):
+        windows_path = Path("C:/Windows/xxx.wav")
+
+        with self.assertRaises(PathGuardError):
+            resolve_recording_wav_path(windows_path, Path("E:/Projects/xiaohuang"))
+
+    def test_resolve_recording_wav_path_rejects_non_wav_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            text_path = project_root / "data" / "recordings" / "test.txt"
+            text_path.parent.mkdir(parents=True)
+            text_path.write_text("not audio", encoding="utf-8")
+
+            with self.assertRaises(PathGuardError):
+                resolve_recording_wav_path(text_path, project_root)
+
+    def test_resolve_recording_wav_path_rejects_missing_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+
+            with self.assertRaises(PathGuardError):
+                resolve_recording_wav_path("data/recordings/missing.wav", project_root)
+
 
 class SttClientServiceTests(unittest.TestCase):
     def test_build_transcribe_payload_uses_wav_path(self):
@@ -356,6 +418,130 @@ class WakeWordServiceTests(unittest.TestCase):
 
     def test_is_wake_phrase_detected_ignores_empty_text(self):
         self.assertFalse(is_wake_phrase_detected("  ，。 ", ["小黄"]))
+
+
+class OverlayStateServiceTests(unittest.TestCase):
+    def test_get_overlay_status_text_maps_idle_state(self):
+        status = get_overlay_status_text("idle")
+
+        self.assertEqual(status.title, "小黄待机中")
+        self.assertEqual(status.subtitle, "说“小黄”唤醒我")
+
+    def test_get_overlay_status_text_maps_result_state_with_text(self):
+        status = get_overlay_status_text("result", "你在干嘛？")
+
+        self.assertEqual(status.title, "你说：")
+        self.assertEqual(status.subtitle, "你在干嘛？")
+
+    def test_build_server_unavailable_status_returns_error_text(self):
+        status = build_server_unavailable_status("http://127.0.0.1:8766")
+
+        self.assertEqual(status.state, "error")
+        self.assertEqual(status.title, "STT server 未启动")
+        self.assertIn("scripts\\stt_server.py", status.subtitle)
+
+
+class WakeLoopServiceTests(unittest.TestCase):
+    def test_run_wake_loop_once_emits_expected_callback_order(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            recording_dir = project_root / "data" / "recordings"
+            wake_path = recording_dir / "wake" / "wake.wav"
+            command_path = recording_dir / "command.wav"
+            events: list[str] = []
+            transcribe_calls: list[Path] = []
+
+            options = WakeLoopOptions(
+                device_id=0,
+                server_url="http://127.0.0.1:8766",
+                wake_window_seconds=2.0,
+                wake_phrases=["小黄"],
+                max_seconds=10.0,
+                silence_seconds=0.8,
+                sample_rate=16000,
+                channels=1,
+                recording_dir=recording_dir,
+                keep_wake_recordings=False,
+            )
+
+            def fake_build_path(output_dir):
+                return wake_path if Path(output_dir).name == "wake" else command_path
+
+            def fake_record_wav(output_path, **_kwargs):
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+                return Path(output_path)
+
+            def fake_record_until_silence(output_path, **_kwargs):
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+                return SimpleNamespace(path=Path(output_path), duration_seconds=1.2, stop_reason="silence_after_speech")
+
+            def fake_transcribe(path, _server_url):
+                transcribe_calls.append(Path(path))
+                return {"text": "小黄" if len(transcribe_calls) == 1 else "帮我测试"}
+
+            result = run_wake_loop_once(
+                options,
+                on_state_change=lambda state, _payload=None: events.append(state),
+                record_wav_func=fake_record_wav,
+                record_until_silence_func=fake_record_until_silence,
+                request_transcription_func=fake_transcribe,
+                build_recording_path_func=fake_build_path,
+            )
+
+            self.assertEqual(events, ["wake_checking", "wake_detected", "listening", "transcribing", "result"])
+            self.assertEqual(result.wake_text, "小黄")
+            self.assertEqual(result.command_text, "帮我测试")
+            self.assertFalse(wake_path.exists())
+
+    def test_run_wake_loop_once_calls_text_callbacks(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recording_dir = Path(temp_dir) / "data" / "recordings"
+            seen_wake: list[str] = []
+            seen_command: list[str] = []
+            calls = {"count": 0}
+
+            options = WakeLoopOptions(
+                device_id=0,
+                server_url="http://127.0.0.1:8766",
+                wake_window_seconds=2.0,
+                wake_phrases=["小黄"],
+                max_seconds=10.0,
+                silence_seconds=0.8,
+                sample_rate=16000,
+                channels=1,
+                recording_dir=recording_dir,
+            )
+
+            def fake_path(output_dir):
+                return Path(output_dir) / f"{Path(output_dir).name}.wav"
+
+            def write_wav(output_path, **_kwargs):
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+                return Path(output_path)
+
+            def fake_vad(output_path, **_kwargs):
+                write_wav(output_path)
+                return SimpleNamespace(path=Path(output_path), duration_seconds=1.0, stop_reason="silence_after_speech")
+
+            def fake_transcribe(_path, _server_url):
+                calls["count"] += 1
+                return {"text": "小黄" if calls["count"] == 1 else "你在干嘛？"}
+
+            run_wake_loop_once(
+                options,
+                on_wake_text=seen_wake.append,
+                on_command_text=seen_command.append,
+                record_wav_func=write_wav,
+                record_until_silence_func=fake_vad,
+                request_transcription_func=fake_transcribe,
+                build_recording_path_func=fake_path,
+            )
+
+            self.assertEqual(seen_wake, ["小黄"])
+            self.assertEqual(seen_command, ["你在干嘛？"])
 
 
 if __name__ == "__main__":

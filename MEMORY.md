@@ -1,34 +1,42 @@
 # XiaoHuang Memory
 
 - Project: `E:\Projects\xiaohuang`
-- Current version: V0.6 console wake-word prototype plus energy-threshold VAD and local resident STT server.
-- Current goal: let `scripts/wake_loop.py` wait for short-window STT text matching of `小黄`, then record one VAD command and transcribe it through STT server.
+- Current version: V0.7 Tkinter voice overlay prototype over the V0.6 wake loop.
+- Current goal: show wake/listen/transcribe/result states in a small always-on-top desktop window while preserving console wake_loop behavior.
 - Main scripts:
   - `scripts/check_audio_devices.py`
   - `scripts/record_test.py`
   - `scripts/listen_once.py`
   - `scripts/wake_loop.py`
+  - `scripts/voice_overlay.py`
   - `scripts/transcribe_test.py`
 - Main services:
   - `src/xiaohuang/audio_capture_service.py`
   - `src/xiaohuang/vad_service.py`
   - `src/xiaohuang/vad_recording_service.py`
   - `src/xiaohuang/stt_service.py`
+  - `src/xiaohuang/stt_server_service.py`
   - `src/xiaohuang/wake_word_service.py`
+  - `src/xiaohuang/wake_loop_service.py`
+  - `src/xiaohuang/overlay_state_service.py`
   - `src/xiaohuang/config_service.py`
   - `src/xiaohuang/logging_service.py`
 - Validated local runtime: `F:\for_xiaohuang\conda310\python.exe`, microphone `device 0`, ModelScope cache `F:\for_xiaohuang\models\modelscope`, ffmpeg installed through `winget`.
 - Validated V0.3 path: `device 0` recording -> WAV file -> FunASR / SenseVoiceSmall Chinese transcription, with one-shot timing diagnostics.
-- V0.6 boundary: console STT text-matching wake prototype + energy-threshold VAD + local-only STT server/client only; still not a full voice assistant.
+- V0.7 boundary: Tkinter overlay state display only; console STT text-matching wake prototype + energy-threshold VAD + local-only STT server/client remain the only behavior.
 - Recommended VAD command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\listen_once.py --use-server --device 0 --vad --max-seconds 10 --silence-seconds 0.8 --countdown 3 --channels 1 --samplerate 16000`.
 - Recommended wake-loop command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\wake_loop.py --device 0 --once --debug`.
+- Recommended overlay command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug`.
+- Overlay help command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --help`.
 - Current usable STT server command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\stt_server.py --host 127.0.0.1 --port 8766`.
 - Successful V0.6 wake test: say `小黄`, wait for `Wake word detected.`, then say `帮我测试一下唤醒后的命令识别。`; wake_loop prints `Listening for wake phrase...`, `Listening for command...`, and `Command transcription: ...`.
+- Successful V0.7 overlay test: `voice_overlay.py --device 0 --debug` completed repeated wake/result cycles. Confirmed examples include `Wake check transcription: 小黄。` -> `Command transcription: 怎么说，这一波。`, `嗯，还不错。`, `你有什么感觉吗？`, `你想干嘛？`, and `我很生气。`; `Wake check transcription: 哦。` did not enter command recording.
+- Overlay shutdown policy: closing the window or pressing `Esc` sets a stop event, prevents later UI updates, and briefly joins the background worker after Tk mainloop exits; an in-flight recording/request may finish before the worker loop observes the stop event.
+- Wake temp file policy: `wake_loop.py` and `voice_overlay.py` delete wake-check WAVs under `data/recordings/wake/` after STT by default; use `wake_loop.py --keep-wake-recordings` only when debugging console wake checks.
+- STT server path guard: `/transcribe` accepts only existing `.wav` files under project `data/recordings/`; reject missing files, non-wav files, parent traversal, and outside absolute paths.
 - Server fallback policy: `--use-server` no longer falls back automatically; use `--allow-local-fallback` only for manual fallback testing.
 - Successful transcription output: `小黄小黄帮我测试一下语音识别功能，我们正在开发语音识别助手。`
 - Recommended setup helper: run `.\scripts\run_env.ps1` first; it only prints commands and does not record or transcribe automatically.
 - Verification used: real local audio/STT baseline plus unit tests and compileall.
 - Do not commit runtime artifacts: `data/recordings/*.wav`, `data/recordings/wake/`, `logs/`, `models/`, `.venv/`, or `__pycache__/`.
-- Do not add in V0.6: waveform overlay UI, TTS, OpenCLI, opencode, QQ/WeChat, browser automation, crawler, downloader, task scheduler, or real KWS training.
-  - `scripts/stt_server.py`
-  - `scripts/stt_client.py`
+- Do not add in V0.7: TTS, OpenCLI, opencode, QQ/WeChat, browser automation, crawler, downloader, task scheduler, FunASR KWS, openWakeWord training, installer, or other new assistant features.

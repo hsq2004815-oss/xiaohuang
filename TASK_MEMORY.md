@@ -1,10 +1,16 @@
 # Task Memory
 
-- Purpose: XiaoHuang V0.6 adds a console wake-word prototype using short-window STT text matching before the existing VAD + STT command flow.
-- Key files: `scripts/wake_loop.py`, `src/xiaohuang/wake_word_service.py`, `src/xiaohuang/stt_client_service.py`, `src/xiaohuang/vad_recording_service.py`, `scripts/stt_server.py`.
+- Purpose: XiaoHuang V0.7 adds a Tkinter always-on-top voice overlay prototype over the existing V0.6 wake loop flow.
+- Key files: `scripts/voice_overlay.py`, `src/xiaohuang/wake_loop_service.py`, `src/xiaohuang/overlay_state_service.py`, `scripts/wake_loop.py`, `scripts/stt_server.py`.
 - Current environment: use `F:\for_xiaohuang\conda310\python.exe`; recording works with `device 0`; ModelScope cache is `F:\for_xiaohuang\models\modelscope`; ffmpeg is installed through `winget` and available on PATH.
 - Startup/test: dot-source `.\scripts\run_env.ps1`; set `PYTHONPATH=E:\Projects\xiaohuang\src`; run `& "F:\for_xiaohuang\conda310\python.exe" -m unittest discover -s tests`.
-- Last completed: V0.6 `wake_loop.py` records short wake windows, sends them to STT server, matches `小黄`/`小黄小黄`, then records one VAD command and transcribes it.
+- Last completed: V0.7 overlay shows idle/wake/listening/transcribing/result/error states and reuses `wake_loop_service.py`.
+- Overlay command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug`.
+- Overlay help: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --help`.
+- Manual overlay test: start STT server, run `voice_overlay.py --device 0 --debug`, say `小黄`, then speak a command.
+- Latest successful overlay test: repeated cycles detected `小黄` and transcribed commands `怎么说，这一波。`, `嗯，还不错。`, `你有什么感觉吗？`, `你想干嘛？`, `我很生气。`; non-wake `哦。` stayed in wake-check flow.
+- Overlay shutdown: close window or press `Esc`; `voice_overlay.py` sets a stop event and joins the daemon worker briefly after Tk exits. In-flight recording/request can finish before the loop observes the stop event.
+- STT server guard: `/transcribe` only accepts existing `.wav` files under project `data/recordings/`, including `data/recordings/wake/`.
 - Server fallback policy: `listen_once.py --use-server` requires the resident server by default; add `--allow-local-fallback` only when local direct STT fallback is acceptable.
 - Recommended VAD command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\listen_once.py --use-server --device 0 --vad --max-seconds 10 --silence-seconds 0.8 --countdown 3 --channels 1 --samplerate 16000`.
 - Recommended wake-loop command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\wake_loop.py --device 0 --once --debug`.
@@ -12,6 +18,7 @@
 - Current successful wake test: start STT server, run `wake_loop.py --device 0 --once --debug`, say `小黄`, then say `帮我测试一下唤醒后的命令识别。`; expected state output includes `Listening for wake phrase...`, `Wake word detected.`, `Listening for command...`, and `Command transcription: ...`.
 - Verified output example from earlier STT baseline: input speech `小黄小黄帮我测试一下语音识别功能，我们正在开发语音识别助手。`; output text matched the same sentence.
 - Git ignore boundary: do not commit `data/recordings/*.wav`, `data/recordings/wake/`, `logs/`, `models/`, `.venv/`, or `__pycache__/`.
-- Known traps: V0.6 wake is only STT text matching, not a low-power KWS model; it frequently calls STT server and depends on `--wake-window-seconds` latency.
-- Still unfinished: real KWS model, waveform overlay, TTS, system tray, installer, and later desktop-assistant integrations.
-- Next likely edit points: tune `--wake-window-seconds`, wake phrase matching, `energy_threshold`, and `silence_seconds` against real microphone conditions.
+- Wake temp cleanup: V0.6.1 default cleanup still applies; console `wake_loop.py` only keeps wake-check WAVs when `--keep-wake-recordings` is specified, and `voice_overlay.py` always uses default cleanup.
+- Known traps: V0.7 overlay is a Tkinter UI prototype only, not TTS, task execution, tray background app, installer, or real KWS.
+- Still unfinished: real KWS model, TTS, system tray, installer, and later desktop-assistant integrations.
+- Next likely edit points: manually test `voice_overlay.py`, tune window behavior/positioning, then decide whether V0.8 should be tray/background packaging.

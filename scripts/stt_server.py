@@ -13,7 +13,12 @@ SRC_DIR = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from xiaohuang.config_service import load_config
-from xiaohuang.stt_server_service import build_error_response, build_success_response
+from xiaohuang.stt_server_service import (
+    PathGuardError,
+    build_error_response,
+    build_success_response,
+    resolve_recording_wav_path,
+)
 from xiaohuang.stt_service import SenseVoiceTranscriber
 
 
@@ -58,8 +63,14 @@ def make_handler(state: SttServerState):
                     self._write_json(400, build_error_response("Missing wav_path."))
                     return
 
+                try:
+                    safe_wav_path = resolve_recording_wav_path(wav_path, PROJECT_ROOT)
+                except PathGuardError as exc:
+                    self._write_json(400, build_error_response(str(exc)))
+                    return
+
                 transcribe_start = time.perf_counter()
-                text = state.transcriber.transcribe(Path(wav_path))
+                text = state.transcriber.transcribe(safe_wav_path)
                 transcribe_seconds = time.perf_counter() - transcribe_start
                 total_seconds = time.perf_counter() - request_start
                 self._write_json(

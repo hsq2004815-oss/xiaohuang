@@ -16,7 +16,7 @@ if ($existingRecording) {
     $latestRecording = $existingRecording.FullName
 }
 
-Write-Host "XiaoHuang V0.6 wake-loop prototype environment is ready."
+Write-Host "XiaoHuang V0.7 voice-overlay prototype environment is ready."
 Write-Host "Project root: $ProjectRoot"
 Write-Host "Python: $Python"
 Write-Host "PYTHONPATH: $env:PYTHONPATH"
@@ -48,6 +48,9 @@ Write-Host "& `"$Python`" scripts\listen_once.py --use-server --server-url http:
 Write-Host ""
 Write-Host "Console wake-word prototype, one command after wake:"
 Write-Host "& `"$Python`" scripts\wake_loop.py --device 0 --once --debug"
+Write-Host ""
+Write-Host "Voice overlay prototype:"
+Write-Host "& `"$Python`" scripts\voice_overlay.py --device 0 --debug"
 Write-Host ""
 Write-Host "Transcribe latest recording through the local STT server:"
 Write-Host "& `"$Python`" scripts\stt_client.py --server-url http://127.0.0.1:8766 `"$latestRecording`""

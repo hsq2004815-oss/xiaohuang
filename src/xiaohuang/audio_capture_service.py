@@ -37,7 +37,7 @@ def classify_input_device(name: str) -> str:
 
 
 def list_input_devices() -> list[dict[str, Any]]:
-    sounddevice = _load_sounddevice()
+    sounddevice = load_sounddevice()
     devices = sounddevice.query_devices()
     input_devices: list[dict[str, Any]] = []
 
@@ -68,8 +68,8 @@ def record_wav(
     if duration_seconds <= 0:
         raise ValueError("duration_seconds must be greater than 0.")
 
-    sounddevice = _load_sounddevice()
-    soundfile = _load_soundfile()
+    sounddevice = load_sounddevice()
+    soundfile = load_soundfile()
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
@@ -87,7 +87,7 @@ def record_wav(
 
 
 def analyze_wav(path: str | Path) -> AudioLevels:
-    soundfile = _load_soundfile()
+    soundfile = load_soundfile()
     audio, _sample_rate = soundfile.read(Path(path), dtype="int16", always_2d=False)
     return compute_audio_levels(audio)
 
@@ -121,7 +121,7 @@ def _iter_samples(audio: Any) -> Iterable[int]:
             yield int(value)
 
 
-def _load_sounddevice():
+def load_sounddevice():
     try:
         import sounddevice
     except ImportError as exc:
@@ -132,7 +132,7 @@ def _load_sounddevice():
     return sounddevice
 
 
-def _load_soundfile():
+def load_soundfile():
     try:
         import soundfile
     except ImportError as exc:
@@ -141,3 +141,11 @@ def _load_soundfile():
             "`python -m pip install -r requirements.txt`."
         ) from exc
     return soundfile
+
+
+def _load_sounddevice():
+    return load_sounddevice()
+
+
+def _load_soundfile():
+    return load_soundfile()
