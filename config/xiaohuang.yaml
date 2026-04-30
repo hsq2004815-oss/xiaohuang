@@ -1,0 +1,20 @@
+audio:
+  sample_rate: 16000
+  channels: 1
+  dtype: int16
+  device_id: null
+
+recording:
+  duration_seconds: 5
+  output_dir: data/recordings
+
+stt:
+  engine: funasr
+  model_name: iic/SenseVoiceSmall
+  language: zh
+  use_itn: true
+
+logging:
+  directory: logs
+  level: INFO
+
