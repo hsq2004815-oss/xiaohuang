@@ -31,6 +31,29 @@
 
 优先使用项目虚拟环境或 conda 环境，不要安装到全局 Python。
 
+### 当前已验证环境
+
+V0.1 当前已在以下环境跑通：
+
+- Python: `F:\for_xiaohuang\conda310\python.exe`
+- 麦克风设备：`device 0`
+- 模型缓存：`F:\for_xiaohuang\models\modelscope`
+- STT：FunASR / SenseVoiceSmall
+- ffmpeg：已通过 `winget` 安装，并且当前 PATH 可用
+
+已验证成功链路：
+
+```text
+device 0 麦克风录音 -> 保存 WAV -> SenseVoiceSmall 中文转写 -> 控制台输出文本
+```
+
+成功转写示例：
+
+```text
+输入语音：小黄小黄帮我测试一下语音识别功能，我们正在开发语音识别助手。
+输出文本：小黄小黄帮我测试一下语音识别功能，我们正在开发语音识别助手。
+```
+
 ### venv
 
 ```powershell
@@ -64,12 +87,21 @@ python -m pip install funasr modelscope torch torchaudio
 
 ## 运行步骤
 
+建议每次运行 V0.1 脚本前先执行：
+
+```powershell
+cd E:\Projects\xiaohuang
+.\scripts\run_env.ps1
+```
+
+该脚本只会切换到项目目录、设置 `PYTHONPATH` / `MODELSCOPE_CACHE` / `HF_HOME`，并打印常用命令；不会自动录音或转写。
+
 ### 1. 枚举麦克风
 
 ```powershell
 cd E:\Projects\xiaohuang
 $env:PYTHONPATH="E:\Projects\xiaohuang\src"
-python scripts\check_audio_devices.py
+& "F:\for_xiaohuang\conda310\python.exe" scripts\check_audio_devices.py
 ```
 
 输出会包含设备 ID、设备名称、最大输入通道数和默认采样率。
@@ -79,19 +111,19 @@ python scripts\check_audio_devices.py
 使用默认输入设备：
 
 ```powershell
-python scripts\record_test.py
+& "F:\for_xiaohuang\conda310\python.exe" scripts\record_test.py
 ```
 
-选择指定设备：
+当前已验证可用设备是 `device 0`：
 
 ```powershell
-python scripts\record_test.py --device 1
+& "F:\for_xiaohuang\conda310\python.exe" scripts\record_test.py --device 0
 ```
 
 调整录音时长：
 
 ```powershell
-python scripts\record_test.py --device 1 --seconds 5
+& "F:\for_xiaohuang\conda310\python.exe" scripts\record_test.py --device 0 --seconds 5
 ```
 
 录音会保存到：
@@ -102,11 +134,20 @@ data/recordings/test_时间戳.wav
 
 ### 3. 转写 WAV
 
+当前推荐使用已安装 FunASR / SenseVoiceSmall 的 Python 环境运行：
+
 ```powershell
-python scripts\transcribe_test.py data\recordings\test_时间戳.wav
+& "F:\for_xiaohuang\conda310\python.exe" scripts\transcribe_test.py <wav_path>
+```
+
+例如：
+
+```powershell
+& "F:\for_xiaohuang\conda310\python.exe" scripts\transcribe_test.py data\recordings\test_时间戳.wav
 ```
 
 首次运行会下载或加载 SenseVoiceSmall 模型，耗时取决于网络和硬件。
+如果当前 PATH 中没有 `ffmpeg`，脚本只会输出 warning：`ffmpeg not found, fallback to torchaudio for wav input`，不会强制要求安装 ffmpeg。
 
 ## 配置
 
@@ -165,3 +206,13 @@ V0.1 跑通后，再进入：
 - V0.3：优化 STT 和 VAD
 - V0.4：接入音波悬浮窗
 - V0.5：整合为后台托盘程序
+
+当前仍未完成：
+
+- 唤醒词“小黄”
+- 音波悬浮窗
+- VAD 自动截断
+- TTS
+- 系统托盘
+- 桌面安装器
+- OpenCLI / opencode / QQ / 微信 / 爬虫等后续能力
