@@ -10,7 +10,13 @@ sys.path.insert(0, str(SRC_DIR))
 
 from xiaohuang.config_service import load_config
 from xiaohuang.logging_service import configure_logging
-from xiaohuang.stt_service import MissingDependencyError, SenseVoiceTranscriber, TranscriptionError
+from xiaohuang.stt_service import (
+    MissingDependencyError,
+    ModelInitializationError,
+    SenseVoiceTranscriber,
+    TranscriptionError,
+    format_runtime_diagnostics,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,11 +33,14 @@ def main() -> int:
         "transcribe_test",
         config["logging"]["level"],
     )
+    diagnostics = format_runtime_diagnostics()
+    logger.info("\n%s", diagnostics)
+    print(diagnostics)
 
     transcriber = SenseVoiceTranscriber(
         model_name=config["stt"]["model_name"],
-        language=config["stt"]["language"],
-        use_itn=bool(config["stt"]["use_itn"]),
+        language="auto",
+        use_itn=True,
     )
 
     try:
@@ -44,6 +53,10 @@ def main() -> int:
         logger.error(str(exc))
         print(str(exc))
         return 3
+    except ModelInitializationError as exc:
+        logger.error(str(exc))
+        print(str(exc))
+        return 4
     except TranscriptionError as exc:
         logger.error(str(exc))
         print(str(exc))
@@ -61,4 +74,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

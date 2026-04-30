@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import os
+import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
 
 class MissingDependencyError(RuntimeError):
+    pass
+
+
+class ModelInitializationError(RuntimeError):
     pass
 
 
@@ -16,14 +23,16 @@ class SenseVoiceTranscriber:
     def __init__(
         self,
         model_name: str = "iic/SenseVoiceSmall",
-        language: str = "zh",
+        language: str = "auto",
         use_itn: bool = True,
         funasr_module: Any | None = "auto",
+        postprocess_func: Any | None = None,
     ) -> None:
         self.model_name = model_name
         self.language = language
         self.use_itn = use_itn
         self._funasr_module = funasr_module
+        self._postprocess_func = postprocess_func
         self._model = None
 
     def transcribe(self, wav_path: str | Path) -> str:
@@ -38,11 +47,16 @@ class SenseVoiceTranscriber:
                 language=self.language,
                 use_itn=self.use_itn,
                 batch_size_s=60,
+                merge_vad=True,
+                merge_length_s=15,
             )
         except Exception as exc:
-            raise TranscriptionError(f"FunASR transcription failed: {exc}") from exc
+            raise TranscriptionError(
+                f"FunASR generate failed: {exc}\n{format_runtime_diagnostics()}"
+            ) from exc
 
         text = _extract_text(result)
+        text = self._postprocess(text)
         if not text:
             raise TranscriptionError(f"FunASR returned no text. Raw result: {result!r}")
         return text
@@ -52,10 +66,20 @@ class SenseVoiceTranscriber:
             return self._model
 
         funasr = self._load_funasr()
-        self._model = funasr.AutoModel(
-            model=self.model_name,
-            trust_remote_code=True,
-        )
+        try:
+            self._model = funasr.AutoModel(
+                model=self.model_name,
+                trust_remote_code=True,
+                remote_code="./model.py",
+                vad_model="fsmn-vad",
+                vad_kwargs={"max_single_segment_time": 30000},
+                device="cpu",
+                disable_update=True,
+            )
+        except Exception as exc:
+            raise ModelInitializationError(
+                f"FunASR model initialization failed: {exc}\n{format_runtime_diagnostics()}"
+            ) from exc
         return self._model
 
     def _load_funasr(self):
@@ -69,6 +93,11 @@ class SenseVoiceTranscriber:
             raise MissingDependencyError(_funasr_install_message()) from exc
         return funasr
 
+    def _postprocess(self, text: str) -> str:
+        if self._postprocess_func is None:
+            self._postprocess_func = _load_rich_transcription_postprocess()
+        return str(self._postprocess_func(text)).strip()
+
 
 def _extract_text(result: Any) -> str:
     if isinstance(result, str):
@@ -79,6 +108,41 @@ def _extract_text(result: Any) -> str:
         parts = [_extract_text(item) for item in result]
         return " ".join(part for part in parts if part).strip()
     return ""
+
+
+def _load_rich_transcription_postprocess():
+    try:
+        from funasr.utils.postprocess_utils import rich_transcription_postprocess
+    except ImportError as exc:
+        raise MissingDependencyError(
+            "FunASR rich_transcription_postprocess is unavailable. "
+            "Verify that FunASR is installed in the active Python environment."
+        ) from exc
+    return rich_transcription_postprocess
+
+
+def build_runtime_diagnostics() -> dict[str, str]:
+    ffmpeg_path = shutil.which("ffmpeg")
+    return {
+        "python": sys.executable,
+        "MODELSCOPE_CACHE": os.environ.get("MODELSCOPE_CACHE", ""),
+        "HF_HOME": os.environ.get("HF_HOME", ""),
+        "ffmpeg": ffmpeg_path or "not found",
+    }
+
+
+def format_runtime_diagnostics() -> str:
+    diagnostics = build_runtime_diagnostics()
+    lines = [
+        "Runtime diagnostics:",
+        f"- Python: {diagnostics['python']}",
+        f"- MODELSCOPE_CACHE: {diagnostics['MODELSCOPE_CACHE'] or '(unset)'}",
+        f"- HF_HOME: {diagnostics['HF_HOME'] or '(unset)'}",
+        f"- ffmpeg: {diagnostics['ffmpeg']}",
+    ]
+    if diagnostics["ffmpeg"] == "not found":
+        lines.append("- warning: ffmpeg not found, fallback to torchaudio for wav input")
+    return "\n".join(lines)
 
 
 def _funasr_install_message() -> str:

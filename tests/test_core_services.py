@@ -1,6 +1,10 @@
 import tempfile
 import unittest
 from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from xiaohuang.audio_capture_service import build_recording_path
 from xiaohuang.config_service import load_config
@@ -51,6 +55,57 @@ class SttServiceTests(unittest.TestCase):
                 transcriber.transcribe(wav_path)
 
             self.assertIn("FunASR", str(context.exception))
+
+    def test_sensevoice_transcriber_uses_recommended_model_init_args(self):
+        class FakeFunASR:
+            captured_kwargs = None
+
+            class AutoModel:
+                def __init__(self, **kwargs):
+                    FakeFunASR.captured_kwargs = kwargs
+
+        transcriber = SenseVoiceTranscriber(funasr_module=FakeFunASR)
+
+        transcriber._get_model()
+
+        self.assertEqual(FakeFunASR.captured_kwargs["model"], "iic/SenseVoiceSmall")
+        self.assertTrue(FakeFunASR.captured_kwargs["trust_remote_code"])
+        self.assertEqual(FakeFunASR.captured_kwargs["remote_code"], "./model.py")
+        self.assertEqual(FakeFunASR.captured_kwargs["vad_model"], "fsmn-vad")
+        self.assertEqual(FakeFunASR.captured_kwargs["vad_kwargs"], {"max_single_segment_time": 30000})
+        self.assertEqual(FakeFunASR.captured_kwargs["device"], "cpu")
+        self.assertTrue(FakeFunASR.captured_kwargs["disable_update"])
+
+    def test_sensevoice_transcriber_uses_recommended_generate_args_and_postprocess(self):
+        class FakeModel:
+            captured_kwargs = None
+
+            def generate(self, **kwargs):
+                FakeModel.captured_kwargs = kwargs
+                return [{"text": "<|zh|><|NEUTRAL|><|Speech|>你好，小黄"}]
+
+        class FakeFunASR:
+            class AutoModel:
+                def __new__(cls, **kwargs):
+                    return FakeModel()
+
+        def postprocess(text):
+            return text.replace("<|zh|><|NEUTRAL|><|Speech|>", "").strip()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            wav_path = Path(temp_dir) / "sample.wav"
+            wav_path.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+            transcriber = SenseVoiceTranscriber(funasr_module=FakeFunASR, postprocess_func=postprocess)
+
+            text = transcriber.transcribe(wav_path)
+
+        self.assertEqual(FakeModel.captured_kwargs["input"], str(wav_path))
+        self.assertEqual(FakeModel.captured_kwargs["language"], "auto")
+        self.assertTrue(FakeModel.captured_kwargs["use_itn"])
+        self.assertEqual(FakeModel.captured_kwargs["batch_size_s"], 60)
+        self.assertTrue(FakeModel.captured_kwargs["merge_vad"])
+        self.assertEqual(FakeModel.captured_kwargs["merge_length_s"], 15)
+        self.assertEqual(text, "你好，小黄")
 
 
 if __name__ == "__main__":
