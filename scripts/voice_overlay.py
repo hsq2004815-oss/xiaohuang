@@ -4,6 +4,7 @@ import argparse
 import math
 import sys
 import threading
+import tkinter as tk
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +61,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=None,
         help="Seconds to pause before listening again after a reply. Defaults to 6 with TTS, 3.5 without TTS.",
+    )
+    parser.add_argument(
+        "--resident-hidden",
+        action="store_true",
+        help="Start hidden and show overlay only after wake word is detected.",
     )
     return parser.parse_args()
 
@@ -164,6 +170,29 @@ class VoiceOverlayApp:
 
     def schedule_idle(self, delay_ms: int = 3500) -> None:
         self._safe_after(delay_ms, lambda: self.set_state(STATE_IDLE))
+
+    def show_overlay(self) -> None:
+        def _show() -> None:
+            if self.closed:
+                return
+            try:
+                self.root.deiconify()
+                self.root.lift()
+                self.root.attributes("-topmost", True)
+                self.root.after(300, lambda: self.root.attributes("-topmost", True))
+            except tk.TclError:
+                self.closed = True
+        self._safe_after(0, _show)
+
+    def hide_overlay(self) -> None:
+        def _hide() -> None:
+            if self.closed:
+                return
+            try:
+                self.root.withdraw()
+            except tk.TclError:
+                self.closed = True
+        self._safe_after(0, _hide)
 
     def _animate(self) -> None:
         if self.closed:
@@ -329,6 +358,7 @@ def main() -> int:
             post_response_cooldown,
             args.enable_llm,
             llm_config,
+            args.resident_hidden,
         ),
         daemon=True,
     )
@@ -351,6 +381,7 @@ def _run_overlay_loop(
     post_response_cooldown: float,
     enable_llm: bool,
     llm_config,
+    resident_hidden: bool = False,
 ) -> None:
     def _overlay_stt(path, server_url, *, mode: str):
         try:
@@ -365,12 +396,20 @@ def _run_overlay_loop(
 
     while not stop_event.is_set():
         try:
+            on_wake_shown: Callable[[], None] | None = None
+            if resident_hidden:
+                on_wake_shown = lambda: (
+                    app.show_overlay(),
+                    app.thread_safe_set_state(STATE_WAKE_DETECTED),
+                )
+
             result = run_wake_loop_once(
                 options,
                 on_state_change=lambda state, payload=None: _handle_wake_state(app, state, payload),
                 on_wake_text=(lambda text: print(f"Wake check transcription: {text}")) if debug else None,
                 on_wake_match=(lambda match: _print_wake_match(match)) if debug else None,
                 on_command_text=(lambda text: print(f"Command transcription: {text}")) if debug else None,
+                on_wake_detected=on_wake_shown,
                 request_transcription_func=_overlay_stt,
             )
             if stop_event.is_set():
@@ -411,6 +450,8 @@ def _run_overlay_loop(
             if stop_event.wait(post_response_cooldown):
                 break
             app.thread_safe_set_state(STATE_IDLE)
+            if resident_hidden:
+                app.hide_overlay()
             stop_event.wait(0.5)
         except (SttServerUnavailable, SttServerError) as exc:
             if stop_event.is_set():

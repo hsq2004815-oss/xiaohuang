@@ -1777,5 +1777,98 @@ class V105TaskRouterTests(unittest.TestCase):
         self.assertEqual(result.reply_source, "rule")
 
 
+class V111WakeDetectedCallbackTests(unittest.TestCase):
+    def test_on_wake_detected_called_on_match(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recording_dir = Path(temp_dir) / "data" / "recordings"
+            called = {"n": 0}
+
+            options = WakeLoopOptions(
+                device_id=0, server_url="http://127.0.0.1:8766",
+                wake_window_seconds=2.0, wake_phrases=["小黄"],
+                max_seconds=10.0, silence_seconds=0.8,
+                sample_rate=16000, channels=1, recording_dir=recording_dir,
+            )
+
+            def fake_path(output_dir):
+                return Path(output_dir) / f"{Path(output_dir).name}.wav"
+
+            def write_wav(output_path, **_kwargs):
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+                return Path(output_path)
+            def fake_vad(output_path, **_kwargs):
+                write_wav(output_path)
+                return SimpleNamespace(path=Path(output_path), duration_seconds=1.0, stop_reason="silence_after_speech")
+
+            call_count = {"n": 0}
+            def mode_stt(_path, _server_url, *, mode=None):
+                call_count["n"] += 1
+                return {"text": "小黄" if call_count["n"] == 1 else "测试"}
+
+            run_wake_loop_once(
+                options,
+                record_wav_func=write_wav,
+                record_until_silence_func=fake_vad,
+                request_transcription_func=mode_stt,
+                build_recording_path_func=fake_path,
+                on_wake_detected=lambda: called.update(n=called["n"] + 1),
+            )
+            self.assertEqual(called["n"], 1)
+
+    def test_on_wake_detected_not_called_on_no_match(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recording_dir = Path(temp_dir) / "data" / "recordings"
+            called = {"n": 0}
+            options = WakeLoopOptions(
+                device_id=0, server_url="http://127.0.0.1:8766",
+                wake_window_seconds=2.0, wake_phrases=["小黄"],
+                max_seconds=10.0, silence_seconds=0.8,
+                sample_rate=16000, channels=1, recording_dir=recording_dir,
+            )
+            def fake_path(d):
+                return Path(d) / f"{Path(d).name}.wav"
+            def write_wav(o, **_kw):
+                Path(o).parent.mkdir(parents=True, exist_ok=True); Path(o).write_bytes(b"RIFF\x00\x00\x00\x00WAVE"); return Path(o)
+            def fake_vad(o, **_kw):
+                write_wav(o); return SimpleNamespace(path=Path(o), duration_seconds=1.0, stop_reason="silence_after_speech")
+            def no_wake_stt(_p, _s, *, mode=None):
+                return {"text": "哦"}
+            run_wake_loop_once(
+                options, record_wav_func=write_wav, record_until_silence_func=fake_vad,
+                request_transcription_func=no_wake_stt, build_recording_path_func=fake_path,
+                on_wake_detected=lambda: called.update(n=called["n"]+1),
+            )
+            self.assertEqual(called["n"], 0)
+
+    def test_on_wake_detected_exception_does_not_block(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recording_dir = Path(temp_dir) / "data" / "recordings"
+            options = WakeLoopOptions(
+                device_id=0, server_url="http://127.0.0.1:8766",
+                wake_window_seconds=2.0, wake_phrases=["小黄"],
+                max_seconds=10.0, silence_seconds=0.8,
+                sample_rate=16000, channels=1, recording_dir=recording_dir,
+            )
+            def fake_path(d):
+                return Path(d) / f"{Path(d).name}.wav"
+            def write_wav(o, **_kw):
+                Path(o).parent.mkdir(parents=True, exist_ok=True); Path(o).write_bytes(b"RIFF\x00\x00\x00\x00WAVE"); return Path(o)
+            def fake_vad(o, **_kw):
+                write_wav(o); return SimpleNamespace(path=Path(o), duration_seconds=1.0, stop_reason="silence_after_speech")
+            call_count = {"n": 0}
+            def mode_stt(_p, _s, *, mode=None):
+                call_count["n"] += 1
+                return {"text": "小黄" if call_count["n"] == 1 else "测试"}
+            def bad_callback():
+                raise RuntimeError("boom")
+            result = run_wake_loop_once(
+                options, record_wav_func=write_wav, record_until_silence_func=fake_vad,
+                request_transcription_func=mode_stt, build_recording_path_func=fake_path,
+                on_wake_detected=bad_callback,
+            )
+            self.assertEqual(result.command_text, "测试")
+
+
 if __name__ == "__main__":
     unittest.main()

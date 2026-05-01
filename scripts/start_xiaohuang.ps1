@@ -9,7 +9,8 @@ param(
     [int]$Device = 0,
     [switch]$EnableLlm,
     [switch]$EnableTts,
-    [switch]$Debug
+    [switch]$Debug,
+    [switch]$ResidentHidden
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,9 +47,10 @@ Write-Host "--- Starting voice overlay ---"
 $OverlayParams = @{
     Device = $Device
 }
-if ($EnableLlm) { $OverlayParams.EnableLlm = $true }
-if ($EnableTts) { $OverlayParams.EnableTts = $true }
-if ($Debug)     { $OverlayParams.Debug = $true }
+if ($EnableLlm)      { $OverlayParams.EnableLlm = $true }
+if ($EnableTts)      { $OverlayParams.EnableTts = $true }
+if ($Debug)          { $OverlayParams.Debug = $true }
+if ($ResidentHidden) { $OverlayParams.ResidentHidden = $true }
 
 & "$PSScriptRoot\start_overlay.ps1" @OverlayParams
 

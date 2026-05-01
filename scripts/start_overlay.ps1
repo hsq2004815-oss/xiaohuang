@@ -11,7 +11,8 @@ param(
     [int]$Device = 0,
     [switch]$EnableLlm,
     [switch]$EnableTts,
-    [switch]$Debug
+    [switch]$Debug,
+    [switch]$ResidentHidden
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,7 +70,8 @@ $ArgParts = @(
 )
 if ($EnableLlm)   { $ArgParts += "--enable-llm" }
 if ($EnableTts)   { $ArgParts += "--enable-tts" }
-if ($Debug)       { $ArgParts += "--debug" }
+if ($Debug)          { $ArgParts += "--debug" }
+if ($ResidentHidden) { $ArgParts += "--resident-hidden" }
 
 $ArgList = $ArgParts -join " "
 

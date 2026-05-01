@@ -47,6 +47,7 @@ class WakeLoopResult:
 StateCallback = Callable[[str, str | None], None]
 TextCallback = Callable[[str], None]
 WakeMatchCallback = Callable[[WakeMatchResult], None]
+VoidCallback = Callable[[], None]
 
 
 def run_wake_loop_once(
@@ -56,6 +57,7 @@ def run_wake_loop_once(
     on_wake_text: TextCallback | None = None,
     on_wake_match: WakeMatchCallback | None = None,
     on_command_text: TextCallback | None = None,
+    on_wake_detected: VoidCallback | None = None,
     record_wav_func: Callable[..., Path] = record_wav,
     record_until_silence_func: Callable[..., Any] = record_until_silence,
     request_transcription_func: Callable[..., dict[str, Any]] = request_transcription,
@@ -94,6 +96,7 @@ def run_wake_loop_once(
             continue
 
         _emit(on_state_change, STATE_WAKE_DETECTED)
+        _safe_call(on_wake_detected)
         if before_command_func is not None:
             before_command_func()
         _emit(on_state_change, STATE_LISTENING)
@@ -133,6 +136,15 @@ def _call_transcription(
         return func(wav_path, server_url, mode=mode)
     except TypeError:
         return func(wav_path, server_url)
+
+
+def _safe_call(callback: VoidCallback | None) -> None:
+    if callback is None:
+        return
+    try:
+        callback()
+    except Exception:
+        pass
 
 
 def _emit(callback: StateCallback | None, state: str, payload: str | None = None) -> None:
