@@ -37,7 +37,7 @@ while ($Elapsed -lt $MaxWait) {
     $Elapsed += 2
 }
 if ($Elapsed -ge $MaxWait) {
-    Write-Host "ERROR: STT server did not become ready within ${MaxWait}s. Check logs\stt_server.log"
+    Write-Host "ERROR: STT server did not become ready within ${MaxWait}s. Check logs\stt_server.err.log"
     exit 1
 }
 

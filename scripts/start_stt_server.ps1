@@ -3,7 +3,7 @@
     Start the XiaoHuang STT server in background.
 .DESCRIPTION
     Checks if STT server is already running, then starts it using
-    the project's conda Python environment. Logs to logs\stt_server.log.
+    the project's conda Python environment. Logs to logs\stt_server.{out,err}.log.
 #>
 param()
 
@@ -28,12 +28,13 @@ try {
 }
 
 Write-Host "Starting STT server..."
-$LogFile = Join-Path $LogDir "stt_server.log"
+$OutLogFile = Join-Path $LogDir "stt_server.out.log"
+$ErrLogFile = Join-Path $LogDir "stt_server.err.log"
 $ArgList = @(
     "`"$ProjectRoot\scripts\stt_server.py`"",
     "--host", "127.0.0.1",
     "--port", "8766"
 ) -join " "
 
-Start-Process -FilePath $PythonExe -ArgumentList $ArgList -NoNewWindow -RedirectStandardOutput $LogFile -RedirectStandardError $LogFile
-Write-Host "STT server starting (log: $LogFile)"
+Start-Process -FilePath $PythonExe -ArgumentList $ArgList -NoNewWindow -RedirectStandardOutput $OutLogFile -RedirectStandardError $ErrLogFile
+Write-Host "STT server starting (logs: $LogDir)"

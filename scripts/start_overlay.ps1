@@ -30,7 +30,8 @@ if ($EnableLlm -and (-not $env:DEEPSEEK_API_KEY)) {
 New-Item -ItemType Directory -Force $LogDir | Out-Null
 
 Write-Host "Starting voice overlay..."
-$LogFile = Join-Path $LogDir "voice_overlay.log"
+$OutLogFile = Join-Path $LogDir "voice_overlay.out.log"
+$ErrLogFile = Join-Path $LogDir "voice_overlay.err.log"
 $ArgParts = @(
     "`"$ProjectRoot\scripts\voice_overlay.py`"",
     "--device", $Device
@@ -41,5 +42,5 @@ if ($Debug)       { $ArgParts += "--debug" }
 
 $ArgList = $ArgParts -join " "
 
-Start-Process -FilePath $PythonExe -ArgumentList $ArgList -NoNewWindow -RedirectStandardOutput $LogFile -RedirectStandardError $LogFile
-Write-Host "Voice overlay starting (log: $LogFile)"
+Start-Process -FilePath $PythonExe -ArgumentList $ArgList -NoNewWindow -RedirectStandardOutput $OutLogFile -RedirectStandardError $ErrLogFile
+Write-Host "Voice overlay starting (logs: $LogDir)"
