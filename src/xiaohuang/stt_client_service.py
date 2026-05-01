@@ -29,7 +29,11 @@ def check_server_health(server_url: str, timeout_seconds: float = 5.0) -> dict[s
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             body = response.read().decode("utf-8")
-    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+    except HTTPError as exc:
+        if 500 <= exc.code < 600:
+            raise SttServerUnavailable(f"STT server error at {server_url}: HTTP {exc.code}") from exc
+        raise SttServerUnavailable(f"STT server unavailable at {server_url}: HTTP {exc.code}") from exc
+    except (URLError, TimeoutError, OSError) as exc:
         raise SttServerUnavailable(f"STT server unavailable at {server_url}: {exc}") from exc
 
     try:
@@ -38,8 +42,19 @@ def check_server_health(server_url: str, timeout_seconds: float = 5.0) -> dict[s
         raise SttServerError(f"STT server returned invalid JSON: {body}") from exc
 
     if not data.get("ok"):
-        raise SttServerError(str(data.get("error", "STT server returned ok=false.")))
+        raise SttServerError(_extract_error_message(data))
     return data
+
+
+def _extract_error_message(data: dict[str, Any]) -> str:
+    error = data.get("error")
+    if isinstance(error, dict):
+        code = error.get("code", "UNKNOWN")
+        message = error.get("message", "")
+        return f"{code}: {message}"
+    if isinstance(error, str) and error:
+        return error
+    return "STT server returned ok=false."
 
 
 def request_transcription(wav_path: str | Path, server_url: str, timeout_seconds: float = 120.0) -> dict[str, Any]:
@@ -50,7 +65,11 @@ def request_transcription(wav_path: str | Path, server_url: str, timeout_seconds
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
             body = response.read().decode("utf-8")
-    except (HTTPError, URLError, TimeoutError, OSError) as exc:
+    except HTTPError as exc:
+        if 500 <= exc.code < 600:
+            raise SttServerUnavailable(f"STT server error at {server_url}: HTTP {exc.code}") from exc
+        raise SttServerUnavailable(f"STT server unavailable at {server_url}: HTTP {exc.code}") from exc
+    except (URLError, TimeoutError, OSError) as exc:
         raise SttServerUnavailable(f"STT server unavailable at {server_url}: {exc}") from exc
 
     try:
@@ -59,5 +78,5 @@ def request_transcription(wav_path: str | Path, server_url: str, timeout_seconds
         raise SttServerError(f"STT server returned invalid JSON: {body}") from exc
 
     if not data.get("ok"):
-        raise SttServerError(str(data.get("error", "STT server returned ok=false.")))
+        raise SttServerError(_extract_error_message(data))
     return data

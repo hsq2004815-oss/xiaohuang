@@ -16,7 +16,10 @@ from xiaohuang.audio_capture_service import (
     load_sounddevice,
     load_soundfile,
 )
+from xiaohuang.api_error_service import STT_ENGINE_ERROR, STT_SERVER_ERROR, build_error
+from xiaohuang.api_schemas import build_error_response, build_ok_response
 from xiaohuang.config_service import load_config
+from xiaohuang.request_context_service import generate_request_id
 from xiaohuang.listen_once_service import (
     TimingStats,
     build_timing_summary,
@@ -37,7 +40,7 @@ from xiaohuang.llm_reply_service import (
 from xiaohuang.overlay_state_service import build_reply_result_text, build_server_unavailable_status, get_overlay_status_text
 from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
 from xiaohuang.reply_service import generate_reply
-from xiaohuang.stt_client_service import build_health_url, build_transcribe_payload
+from xiaohuang.stt_client_service import _extract_error_message, build_health_url, build_transcribe_payload
 from xiaohuang.stt_server_service import PathGuardError, build_success_response, resolve_recording_wav_path
 from xiaohuang.stt_service import MissingDependencyError, SenseVoiceTranscriber, clean_command_text
 from xiaohuang.tts_service import build_tts_output_path, clean_tts_text
@@ -1185,6 +1188,95 @@ class SourceNoteTests(unittest.TestCase):
     def test_source_note_tool_unavailable(self):
         from voice_overlay import _source_note_for_overlay
         self.assertIn("不能执行工具", _source_note_for_overlay("tool_unavailable"))
+
+
+class V101RequestIdTests(unittest.TestCase):
+    def test_generate_request_id_returns_non_empty_string(self):
+        rid = generate_request_id()
+        self.assertIsInstance(rid, str)
+        self.assertTrue(len(rid) > 0)
+        self.assertTrue(rid.startswith("req_"))
+
+    def test_generate_request_id_returns_unique_values(self):
+        ids = {generate_request_id() for _ in range(20)}
+        self.assertEqual(len(ids), 20)
+
+
+class V101ApiErrorServiceTests(unittest.TestCase):
+    def test_build_error_contains_required_fields(self):
+        error = build_error(STT_ENGINE_ERROR, "Transcription failed.", retryable=True)
+        self.assertEqual(error["code"], STT_ENGINE_ERROR)
+        self.assertEqual(error["message"], "Transcription failed.")
+        self.assertTrue(error["retryable"])
+
+    def test_build_error_detail_excluded_by_default(self):
+        error = build_error(STT_SERVER_ERROR, "Internal error.", retryable=False)
+        self.assertNotIn("detail", error)
+
+
+class V101ApiSchemasTests(unittest.TestCase):
+    def test_build_ok_response_has_required_fields(self):
+        resp = build_ok_response("req_test", type="command", text="识别结果")
+        self.assertTrue(resp["ok"])
+        self.assertEqual(resp["request_id"], "req_test")
+        self.assertEqual(resp["type"], "command")
+        self.assertEqual(resp["text"], "识别结果")
+        self.assertIsNone(resp["error"])
+        self.assertIsInstance(resp["meta"], dict)
+
+    def test_build_ok_response_generates_request_id_when_none(self):
+        resp = build_ok_response(None, type="health")
+        self.assertTrue(resp["request_id"].startswith("req_"))
+
+    def test_build_error_response_has_required_fields(self):
+        resp = build_error_response(
+            "req_err", type="command",
+            code=STT_ENGINE_ERROR, message="Transcription failed.", retryable=True,
+        )
+        self.assertFalse(resp["ok"])
+        self.assertEqual(resp["request_id"], "req_err")
+        self.assertEqual(resp["type"], "command")
+        self.assertEqual(resp["text"], "")
+        self.assertIsInstance(resp["error"], dict)
+        self.assertEqual(resp["error"]["code"], STT_ENGINE_ERROR)
+        self.assertEqual(resp["error"]["message"], "Transcription failed.")
+        self.assertTrue(resp["error"]["retryable"])
+        self.assertIsInstance(resp["meta"], dict)
+
+    def test_build_error_response_generates_request_id_when_none(self):
+        resp = build_error_response(None, code=STT_SERVER_ERROR, message="err")
+        self.assertTrue(resp["request_id"].startswith("req_"))
+
+
+class V101SttClientBackwardCompatTests(unittest.TestCase):
+    def test_extract_error_message_handles_old_string_format(self):
+        msg = _extract_error_message({"ok": False, "error": "Missing wav_path."})
+        self.assertEqual(msg, "Missing wav_path.")
+
+    def test_extract_error_message_handles_new_dict_format(self):
+        msg = _extract_error_message({
+            "ok": False,
+            "error": {"code": "STT_ENGINE_ERROR", "message": "Transcription failed.", "retryable": True}
+        })
+        self.assertIn("STT_ENGINE_ERROR", msg)
+        self.assertIn("Transcription failed.", msg)
+
+    def test_extract_error_message_fallback_when_no_error_field(self):
+        msg = _extract_error_message({"ok": False})
+        self.assertEqual(msg, "STT server returned ok=false.")
+
+    def test_extract_error_message_handles_empty_error_string(self):
+        msg = _extract_error_message({"ok": False, "error": ""})
+        self.assertEqual(msg, "STT server returned ok=false.")
+
+    def test_health_response_retains_old_fields(self):
+        resp = build_ok_response("req_h", type="health")
+        resp["status"] = "ready"
+        resp["server_model_init_seconds"] = 24.75
+        self.assertEqual(resp["status"], "ready")
+        self.assertEqual(resp["server_model_init_seconds"], 24.75)
+        self.assertTrue(resp["ok"])
+        self.assertEqual(resp["request_id"], "req_h")
 
 
 if __name__ == "__main__":
