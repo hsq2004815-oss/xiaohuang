@@ -1870,5 +1870,35 @@ class V111WakeDetectedCallbackTests(unittest.TestCase):
             self.assertEqual(result.command_text, "测试")
 
 
+class V111ResidentHiddenTests(unittest.TestCase):
+    def test_voice_overlay_app_accepts_start_hidden(self):
+        import importlib, threading
+        try:
+            import tkinter as tk
+        except ImportError:
+            raise unittest.SkipTest("Tkinter not available")
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            from voice_overlay import VoiceOverlayApp
+            stop = threading.Event()
+            app = VoiceOverlayApp(root, stop_event=stop, debug=False, start_hidden=True)
+            self.assertIsNotNone(app)
+            app.close()
+        finally:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+
+    def test_resident_hidden_in_help(self):
+        import subprocess, sys
+        result = subprocess.run(
+            [sys.executable, "scripts/voice_overlay.py", "--help"],
+            capture_output=True, text=True, cwd=str(PROJECT_ROOT),
+        )
+        self.assertIn("--resident-hidden", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

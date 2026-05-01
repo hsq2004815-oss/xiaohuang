@@ -71,7 +71,7 @@ def parse_args() -> argparse.Namespace:
 
 
 class VoiceOverlayApp:
-    def __init__(self, root, *, stop_event: threading.Event, debug: bool = False) -> None:
+    def __init__(self, root, *, stop_event: threading.Event, debug: bool = False, start_hidden: bool = False) -> None:
         self.root = root
         self.stop_event = stop_event
         self.debug = debug
@@ -82,6 +82,11 @@ class VoiceOverlayApp:
         self._build_ui()
         self.set_state(STATE_IDLE)
         self._animate()
+        if start_hidden:
+            try:
+                self.root.withdraw()
+            except Exception:
+                pass
 
     def _build_ui(self) -> None:
         self.root.title("小黄")
@@ -173,26 +178,32 @@ class VoiceOverlayApp:
 
     def show_overlay(self) -> None:
         def _show() -> None:
-            if self.closed:
-                return
             try:
+                if not self.root.winfo_exists():
+                    return
                 self.root.deiconify()
                 self.root.lift()
                 self.root.attributes("-topmost", True)
                 self.root.after(300, lambda: self.root.attributes("-topmost", True))
-            except tk.TclError:
-                self.closed = True
-        self._safe_after(0, _show)
+            except Exception:
+                pass
+        try:
+            self.root.after(0, _show)
+        except Exception:
+            pass
 
     def hide_overlay(self) -> None:
         def _hide() -> None:
-            if self.closed:
-                return
             try:
+                if not self.root.winfo_exists():
+                    return
                 self.root.withdraw()
-            except tk.TclError:
-                self.closed = True
-        self._safe_after(0, _hide)
+            except Exception:
+                pass
+        try:
+            self.root.after(0, _hide)
+        except Exception:
+            pass
 
     def _animate(self) -> None:
         if self.closed:
@@ -287,7 +298,7 @@ def main() -> int:
 
     stop_event = threading.Event()
     root = tk.Tk()
-    app = VoiceOverlayApp(root, stop_event=stop_event, debug=args.debug)
+    app = VoiceOverlayApp(root, stop_event=stop_event, debug=args.debug, start_hidden=args.resident_hidden)
 
     try:
         health = check_server_health(args.server_url)
