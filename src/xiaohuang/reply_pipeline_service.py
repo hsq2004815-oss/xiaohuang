@@ -41,6 +41,8 @@ def generate_reply_pipeline_result(
     tts_func: Callable[..., Path] = synthesize_tts_to_mp3,
     play_audio_func: Callable[..., bool] = play_audio_file,
     on_debug: Callable[[str], None] | None = None,
+    on_before_tts: Callable[[str], None] | None = None,
+    playback_warn: Callable[[str], None] | None = None,
 ) -> ReplyPipelineResult:
     if config.enable_llm and config.llm_config is not None and config.llm_config.is_configured:
         reply_result = llm_reply_func(
@@ -62,9 +64,10 @@ def generate_reply_pipeline_result(
     tts_error: str | None = None
 
     if config.enable_tts:
+        _safe_call(on_before_tts, reply_text)
         try:
             tts_path = tts_func(reply_text, config.tts_output_dir, voice=config.tts_voice)
-            tts_played = play_audio_func(tts_path)
+            tts_played = _call_play_audio(play_audio_func, tts_path, playback_warn)
             if not tts_played:
                 tts_error = "Audio playback returned False"
         except MissingTtsDependencyError as exc:
@@ -80,6 +83,26 @@ def generate_reply_pipeline_result(
         tts_played=tts_played,
         tts_error=tts_error,
     )
+
+
+def _safe_call(callback: Callable[..., None] | None, *args: Any) -> None:
+    if callback is None:
+        return
+    try:
+        callback(*args)
+    except Exception:
+        pass
+
+
+def _call_play_audio(
+    play_func: Callable[..., bool],
+    path: Path,
+    warn_callback: Callable[[str], None] | None,
+) -> bool:
+    try:
+        return play_func(path, warn=warn_callback)
+    except TypeError:
+        return play_func(path)
 
 
 def _source_note_for_source(source: str) -> str | None:

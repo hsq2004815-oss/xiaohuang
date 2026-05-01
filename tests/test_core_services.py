@@ -1635,5 +1635,80 @@ class V104ReplyPipelineTests(unittest.TestCase):
         self.assertIn("TTS failed", result.tts_error or "")
 
 
+    def test_pipeline_on_before_tts_called_with_reply_text(self):
+        from pathlib import Path
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(enable_tts=True, tts_output_dir=Path("/tmp"))
+        calls: list[str] = []
+        def fake_tts(_text, _dir, **_kw):
+            return Path("/tmp/fake.mp3")
+        def fake_play(_path):
+            return True
+        generate_reply_pipeline_result(
+            "你好", config,
+            tts_func=fake_tts, play_audio_func=fake_play,
+            on_before_tts=calls.append,
+        )
+        self.assertEqual(len(calls), 1)
+        self.assertIn("你好", calls[0])
+
+    def test_pipeline_on_before_tts_not_called_when_tts_disabled(self):
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        calls: list[str] = []
+        generate_reply_pipeline_result("你好", self._make_config(enable_tts=False), on_before_tts=calls.append)
+        self.assertEqual(len(calls), 0)
+
+    def test_pipeline_playback_warn_passed_to_play_func(self):
+        from pathlib import Path
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(enable_tts=True, tts_output_dir=Path("/tmp"))
+        warn_calls: list[str] = []
+        def fake_tts(_text, _dir, **_kw):
+            return Path("/tmp/fake.mp3")
+        def fake_play(_path, warn=None):
+            if warn:
+                warn("test warning")
+            return True
+        result = generate_reply_pipeline_result(
+            "你好", config,
+            tts_func=fake_tts, play_audio_func=fake_play,
+            playback_warn=lambda m: warn_calls.append(m),
+        )
+        self.assertTrue(result.tts_played)
+        self.assertEqual(warn_calls, ["test warning"])
+
+    def test_pipeline_old_play_func_without_warn_still_compatible(self):
+        from pathlib import Path
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(enable_tts=True, tts_output_dir=Path("/tmp"))
+        def fake_tts(_text, _dir, **_kw):
+            return Path("/tmp/fake.mp3")
+        def fake_play(_path):
+            return True
+        result = generate_reply_pipeline_result(
+            "你好", config,
+            tts_func=fake_tts, play_audio_func=fake_play,
+            playback_warn=lambda _m: None,
+        )
+        self.assertTrue(result.tts_played)
+
+    def test_pipeline_on_before_tts_exception_does_not_crash(self):
+        from pathlib import Path
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(enable_tts=True, tts_output_dir=Path("/tmp"))
+        def fake_tts(_text, _dir, **_kw):
+            return Path("/tmp/fake.mp3")
+        def fake_play(_path):
+            return True
+        def bad_callback(_text):
+            raise RuntimeError("callback boom")
+        result = generate_reply_pipeline_result(
+            "你好", config,
+            tts_func=fake_tts, play_audio_func=fake_play,
+            on_before_tts=bad_callback,
+        )
+        self.assertTrue(result.tts_played)
+
+
 if __name__ == "__main__":
     unittest.main()

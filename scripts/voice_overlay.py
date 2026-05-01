@@ -389,6 +389,8 @@ def _run_overlay_loop(
                 result.command_text,
                 config=pipeline_config,
                 on_debug=_make_llm_debug_handler(logger, debug),
+                on_before_tts=lambda text: app.thread_safe_set_state(STATE_SPEAKING, text),
+                playback_warn=lambda message: _playback_warning(logger, message),
             )
 
             if debug:
