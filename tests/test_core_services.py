@@ -1091,6 +1091,85 @@ class WakeLoopServiceTests(unittest.TestCase):
             self.assertIn("wake_checking", events)
             self.assertEqual(result.command_text, "测试")
 
+    def test_run_wake_loop_once_passes_wake_check_mode(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recording_dir = Path(temp_dir) / "data" / "recordings"
+            modes: list[str] = []
+
+            options = WakeLoopOptions(
+                device_id=0, server_url="http://127.0.0.1:8766",
+                wake_window_seconds=2.0, wake_phrases=["小黄"],
+                max_seconds=10.0, silence_seconds=0.8,
+                sample_rate=16000, channels=1, recording_dir=recording_dir,
+            )
+
+            def fake_path(output_dir):
+                return Path(output_dir) / f"{Path(output_dir).name}.wav"
+
+            def write_wav(output_path, **_kwargs):
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+                return Path(output_path)
+
+            call_count = {"n": 0}
+
+            def mode_stt(_path, _server_url, *, mode=None):
+                modes.append(mode)
+                call_count["n"] += 1
+                return {"text": "小黄" if call_count["n"] == 1 else "测试"}
+
+            def fake_vad(output_path, **_kwargs):
+                write_wav(output_path)
+                return SimpleNamespace(path=Path(output_path), duration_seconds=1.0, stop_reason="silence_after_speech")
+
+            run_wake_loop_once(
+                options,
+                record_wav_func=write_wav,
+                record_until_silence_func=fake_vad,
+                request_transcription_func=mode_stt,
+                build_recording_path_func=fake_path,
+            )
+
+            self.assertEqual(modes, ["wake_check", "command"])
+
+    def test_run_wake_loop_once_mode_compat_with_old_two_arg_signature(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recording_dir = Path(temp_dir) / "data" / "recordings"
+            call_count = {"n": 0}
+
+            options = WakeLoopOptions(
+                device_id=0, server_url="http://127.0.0.1:8766",
+                wake_window_seconds=2.0, wake_phrases=["小黄"],
+                max_seconds=10.0, silence_seconds=0.8,
+                sample_rate=16000, channels=1, recording_dir=recording_dir,
+            )
+
+            def fake_path(output_dir):
+                return Path(output_dir) / f"{Path(output_dir).name}.wav"
+
+            def write_wav(output_path, **_kwargs):
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+                return Path(output_path)
+
+            def old_stt(_path, _server_url):
+                call_count["n"] += 1
+                return {"text": "小黄" if call_count["n"] == 1 else "测试"}
+
+            def fake_vad(output_path, **_kwargs):
+                write_wav(output_path)
+                return SimpleNamespace(path=Path(output_path), duration_seconds=1.0, stop_reason="silence_after_speech")
+
+            result = run_wake_loop_once(
+                options,
+                record_wav_func=write_wav,
+                record_until_silence_func=fake_vad,
+                request_transcription_func=old_stt,
+                build_recording_path_func=fake_path,
+            )
+
+            self.assertEqual(result.command_text, "测试")
+
 
 class VoiceOverlayGuardTests(unittest.TestCase):
     @classmethod

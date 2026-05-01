@@ -16,6 +16,9 @@ from xiaohuang.stt_client_service import request_transcription
 from xiaohuang.vad_recording_service import record_until_silence
 from xiaohuang.wake_word_service import WakeMatchResult, detect_wake_phrase, parse_wake_phrases
 
+STT_MODE_WAKE_CHECK = "wake_check"
+STT_MODE_COMMAND = "command"
+
 
 @dataclass(frozen=True)
 class WakeLoopOptions:
@@ -74,7 +77,9 @@ def run_wake_loop_once(
             device_id=options.device_id,
         )
         try:
-            wake_response = request_transcription_func(wake_path, options.server_url)
+            wake_response = _call_transcription(
+                request_transcription_func, wake_path, options.server_url, STT_MODE_WAKE_CHECK,
+            )
         finally:
             if not options.keep_wake_recordings:
                 _delete_wake_recording(wake_path, delete_wake_recording_func)
@@ -102,7 +107,9 @@ def run_wake_loop_once(
             silence_seconds=options.silence_seconds,
         )
         _emit(on_state_change, STATE_TRANSCRIBING)
-        command_response = request_transcription_func(command_result.path, options.server_url)
+        command_response = _call_transcription(
+                request_transcription_func, command_result.path, options.server_url, STT_MODE_COMMAND,
+            )
         command_text = str(command_response.get("text", ""))
         if on_command_text is not None:
             on_command_text(command_text)
@@ -114,6 +121,18 @@ def run_wake_loop_once(
             actual_recording_seconds=float(command_result.duration_seconds),
             stop_reason=str(command_result.stop_reason),
         )
+
+
+def _call_transcription(
+    func: Callable[..., Any],
+    wav_path: Path,
+    server_url: str,
+    mode: str,
+) -> dict[str, Any]:
+    try:
+        return func(wav_path, server_url, mode=mode)
+    except TypeError:
+        return func(wav_path, server_url)
 
 
 def _emit(callback: StateCallback | None, state: str, payload: str | None = None) -> None:

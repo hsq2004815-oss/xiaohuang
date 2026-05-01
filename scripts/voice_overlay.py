@@ -31,7 +31,7 @@ from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
 from xiaohuang.reply_service import generate_reply
 from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
 from xiaohuang.tts_service import DEFAULT_TTS_VOICE, MissingTtsDependencyError, synthesize_tts_to_mp3
-from xiaohuang.wake_loop_service import WakeLoopOptions, run_wake_loop_once
+from xiaohuang.wake_loop_service import STT_MODE_WAKE_CHECK, WakeLoopOptions, run_wake_loop_once
 from xiaohuang.wake_word_service import DEFAULT_WAKE_ALIASES, WakeMatchResult, parse_wake_phrases
 
 
@@ -350,15 +350,11 @@ def _run_overlay_loop(
     enable_llm: bool,
     llm_config,
 ) -> None:
-    _stt_call_count = {"n": 0}
-
-    def _overlay_stt(path, server_url):
-        _stt_call_count["n"] += 1
+    def _overlay_stt(path, server_url, *, mode: str):
         try:
             return request_transcription(path, server_url)
         except (SttServerUnavailable, SttServerError) as exc:
-            if _stt_call_count["n"] == 1:
-                # wake check — skip this window
+            if mode == STT_MODE_WAKE_CHECK:
                 if debug:
                     print(f"Wake check STT failed, skipped this window: {exc}")
                 logger.warning("Wake check STT failed, skipped this window: %s", exc)
@@ -366,7 +362,6 @@ def _run_overlay_loop(
             raise
 
     while not stop_event.is_set():
-        _stt_call_count["n"] = 0
         try:
             result = run_wake_loop_once(
                 options,
