@@ -1528,5 +1528,112 @@ class V103SttErrorClassificationTests(unittest.TestCase):
         self.assertIn("HTTP 500", str(ctx.exception))
 
 
+class V104ReplyPipelineTests(unittest.TestCase):
+    def _make_config(self, **kw):
+        from xiaohuang.reply_pipeline_service import ReplyPipelineConfig
+        defaults = dict(enable_llm=False, enable_tts=False)
+        defaults.update(kw)
+        return ReplyPipelineConfig(**defaults)
+
+    def test_pipeline_rule_reply_when_llm_disabled(self):
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        result = generate_reply_pipeline_result("你好", self._make_config())
+        self.assertEqual(result.reply_source, "rule")
+
+    def test_pipeline_fallback_when_llm_not_configured(self):
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(enable_llm=True, llm_config=None)
+        result = generate_reply_pipeline_result("你好", config)
+        self.assertEqual(result.reply_source, "rule_fallback_no_key")
+
+    def test_pipeline_uses_llm_when_configured(self):
+        from xiaohuang.llm_reply_service import LlmReplyConfig, ReplyGenerationResult
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(
+            enable_llm=True,
+            llm_config=LlmReplyConfig(api_key="sk", base_url="https://x", model="m", timeout_seconds=15),
+        )
+        def fake_llm(_text, **_kw):
+            return ReplyGenerationResult("LLM hello", "llm")
+        result = generate_reply_pipeline_result("hi", config, llm_reply_func=fake_llm)
+        self.assertEqual(result.reply_text, "LLM hello")
+        self.assertEqual(result.reply_source, "llm")
+        self.assertIsNone(result.source_note)
+
+    def test_pipeline_tool_unavailable_source_note(self):
+        from xiaohuang.llm_reply_service import ReplyGenerationResult, TOOL_UNAVAILABLE_REPLY
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(
+            enable_llm=True,
+            llm_config=LlmReplyConfig(api_key="sk", base_url="https://x", model="m", timeout_seconds=15),
+        )
+        def fake_llm(_text, **_kw):
+            return ReplyGenerationResult(TOOL_UNAVAILABLE_REPLY, "tool_unavailable")
+        result = generate_reply_pipeline_result("打开浏览器", config, llm_reply_func=fake_llm)
+        self.assertEqual(result.reply_source, "tool_unavailable")
+        self.assertIn("不能执行工具", result.source_note or "")
+
+    def test_pipeline_tts_disabled(self):
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        result = generate_reply_pipeline_result("你好", self._make_config(enable_tts=False))
+        self.assertIsNone(result.tts_path)
+        self.assertFalse(result.tts_played)
+        self.assertIsNone(result.tts_error)
+
+    def test_pipeline_tts_success(self):
+        from pathlib import Path
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(enable_tts=True, tts_output_dir=Path("/tmp"))
+        def fake_tts(_text, _dir, **_kw):
+            return Path("/tmp/fake.mp3")
+        def fake_play(_path):
+            return True
+        result = generate_reply_pipeline_result("你好", config, tts_func=fake_tts, play_audio_func=fake_play)
+        self.assertEqual(result.tts_path, Path("/tmp/fake.mp3"))
+        self.assertTrue(result.tts_played)
+        self.assertIsNone(result.tts_error)
+
+    def test_pipeline_tts_missing_dependency(self):
+        from xiaohuang.tts_service import MissingTtsDependencyError
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(enable_tts=True)
+        def fake_tts(_text, _dir, **_kw):
+            raise MissingTtsDependencyError("edge-tts missing")
+        result = generate_reply_pipeline_result("你好", config, tts_func=fake_tts)
+        self.assertTrue(len(result.reply_text) > 0)
+        self.assertIn("edge-tts missing", result.tts_error or "")
+
+    def test_pipeline_tts_playback_false(self):
+        from pathlib import Path
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(enable_tts=True)
+        def fake_tts(_text, _dir, **_kw):
+            return Path("/tmp/fake.mp3")
+        def fake_play(_path):
+            return False
+        result = generate_reply_pipeline_result("你好", config, tts_func=fake_tts, play_audio_func=fake_play)
+        self.assertFalse(result.tts_played)
+        self.assertIsNotNone(result.tts_error)
+
+    def test_pipeline_source_note_compat(self):
+        from xiaohuang.reply_pipeline_service import _source_note_for_source
+        self.assertIsNone(_source_note_for_source("rule"))
+        self.assertIsNone(_source_note_for_source("llm"))
+        self.assertIn("未配置 key", _source_note_for_source("rule_fallback_no_key"))
+        self.assertIn("不可用", _source_note_for_source("rule_fallback_error"))
+        self.assertIn("返回为空", _source_note_for_source("rule_fallback_empty"))
+        self.assertIn("被截断", _source_note_for_source("rule_fallback_length"))
+        self.assertIn("不能执行工具", _source_note_for_source("tool_unavailable"))
+
+    def test_pipeline_tts_exception_no_crash(self):
+        from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
+        config = self._make_config(enable_tts=True)
+        def fake_tts(_text, _dir, **_kw):
+            raise RuntimeError("boom")
+        result = generate_reply_pipeline_result("你好", config, tts_func=fake_tts)
+        self.assertTrue(len(result.reply_text) > 0)
+        self.assertIn("TTS failed", result.tts_error or "")
+
+
 if __name__ == "__main__":
     unittest.main()

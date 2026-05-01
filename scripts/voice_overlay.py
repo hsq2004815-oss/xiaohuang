@@ -10,10 +10,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
-from xiaohuang.audio_playback_service import play_audio_file
 from xiaohuang.config_service import load_config
 from xiaohuang.logging_service import configure_logging
-from xiaohuang.llm_reply_service import generate_llm_reply_result, load_deepseek_config
+from xiaohuang.llm_reply_service import load_deepseek_config
 from xiaohuang.overlay_state_service import (
     STATE_ERROR,
     STATE_IDLE,
@@ -28,9 +27,12 @@ from xiaohuang.overlay_state_service import (
     get_overlay_status_text,
 )
 from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
-from xiaohuang.reply_service import generate_reply
+from xiaohuang.reply_pipeline_service import (
+    ReplyPipelineConfig,
+    generate_reply_pipeline_result,
+)
 from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
-from xiaohuang.tts_service import DEFAULT_TTS_VOICE, MissingTtsDependencyError, synthesize_tts_to_mp3
+from xiaohuang.tts_service import DEFAULT_TTS_VOICE
 from xiaohuang.wake_loop_service import STT_MODE_WAKE_CHECK, WakeLoopOptions, run_wake_loop_once
 from xiaohuang.wake_word_service import DEFAULT_WAKE_ALIASES, WakeMatchResult, parse_wake_phrases
 
@@ -375,43 +377,32 @@ def _run_overlay_loop(
                 break
             logger.info("Overlay command transcription: %s", result.command_text)
             app.thread_safe_set_state(STATE_REPLYING)
-            if enable_llm:
-                if not llm_config.is_configured:
-                    reply_text = generate_reply(result.command_text)
-                    reply_source = "rule_fallback_no_key"
-                else:
-                    reply_result = generate_llm_reply_result(
-                        result.command_text,
-                        config=llm_config,
-                        on_debug=_make_llm_debug_handler(logger, debug),
-                    )
-                    reply_text = reply_result.text
-                    reply_source = reply_result.source
-            else:
-                reply_text = generate_reply(result.command_text)
-                reply_source = "rule"
-            if debug:
-                print(f"XiaoHuang reply: {reply_text}")
-                print(f"Reply source: {reply_source}")
-            logger.info("Overlay reply: %s (source=%s)", reply_text, reply_source)
-            source_note = _source_note_for_overlay(reply_source)
-            app.thread_safe_set_state(
-                STATE_RESULT,
-                build_reply_result_text(result.command_text, reply_text, source_note),
+
+            pipeline_config = ReplyPipelineConfig(
+                enable_llm=enable_llm,
+                enable_tts=enable_tts,
+                llm_config=llm_config,
+                tts_voice=tts_voice,
+                tts_output_dir=tts_output_dir,
+            )
+            pipeline_result = generate_reply_pipeline_result(
+                result.command_text,
+                config=pipeline_config,
+                on_debug=_make_llm_debug_handler(logger, debug),
             )
 
-            if enable_tts and not stop_event.is_set():
-                app.thread_safe_set_state(STATE_SPEAKING, reply_text)
-                try:
-                    tts_path = synthesize_tts_to_mp3(reply_text, tts_output_dir, voice=tts_voice)
-                    logger.info("Generated TTS reply: %s", tts_path)
-                    play_audio_file(tts_path, warn=lambda message: _playback_warning(logger, message))
-                except MissingTtsDependencyError as exc:
-                    _warn(logger, str(exc))
-                    app.thread_safe_set_state(STATE_ERROR, str(exc))
-                except Exception as exc:
-                    _warn(logger, f"TTS failed: {exc}")
-                    app.thread_safe_set_state(STATE_ERROR, f"TTS failed: {exc}")
+            if debug:
+                print(f"XiaoHuang reply: {pipeline_result.reply_text}")
+                print(f"Reply source: {pipeline_result.reply_source}")
+            logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
+            app.thread_safe_set_state(
+                STATE_RESULT,
+                build_reply_result_text(result.command_text, pipeline_result.reply_text, pipeline_result.source_note),
+            )
+
+            if pipeline_result.tts_error:
+                _warn(logger, pipeline_result.tts_error)
+                app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
 
             if debug:
                 print(f"Post-response cooldown: {post_response_cooldown:.1f}s")
@@ -468,19 +459,8 @@ def _make_llm_debug_handler(logger, debug_enabled: bool):
 
 
 def _source_note_for_overlay(source: str) -> str | None:
-    if source in ("rule", "llm"):
-        return None
-    if source == "rule_fallback_no_key":
-        return "DeepSeek 未配置 key，已使用本地回复"
-    if source == "rule_fallback_error":
-        return "DeepSeek 不可用，已使用本地回复"
-    if source == "rule_fallback_empty":
-        return "DeepSeek 返回为空，已使用本地回复"
-    if source == "rule_fallback_length":
-        return "DeepSeek 输出被截断，已使用本地回复"
-    if source == "tool_unavailable":
-        return "当前版本还不能执行工具"
-    return None
+    from xiaohuang.reply_pipeline_service import _source_note_for_source
+    return _source_note_for_source(source)
 
 
 if __name__ == "__main__":
