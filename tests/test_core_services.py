@@ -1710,5 +1710,72 @@ class V104ReplyPipelineTests(unittest.TestCase):
         self.assertTrue(result.tts_played)
 
 
+class V105TaskRouterTests(unittest.TestCase):
+    def test_route_task_greeting_is_not_task(self):
+        from xiaohuang.task_router_service import route_task
+        result = route_task("你好")
+        self.assertFalse(result.is_task_request)
+        self.assertFalse(result.can_execute)
+        self.assertEqual(result.reason, "not_task")
+
+    def test_route_task_open_browser_is_task(self):
+        from xiaohuang.task_router_service import route_task
+        result = route_task("帮我打开浏览器")
+        self.assertTrue(result.is_task_request)
+        self.assertFalse(result.can_execute)
+        self.assertEqual(result.reason, "not_implemented")
+
+    def test_route_task_download_is_task(self):
+        from xiaohuang.task_router_service import route_task
+        result = route_task("帮我下载资料")
+        self.assertTrue(result.is_task_request)
+        self.assertFalse(result.can_execute)
+
+    def test_route_task_opencode_is_task(self):
+        from xiaohuang.task_router_service import route_task
+        result = route_task("帮我用 opencode 写代码")
+        self.assertTrue(result.is_task_request)
+        self.assertFalse(result.can_execute)
+
+    def test_route_task_empty_is_not_task(self):
+        from xiaohuang.task_router_service import route_task
+        result = route_task("")
+        self.assertFalse(result.is_task_request)
+
+    def test_pipeline_task_request_skips_llm(self):
+        from xiaohuang.llm_reply_service import LlmReplyConfig
+        from xiaohuang.reply_pipeline_service import ReplyPipelineConfig, generate_reply_pipeline_result
+        config = ReplyPipelineConfig(
+            enable_llm=True, enable_tts=False,
+            llm_config=LlmReplyConfig(api_key="sk", base_url="https://x", model="m", timeout_seconds=15),
+        )
+        llm_called = {"n": 0}
+        def fake_llm(_text, **_kw):
+            llm_called["n"] += 1
+            return type("R", (), {"text": "x", "source": "llm"})()
+        result = generate_reply_pipeline_result("帮我打开浏览器", config, llm_reply_func=fake_llm)
+        self.assertEqual(llm_called["n"], 0)
+        self.assertEqual(result.reply_source, "tool_unavailable")
+        self.assertIn("不能执行工具", result.source_note or "")
+
+    def test_pipeline_task_request_still_does_tts(self):
+        from pathlib import Path
+        from xiaohuang.reply_pipeline_service import ReplyPipelineConfig, generate_reply_pipeline_result
+        config = ReplyPipelineConfig(enable_llm=False, enable_tts=True, tts_output_dir=Path("/tmp"))
+        def fake_tts(_text, _dir, **_kw):
+            return Path("/tmp/fake.mp3")
+        def fake_play(_path):
+            return True
+        result = generate_reply_pipeline_result("帮我打开浏览器", config, tts_func=fake_tts, play_audio_func=fake_play)
+        self.assertEqual(result.reply_source, "tool_unavailable")
+        self.assertTrue(result.tts_played)
+        self.assertEqual(result.tts_path, Path("/tmp/fake.mp3"))
+
+    def test_pipeline_normal_chat_unchanged(self):
+        from xiaohuang.reply_pipeline_service import ReplyPipelineConfig, generate_reply_pipeline_result
+        result = generate_reply_pipeline_result("你好", ReplyPipelineConfig(enable_llm=False, enable_tts=False))
+        self.assertEqual(result.reply_source, "rule")
+
+
 if __name__ == "__main__":
     unittest.main()

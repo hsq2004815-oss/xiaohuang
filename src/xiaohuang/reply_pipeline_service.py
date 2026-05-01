@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from xiaohuang.audio_playback_service import play_audio_file
-from xiaohuang.llm_reply_service import generate_llm_reply_result
+from xiaohuang.llm_reply_service import TOOL_UNAVAILABLE_REPLY, generate_llm_reply_result
 from xiaohuang.reply_service import generate_reply
+from xiaohuang.task_router_service import route_task
 from xiaohuang.tts_service import (
     MissingTtsDependencyError,
     synthesize_tts_to_mp3,
@@ -44,6 +45,19 @@ def generate_reply_pipeline_result(
     on_before_tts: Callable[[str], None] | None = None,
     playback_warn: Callable[[str], None] | None = None,
 ) -> ReplyPipelineResult:
+    task = route_task(command_text)
+    if task.is_task_request:
+        reply_text = TOOL_UNAVAILABLE_REPLY
+        reply_source = "tool_unavailable"
+        source_note = _source_note_for_source(reply_source)
+        tts_path, tts_played, tts_error = _run_tts(
+            reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts,
+        )
+        return ReplyPipelineResult(
+            reply_text=reply_text, reply_source=reply_source, source_note=source_note,
+            tts_path=tts_path, tts_played=tts_played, tts_error=tts_error,
+        )
+
     if config.enable_llm and config.llm_config is not None and config.llm_config.is_configured:
         reply_result = llm_reply_func(
             command_text, config=config.llm_config, on_debug=on_debug,
@@ -58,22 +72,9 @@ def generate_reply_pipeline_result(
         reply_source = "rule"
 
     source_note = _source_note_for_source(reply_source)
-
-    tts_path: Path | None = None
-    tts_played = False
-    tts_error: str | None = None
-
-    if config.enable_tts:
-        _safe_call(on_before_tts, reply_text)
-        try:
-            tts_path = tts_func(reply_text, config.tts_output_dir, voice=config.tts_voice)
-            tts_played = _call_play_audio(play_audio_func, tts_path, playback_warn)
-            if not tts_played:
-                tts_error = "Audio playback returned False"
-        except MissingTtsDependencyError as exc:
-            tts_error = str(exc)
-        except Exception as exc:
-            tts_error = f"TTS failed: {exc}"
+    tts_path, tts_played, tts_error = _run_tts(
+        reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts,
+    )
 
     return ReplyPipelineResult(
         reply_text=reply_text,
@@ -83,6 +84,29 @@ def generate_reply_pipeline_result(
         tts_played=tts_played,
         tts_error=tts_error,
     )
+
+
+def _run_tts(
+    reply_text: str,
+    config: ReplyPipelineConfig,
+    tts_func: Callable[..., Path],
+    play_audio_func: Callable[..., bool],
+    playback_warn: Callable[[str], None] | None,
+    on_before_tts: Callable[[str], None] | None,
+) -> tuple[Path | None, bool, str | None]:
+    if not config.enable_tts:
+        return None, False, None
+    _safe_call(on_before_tts, reply_text)
+    try:
+        tts_path = tts_func(reply_text, config.tts_output_dir, voice=config.tts_voice)
+        tts_played = _call_play_audio(play_audio_func, tts_path, playback_warn)
+        if not tts_played:
+            return tts_path, False, "Audio playback returned False"
+        return tts_path, True, None
+    except MissingTtsDependencyError as exc:
+        return None, False, str(exc)
+    except Exception as exc:
+        return None, False, f"TTS failed: {exc}"
 
 
 def _safe_call(callback: Callable[..., None] | None, *args: Any) -> None:
