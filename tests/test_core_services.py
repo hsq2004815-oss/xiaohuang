@@ -1279,5 +1279,83 @@ class V101SttClientBackwardCompatTests(unittest.TestCase):
         self.assertEqual(resp["request_id"], "req_h")
 
 
+class V102HealthObservabilityTests(unittest.TestCase):
+    @staticmethod
+    def _build_health_response():
+        resp = build_ok_response("req_test", type="health")
+        resp["status"] = "ready"
+        resp["server_model_init_seconds"] = 22.06
+        resp["service"] = "xiaohuang-stt-server"
+        resp["version"] = "1.0.2"
+        resp["uptime_seconds"] = 123.45
+        resp["model_loaded"] = True
+        resp["capabilities"] = {
+            "transcribe": True,
+            "health": True,
+            "request_id": True,
+            "error_envelope": True,
+        }
+        resp["last_error"] = None
+        return resp
+
+    def test_health_retains_old_fields(self):
+        resp = self._build_health_response()
+        self.assertTrue(resp["ok"])
+        self.assertEqual(resp["status"], "ready")
+        self.assertEqual(resp["server_model_init_seconds"], 22.06)
+
+    def test_health_retains_v101_fields(self):
+        resp = self._build_health_response()
+        self.assertEqual(resp["request_id"], "req_test")
+        self.assertEqual(resp["type"], "health")
+        self.assertEqual(resp["text"], "")
+        self.assertIsNone(resp["error"])
+        self.assertIsInstance(resp["meta"], dict)
+
+    def test_health_has_v102_service_and_version(self):
+        resp = self._build_health_response()
+        self.assertEqual(resp["service"], "xiaohuang-stt-server")
+        self.assertEqual(resp["version"], "1.0.2")
+
+    def test_health_has_v102_uptime_and_model_loaded(self):
+        resp = self._build_health_response()
+        self.assertGreater(resp["uptime_seconds"], 0)
+        self.assertTrue(resp["model_loaded"])
+
+    def test_health_capabilities_has_required_keys(self):
+        resp = self._build_health_response()
+        caps = resp["capabilities"]
+        self.assertTrue(caps["transcribe"])
+        self.assertTrue(caps["health"])
+        self.assertTrue(caps["request_id"])
+        self.assertTrue(caps["error_envelope"])
+
+    def test_health_last_error_initial_null(self):
+        resp = self._build_health_response()
+        self.assertIsNone(resp["last_error"])
+
+    def test_health_last_error_after_recording(self):
+        resp = self._build_health_response()
+        resp["last_error"] = {
+            "code": "STT_ENGINE_ERROR",
+            "message": "Transcription failed.",
+            "request_id": "req_err",
+            "timestamp": "2026-05-01T18:00:00+00:00",
+        }
+        self.assertIsNotNone(resp["last_error"])
+        self.assertEqual(resp["last_error"]["code"], "STT_ENGINE_ERROR")
+        self.assertNotIn("traceback", resp["last_error"])
+
+    def test_error_response_still_v101_envelope(self):
+        resp = build_error_response(
+            "req_err", type="command",
+            code=STT_ENGINE_ERROR, message="Transcription failed.", retryable=True,
+        )
+        self.assertFalse(resp["ok"])
+        self.assertEqual(resp["request_id"], "req_err")
+        self.assertEqual(resp["error"]["code"], STT_ENGINE_ERROR)
+        self.assertIsInstance(resp["meta"], dict)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger("stt_server")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
@@ -30,10 +34,35 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+SERVER_VERSION = "1.0.2"
+SERVER_SERVICE = "xiaohuang-stt-server"
+
+CAPABILITIES = {
+    "transcribe": True,
+    "health": True,
+    "request_id": True,
+    "error_envelope": True,
+}
+
+
 class SttServerState:
     def __init__(self, transcriber: SenseVoiceTranscriber, model_init_seconds: float) -> None:
         self.transcriber = transcriber
         self.model_init_seconds = model_init_seconds
+        self.start_time = time.time()
+        self.last_error: dict[str, Any] | None = None
+
+    @property
+    def uptime_seconds(self) -> float:
+        return round(time.time() - self.start_time, 2)
+
+    def record_error(self, code: str, message: str, request_id: str) -> None:
+        self.last_error = {
+            "code": code,
+            "message": message,
+            "request_id": request_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
 
 
 def make_handler(state: SttServerState):
@@ -52,6 +81,12 @@ def make_handler(state: SttServerState):
             health = build_ok_response(request_id, type="health")
             health["status"] = "ready"
             health["server_model_init_seconds"] = round(state.model_init_seconds, 2)
+            health["service"] = SERVER_SERVICE
+            health["version"] = SERVER_VERSION
+            health["uptime_seconds"] = state.uptime_seconds
+            health["model_loaded"] = state.transcriber._model is not None if hasattr(state.transcriber, "_model") else True
+            health["capabilities"] = dict(CAPABILITIES)
+            health["last_error"] = state.last_error
             self._write_json(200, health)
 
         def do_POST(self) -> None:
@@ -71,6 +106,7 @@ def make_handler(state: SttServerState):
                 payload = self._read_json()
                 wav_path = payload.get("wav_path")
                 if not wav_path:
+                    state.record_error("STT_SERVER_ERROR", "Missing wav_path.", request_id)
                     self._write_json(
                         400,
                         build_error_response(
@@ -83,6 +119,7 @@ def make_handler(state: SttServerState):
                 try:
                     safe_wav_path = resolve_recording_wav_path(wav_path, PROJECT_ROOT)
                 except PathGuardError as exc:
+                    state.record_error("STT_SERVER_ERROR", str(exc), request_id)
                     self._write_json(
                         400,
                         build_error_response(
@@ -102,6 +139,8 @@ def make_handler(state: SttServerState):
                 response["total_seconds"] = round(total_seconds, 2)
                 self._write_json(200, response)
             except Exception:
+                logger.exception("STT transcription failed request_id=%s", request_id)
+                state.record_error(STT_ENGINE_ERROR, "Transcription failed.", request_id)
                 self._write_json(
                     500,
                     build_error_response(
@@ -130,6 +169,7 @@ def make_handler(state: SttServerState):
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     args = parse_args()
     if args.host != "127.0.0.1":
         print("Refusing to bind non-local host. Use 127.0.0.1 for local XiaoHuang prototypes.")
