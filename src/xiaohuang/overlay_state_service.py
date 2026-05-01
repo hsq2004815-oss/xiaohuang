@@ -51,5 +51,8 @@ def build_server_unavailable_status(server_url: str) -> OverlayStatus:
     )
 
 
-def build_reply_result_text(user_text: str, reply_text: str) -> str:
-    return f"你说：{user_text}\n小黄：{reply_text}"
+def build_reply_result_text(user_text: str, reply_text: str, source_note: str | None = None) -> str:
+    base = f"你说：{user_text}\n小黄：{reply_text}"
+    if source_note:
+        base = f"{base}\n({source_note})"
+    return base

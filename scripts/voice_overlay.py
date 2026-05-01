@@ -29,7 +29,7 @@ from xiaohuang.overlay_state_service import (
 )
 from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
 from xiaohuang.reply_service import generate_reply
-from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health
+from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
 from xiaohuang.tts_service import DEFAULT_TTS_VOICE, MissingTtsDependencyError, synthesize_tts_to_mp3
 from xiaohuang.wake_loop_service import WakeLoopOptions, run_wake_loop_once
 from xiaohuang.wake_word_service import DEFAULT_WAKE_ALIASES, WakeMatchResult, parse_wake_phrases
@@ -52,6 +52,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm-timeout", type=float, default=15.0, help="DeepSeek request timeout in seconds.")
     parser.add_argument("--llm-model", default=None, help="DeepSeek model override. Defaults to DEEPSEEK_MODEL or deepseek-v4-flash.")
     parser.add_argument("--llm-base-url", default=None, help="DeepSeek base URL override. Defaults to DEEPSEEK_BASE_URL or https://api.deepseek.com.")
+    parser.add_argument("--llm-max-tokens", type=int, default=None, help="DeepSeek max_tokens. Defaults to DEEPSEEK_MAX_TOKENS or 96.")
     parser.add_argument(
         "--post-response-cooldown",
         type=float,
@@ -69,6 +70,7 @@ class VoiceOverlayApp:
         self.state = STATE_IDLE
         self.phase = 0.0
         self.closed = False
+        self._after_ids: set[str] = set()
         self._build_ui()
         self.set_state(STATE_IDLE)
         self._animate()
@@ -124,17 +126,23 @@ class VoiceOverlayApp:
         self._drag_y = event.y
 
     def _move(self, event) -> None:
-        x = self.root.winfo_x() + event.x - self._drag_x
-        y = self.root.winfo_y() + event.y - self._drag_y
-        self.root.geometry(f"+{x}+{y}")
+        try:
+            x = self.root.winfo_x() + event.x - self._drag_x
+            y = self.root.winfo_y() + event.y - self._drag_y
+            self.root.geometry(f"+{x}+{y}")
+        except tk.TclError:
+            pass
 
     def set_state(self, state: str, detail: str | None = None) -> None:
         if self.closed:
             return
         status = get_overlay_status_text(state, detail)
         self.state = status.state
-        self.title_label.configure(text=status.title)
-        self.subtitle_label.configure(text=status.subtitle)
+        try:
+            self.title_label.configure(text=status.title)
+            self.subtitle_label.configure(text=status.subtitle)
+        except tk.TclError:
+            self.closed = True
 
     def thread_safe_set_state(self, state: str, detail: str | None = None) -> None:
         self._safe_after(0, lambda: self.set_state(state, detail))
@@ -143,8 +151,11 @@ class VoiceOverlayApp:
         if self.closed:
             return
         self.state = status.state
-        self.title_label.configure(text=status.title)
-        self.subtitle_label.configure(text=status.subtitle)
+        try:
+            self.title_label.configure(text=status.title)
+            self.subtitle_label.configure(text=status.subtitle)
+        except tk.TclError:
+            self.closed = True
 
     def thread_safe_show_status(self, status) -> None:
         self._safe_after(0, lambda: self.show_status(status))
@@ -157,7 +168,8 @@ class VoiceOverlayApp:
             return
         try:
             self.canvas.delete("all")
-        except Exception:
+        except tk.TclError:
+            self.closed = True
             return
         amplitude = self._amplitude_for_state()
         color = self._color_for_state()
@@ -166,7 +178,11 @@ class VoiceOverlayApp:
             height = 6 + amplitude * (0.35 + 0.65 * abs(math.sin(self.phase + index * 0.7)))
             y1 = 18 - height / 2
             y2 = 18 + height / 2
-            self.canvas.create_rectangle(x, y1, x + 14, y2, fill=color, outline="")
+            try:
+                self.canvas.create_rectangle(x, y1, x + 14, y2, fill=color, outline="")
+            except tk.TclError:
+                self.closed = True
+                return
         self.phase += 0.28
         self._safe_after(90, self._animate)
 
@@ -175,6 +191,12 @@ class VoiceOverlayApp:
             return
         self.closed = True
         self.stop_event.set()
+        for after_id in list(self._after_ids):
+            try:
+                self.root.after_cancel(after_id)
+            except Exception:
+                pass
+        self._after_ids.clear()
         try:
             self.root.destroy()
         except Exception:
@@ -184,7 +206,8 @@ class VoiceOverlayApp:
         if self.closed:
             return
         try:
-            self.root.after(delay_ms, callback)
+            after_id = self.root.after(delay_ms, callback)
+            self._after_ids.add(after_id)
         except Exception:
             self.stop_event.set()
             self.closed = True
@@ -279,11 +302,17 @@ def main() -> int:
         timeout_seconds=args.llm_timeout,
         model_override=args.llm_model,
         base_url_override=args.llm_base_url,
+        max_tokens_override=args.llm_max_tokens,
     )
-    if args.enable_llm and not llm_config.is_configured:
-        message = "DeepSeek API key 未配置，已使用本地规则回复"
-        print(message)
-        logger.warning(message)
+    if args.enable_llm:
+        if not llm_config.is_configured:
+            if args.debug:
+                print("DeepSeek API key 未配置，已使用本地规则回复")
+            logger.info("--enable-llm specified but DEEPSEEK_API_KEY is not set; using local rule replies")
+        elif args.debug:
+            print(f"LLM enabled: model={llm_config.model} max_tokens={llm_config.max_tokens} timeout={llm_config.timeout_seconds}s")
+    if args.debug:
+        print(f"TTS enabled: {args.enable_tts}")
     worker = threading.Thread(
         target=_run_overlay_loop,
         args=(
@@ -321,7 +350,23 @@ def _run_overlay_loop(
     enable_llm: bool,
     llm_config,
 ) -> None:
+    _stt_call_count = {"n": 0}
+
+    def _overlay_stt(path, server_url):
+        _stt_call_count["n"] += 1
+        try:
+            return request_transcription(path, server_url)
+        except (SttServerUnavailable, SttServerError) as exc:
+            if _stt_call_count["n"] == 1:
+                # wake check — skip this window
+                if debug:
+                    print(f"Wake check STT failed, skipped this window: {exc}")
+                logger.warning("Wake check STT failed, skipped this window: %s", exc)
+                return {"text": ""}
+            raise
+
     while not stop_event.is_set():
+        _stt_call_count["n"] = 0
         try:
             result = run_wake_loop_once(
                 options,
@@ -329,6 +374,7 @@ def _run_overlay_loop(
                 on_wake_text=(lambda text: print(f"Wake check transcription: {text}")) if debug else None,
                 on_wake_match=(lambda match: _print_wake_match(match)) if debug else None,
                 on_command_text=(lambda text: print(f"Command transcription: {text}")) if debug else None,
+                request_transcription_func=_overlay_stt,
             )
             if stop_event.is_set():
                 break
@@ -336,12 +382,14 @@ def _run_overlay_loop(
             app.thread_safe_set_state(STATE_REPLYING)
             if enable_llm:
                 if not llm_config.is_configured:
-                    if debug:
-                        print("DeepSeek API key 未配置，已使用本地规则回复")
                     reply_text = generate_reply(result.command_text)
                     reply_source = "rule_fallback_no_key"
                 else:
-                    reply_result = generate_llm_reply_result(result.command_text, config=llm_config)
+                    reply_result = generate_llm_reply_result(
+                        result.command_text,
+                        config=llm_config,
+                        on_debug=_make_llm_debug_handler(logger, debug),
+                    )
                     reply_text = reply_result.text
                     reply_source = reply_result.source
             else:
@@ -350,8 +398,12 @@ def _run_overlay_loop(
             if debug:
                 print(f"XiaoHuang reply: {reply_text}")
                 print(f"Reply source: {reply_source}")
-            logger.info("Overlay reply: %s", reply_text)
-            app.thread_safe_set_state(STATE_RESULT, build_reply_result_text(result.command_text, reply_text))
+            logger.info("Overlay reply: %s (source=%s)", reply_text, reply_source)
+            source_note = _source_note_for_overlay(reply_source)
+            app.thread_safe_set_state(
+                STATE_RESULT,
+                build_reply_result_text(result.command_text, reply_text, source_note),
+            )
 
             if enable_tts and not stop_event.is_set():
                 app.thread_safe_set_state(STATE_SPEAKING, reply_text)
@@ -360,13 +412,11 @@ def _run_overlay_loop(
                     logger.info("Generated TTS reply: %s", tts_path)
                     play_audio_file(tts_path, warn=lambda message: _playback_warning(logger, message))
                 except MissingTtsDependencyError as exc:
-                    message = str(exc)
-                    _warn(logger, message)
-                    app.thread_safe_set_state(STATE_ERROR, message)
+                    _warn(logger, str(exc))
+                    app.thread_safe_set_state(STATE_ERROR, str(exc))
                 except Exception as exc:
-                    message = f"TTS failed: {exc}"
-                    _warn(logger, message)
-                    app.thread_safe_set_state(STATE_ERROR, message)
+                    _warn(logger, f"TTS failed: {exc}")
+                    app.thread_safe_set_state(STATE_ERROR, f"TTS failed: {exc}")
 
             if debug:
                 print(f"Post-response cooldown: {post_response_cooldown:.1f}s")
@@ -374,12 +424,22 @@ def _run_overlay_loop(
                 break
             app.thread_safe_set_state(STATE_IDLE)
             stop_event.wait(0.5)
+        except (SttServerUnavailable, SttServerError) as exc:
+            if stop_event.is_set():
+                break
+            logger.warning("Command STT failed: %s", exc)
+            if debug:
+                print(f"Command STT failed: {exc}")
+            app.thread_safe_set_state(STATE_ERROR, f"STT 转写失败：{exc}")
+            if stop_event.wait(2.0):
+                break
         except Exception as exc:
             if stop_event.is_set():
                 break
             logger.exception("Voice overlay wake loop failed.")
             app.thread_safe_set_state(STATE_ERROR, str(exc))
-            stop_event.wait(2.0)
+            if stop_event.wait(2.0):
+                break
 
 
 def _handle_wake_state(app: VoiceOverlayApp, state: str, payload: str | None = None) -> None:
@@ -401,6 +461,31 @@ def _playback_warning(logger, message: str) -> None:
 def _print_wake_match(match: WakeMatchResult) -> None:
     detected = "true" if match.detected else "false"
     print(f"Wake match: detected={detected} score={match.score:.2f} reason={match.reason}")
+
+
+def _make_llm_debug_handler(logger, debug_enabled: bool):
+    if not debug_enabled:
+        return None
+    def _log(msg: str) -> None:
+        print(f"DeepSeek debug: {msg}")
+        logger.info("DeepSeek debug: %s", msg)
+    return _log
+
+
+def _source_note_for_overlay(source: str) -> str | None:
+    if source in ("rule", "llm"):
+        return None
+    if source == "rule_fallback_no_key":
+        return "DeepSeek 未配置 key，已使用本地回复"
+    if source == "rule_fallback_error":
+        return "DeepSeek 不可用，已使用本地回复"
+    if source == "rule_fallback_empty":
+        return "DeepSeek 返回为空，已使用本地回复"
+    if source == "rule_fallback_length":
+        return "DeepSeek 输出被截断，已使用本地回复"
+    if source == "tool_unavailable":
+        return "当前版本还不能执行工具"
+    return None
 
 
 if __name__ == "__main__":

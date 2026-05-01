@@ -2,7 +2,7 @@
 
 ## Role And Scope
 
-This repository contains XiaoHuang V0.9, a minimal Windows audio pipeline validation project.
+This repository contains XiaoHuang V0.9.1, a minimal Windows audio pipeline validation project.
 
 The current scope is intentionally narrow:
 
@@ -26,7 +26,7 @@ The current scope is intentionally narrow:
 
 ## Hard Boundaries
 
-Do not add these features in V0.9:
+Do not add these features in V0.9.1:
 
 - multi-turn memory
 - complex persona systems

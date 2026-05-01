@@ -1,14 +1,19 @@
 # Task Memory
 
-- Purpose: XiaoHuang V0.9 adds optional DeepSeek-V4-Flash single-turn reply to the V0.8 overlay flow while preserving rule fallback.
+- Purpose: XiaoHuang V0.9.1 is a stabilization patch over V0.9 — DeepSeek error handling, LLM reply cleaning, TTS/LLM combination stability, artifact protection, and docs.
+- V0.9.1 scope: no new features, no backend foundation, no multi-turn memory, no tool execution.
+- V0.9.1 changes:
+  - LLM reply execution claim filter (blocks "我已经打开"/"已下载"/"已执行" etc.)
+  - Expanded tool request keywords (17 categories: 打开浏览器/下载/发消息/回微信/回QQ/改代码/删除/上传/登录/支付/爬虫/opencode/opencli etc.)
+  - Overlay result displays fallback source note when DeepSeek unavailable
+  - Improved shutdown: exception handler checks stop_event before sleeping
+  - No-key startup message only in debug mode, not every round
+  - API key never logged or included in reply text
+  - Reply source tracked and displayed: llm/rule/rule_fallback_no_key/rule_fallback_error/tool_unavailable
 - Key files: `scripts/voice_overlay.py`, `scripts/wake_loop.py`, `scripts/test_wake_text.py`, `src/xiaohuang/llm_reply_service.py`, `src/xiaohuang/reply_service.py`, `src/xiaohuang/tts_service.py`, `src/xiaohuang/wake_word_service.py`, `src/xiaohuang/wake_loop_service.py`.
 - Current environment: use `F:\for_xiaohuang\conda310\python.exe`; recording works with `device 0`; ModelScope cache is `F:\for_xiaohuang\models\modelscope`; ffmpeg is installed through `winget` and available on PATH.
 - Startup/test: dot-source `.\scripts\run_env.ps1`; set `PYTHONPATH=E:\Projects\xiaohuang\src`; run `& "F:\for_xiaohuang\conda310\python.exe" -m unittest discover -s tests`.
-- Last completed: V0.8 overlay now generates a short rule reply after command transcription and supports `--enable-tts` for edge-tts mp3 generation/playback.
-- V0.7.2 wake patch: STT text-matching wake now uses `detect_wake_phrase()` scoring, default 3-second wake window, suffix-noise matching like `小黄ang`, low-risk aliases `小皇,小煌,小凰`, and debug `Wake match` output.
-- V0.8.1 self-capture patch: `voice_overlay.py --enable-tts` waits 6 seconds after a reply before resuming wake checks; override with `--post-response-cooldown`.
-- V0.9 LLM patch: `voice_overlay.py --enable-llm` calls DeepSeek only when `DEEPSEEK_API_KEY` is configured; missing key or request failure falls back to local rule reply.
-- Debug now prints `Reply source: llm|rule|rule_fallback_no_key|rule_fallback_error` after each reply.
+- Last completed: V0.9.1 stabilization — 81 tests pass (9 new), compileall clean, --help verified.
 - Overlay command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug`.
 - Overlay TTS command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug --enable-tts`.
 - Overlay DeepSeek command: set `$env:DEEPSEEK_API_KEY`, then run `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug --enable-llm --enable-tts`.

@@ -1,7 +1,7 @@
 # XiaoHuang Memory
 
 - Project: `E:\Projects\xiaohuang`
-- Current version: V0.9 DeepSeek single-turn reply prototype over the V0.8 overlay.
+- Current version: V0.9.1 DeepSeek single-turn reply prototype with error-handling and reply-cleaning stabilization over V0.9.
 - Current goal: after wake and one command transcription, optionally call DeepSeek-V4-Flash for one short reply, show `你说 / 小黄` in the overlay, and optionally synthesize/play TTS with `--enable-tts`.
 - Main scripts:
   - `scripts/check_audio_devices.py`
@@ -43,7 +43,8 @@
 - Self-capture mitigation: `voice_overlay.py --enable-tts` defaults to a 6-second post-response cooldown before wake checks resume; tune with `--post-response-cooldown 8` if speaker playback is still captured.
 - DeepSeek config policy: read only `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, and `DEEPSEEK_MODEL` from environment or CLI overrides. Never write API keys to repo files.
 - LLM fallback policy: if `--enable-llm` is used without an API key or the request fails, print/log a warning and use `reply_service.generate_reply`.
-- Reply debug policy: debug output prints `Reply source: llm`, `rule`, `rule_fallback_no_key`, or `rule_fallback_error`.
+- Overlay fallback display: result subtitle shows specific source note — "DeepSeek 未配置 key" (rule_fallback_no_key), "DeepSeek 不可用" (rule_fallback_error), or "DeepSeek 返回为空" (rule_fallback_empty).
+- Tkinter guard: all widget updates wrapped in TclError catches; after IDs tracked and cancelled on close; drag handlers guarded.
 - Wake robustness policy: V0.7.2 still uses STT text matching, not real KWS. Default `--wake-window-seconds` is 3, default low-risk aliases are `小皇,小煌,小凰`, and debug prints `Wake match: detected=... score=... reason=...`.
 - Recommended wake phrase for manual testing: say `小黄小黄` for better STT stability.
 - Wake temp file policy: `wake_loop.py` and `voice_overlay.py` delete wake-check WAVs under `data/recordings/wake/` after STT by default; use `wake_loop.py --keep-wake-recordings` only when debugging console wake checks.
