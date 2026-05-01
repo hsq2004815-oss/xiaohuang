@@ -1357,5 +1357,97 @@ class V102HealthObservabilityTests(unittest.TestCase):
         self.assertIsInstance(resp["meta"], dict)
 
 
+class V103SttErrorClassificationTests(unittest.TestCase):
+    def test_stt_request_error_is_stt_server_error_subclass(self):
+        from xiaohuang.stt_client_service import SttRequestError, SttServerError
+        self.assertTrue(issubclass(SttRequestError, SttServerError))
+
+    def test_stt_server_internal_error_is_stt_server_error_subclass(self):
+        from xiaohuang.stt_client_service import SttServerInternalError, SttServerError
+        self.assertTrue(issubclass(SttServerInternalError, SttServerError))
+
+    def test_stt_api_error_is_stt_server_error_subclass(self):
+        from xiaohuang.stt_client_service import SttApiError, SttServerError
+        self.assertTrue(issubclass(SttApiError, SttServerError))
+
+    def test_stt_invalid_response_is_stt_server_error_subclass(self):
+        from xiaohuang.stt_client_service import SttInvalidResponse, SttServerError
+        self.assertTrue(issubclass(SttInvalidResponse, SttServerError))
+
+    def test_old_catch_stt_server_error_catches_new_subclass(self):
+        from xiaohuang.stt_client_service import SttApiError, SttServerError
+        try:
+            raise SttApiError("test")
+        except SttServerError:
+            pass
+        else:
+            self.fail("SttServerError should catch SttApiError")
+
+    def test_parse_response_body_invalid_json(self):
+        from xiaohuang.stt_client_service import SttInvalidResponse, _parse_response_body
+        with self.assertRaises(SttInvalidResponse):
+            _parse_response_body("not json")
+
+    def test_parse_response_body_non_dict(self):
+        from xiaohuang.stt_client_service import SttInvalidResponse, _parse_response_body
+        with self.assertRaises(SttInvalidResponse):
+            _parse_response_body("[]")
+
+    def test_parse_response_body_ok_true(self):
+        from xiaohuang.stt_client_service import _parse_response_body
+        data = _parse_response_body('{"ok": true, "text": "hello"}')
+        self.assertEqual(data["text"], "hello")
+
+    def test_parse_response_body_ok_false_old_string(self):
+        from xiaohuang.stt_client_service import SttApiError, _parse_response_body
+        with self.assertRaises(SttApiError) as ctx:
+            _parse_response_body('{"ok": false, "error": "Missing wav_path."}')
+        self.assertIn("Missing wav_path.", str(ctx.exception))
+
+    def test_parse_response_body_ok_false_new_dict(self):
+        from xiaohuang.stt_client_service import SttApiError, _parse_response_body
+        with self.assertRaises(SttApiError) as ctx:
+            _parse_response_body(
+                '{"ok": false, "error": {"code": "STT_ENGINE_ERROR", "message": "Transcription failed."}}'
+            )
+        self.assertIn("STT_ENGINE_ERROR", str(ctx.exception))
+        self.assertIn("Transcription failed.", str(ctx.exception))
+
+    def test_parse_response_body_text_only_backward_compat(self):
+        from xiaohuang.stt_client_service import _parse_response_body
+        data = _parse_response_body('{"text": "你好"}')
+        self.assertEqual(data["text"], "你好")
+
+    def test_parse_response_body_status_only_backward_compat(self):
+        from xiaohuang.stt_client_service import _parse_response_body
+        data = _parse_response_body('{"status": "ready"}')
+        self.assertEqual(data["status"], "ready")
+
+    def test_parse_response_body_missing_all_fails(self):
+        from xiaohuang.stt_client_service import SttInvalidResponse, _parse_response_body
+        with self.assertRaises(SttInvalidResponse):
+            _parse_response_body('{"unrelated": 1}')
+
+    def test_http_error_400_raises_request_error(self):
+        import io
+        from urllib.error import HTTPError
+        from xiaohuang.stt_client_service import SttRequestError, _raise_for_http_error
+        fp = io.BytesIO(b'{"ok": false, "error": {"code": "STT_SERVER_ERROR", "message": "Missing wav_path."}}')
+        exc = HTTPError("http://127.0.0.1:8766/t", 400, "Bad Request", {}, fp)
+        with self.assertRaises(SttRequestError) as ctx:
+            _raise_for_http_error(exc, "http://127.0.0.1:8766")
+        self.assertIn("HTTP 400", str(ctx.exception))
+        self.assertIn("Missing wav_path.", str(ctx.exception))
+
+    def test_http_error_500_raises_internal_error(self):
+        import io
+        from urllib.error import HTTPError
+        from xiaohuang.stt_client_service import SttServerInternalError, _raise_for_http_error
+        exc = HTTPError("http://127.0.0.1:8766/t", 500, "Error", {}, io.BytesIO(b"{}"))
+        with self.assertRaises(SttServerInternalError) as ctx:
+            _raise_for_http_error(exc, "http://127.0.0.1:8766")
+        self.assertIn("HTTP 500", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
