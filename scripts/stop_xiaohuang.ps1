@@ -11,37 +11,48 @@ param(
 
 $ErrorActionPreference = "Continue"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
+$ProjectPattern = [regex]::Escape($ProjectRoot)
 
-function Stop-ProjectProcess($ScriptName) {
-    $pattern = $ScriptName -replace '\.', '\.'
+function Get-XiaoHuangProcesses {
     try {
         $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" -ErrorAction Stop
     } catch {
-        Write-Host "Process query failed: $_"
-        return
+        return @()
     }
-    $killed = $false
+    $result = @()
     foreach ($p in $procs) {
         $cmd = $p.CommandLine
         if (-not $cmd) { continue }
-        if ($cmd -notmatch [regex]::Escape($ProjectRoot)) { continue }
-        if ($cmd -match $pattern) {
-            Write-Host "Stopping $ScriptName (PID=$($p.ProcessId))..."
-            Stop-Process -Id $p.ProcessId -Force -ErrorAction Continue
-            $killed = $true
+        if ($cmd -notmatch $ProjectPattern -and $cmd -notmatch 'xiaohuang') { continue }
+        if ($cmd -match 'voice_overlay') {
+            $result += [PSCustomObject]@{ ProcessId = $p.ProcessId; Type = 'voice_overlay' }
+        } elseif ($cmd -match 'stt_server') {
+            $result += [PSCustomObject]@{ ProcessId = $p.ProcessId; Type = 'stt_server' }
+        } elseif ($cmd -match 'xiaohuang') {
+            $result += [PSCustomObject]@{ ProcessId = $p.ProcessId; Type = 'xiaohuang' }
         }
     }
-    if (-not $killed) {
-        Write-Host "No $ScriptName process found."
+    return $result
+}
+
+function Stop-ByType($Type) {
+    $procs = Get-XiaoHuangProcesses | Where-Object { $_.Type -eq $Type }
+    if (-not $procs) {
+        Write-Host "No $Type process found."
+        return
+    }
+    foreach ($p in $procs) {
+        Write-Host "Stopping $($p.Type) (PID=$($p.ProcessId))..."
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction Continue
     }
 }
 
 Write-Host "=== Stopping voice overlay ==="
-Stop-ProjectProcess "voice_overlay\.py"
+Stop-ByType "voice_overlay"
 
 if ($StopSttServer) {
     Write-Host "=== Stopping STT server ==="
-    Stop-ProjectProcess "stt_server\.py"
+    Stop-ByType "stt_server"
 } else {
     Write-Host "STT server left running (use -StopSttServer to stop it)."
 }
