@@ -23,10 +23,21 @@ from xiaohuang.listen_once_service import (
     resolve_listen_once_options,
     should_allow_local_fallback,
 )
+from xiaohuang.llm_reply_service import (
+    LlmReplyConfig,
+    ReplyGenerationResult,
+    build_deepseek_request,
+    generate_llm_reply,
+    generate_llm_reply_result,
+    load_deepseek_config,
+)
 from xiaohuang.overlay_state_service import build_server_unavailable_status, get_overlay_status_text
+from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
+from xiaohuang.reply_service import generate_reply
 from xiaohuang.stt_client_service import build_health_url, build_transcribe_payload
 from xiaohuang.stt_server_service import PathGuardError, build_success_response, resolve_recording_wav_path
 from xiaohuang.stt_service import MissingDependencyError, SenseVoiceTranscriber, clean_command_text
+from xiaohuang.tts_service import build_tts_output_path, clean_tts_text
 from xiaohuang.vad_service import FixedDurationVad
 from xiaohuang.vad_recording_service import (
     STOP_MAX_SECONDS_REACHED,
@@ -38,7 +49,7 @@ from xiaohuang.vad_recording_service import (
     is_speech_block,
     update_vad_state,
 )
-from xiaohuang.wake_word_service import is_wake_phrase_detected, normalize_wake_text, parse_wake_phrases
+from xiaohuang.wake_word_service import detect_wake_phrase, is_wake_phrase_detected, normalize_wake_text, parse_wake_phrases
 from xiaohuang.wake_loop_service import WakeLoopOptions, run_wake_loop_once
 
 
@@ -400,6 +411,127 @@ class SttClientServiceTests(unittest.TestCase):
         self.assertEqual(build_health_url("http://127.0.0.1:8766/"), "http://127.0.0.1:8766/health")
 
 
+class ReplyServiceTests(unittest.TestCase):
+    def test_generate_reply_handles_greeting(self):
+        self.assertEqual(generate_reply("你好小黄"), "你好，我在。")
+
+    def test_generate_reply_handles_status_question(self):
+        self.assertEqual(generate_reply("你在干嘛？"), "我在听你说话，准备帮你处理任务。")
+
+    def test_generate_reply_handles_model_identity_question(self):
+        self.assertEqual(generate_reply("你现在不是deep seek吗？"), "我是小黄，当前可接 DeepSeek 单句回复。")
+
+    def test_generate_reply_tolerates_stt_prefix_noise_for_status_question(self):
+        for text in ("이在干嘛.", "而在干嘛呢？", "你猜我在干嘛？"):
+            with self.subTest(text=text):
+                self.assertEqual(generate_reply(text), "我在听你说话，准备帮你处理任务。")
+
+    def test_generate_reply_handles_test_text(self):
+        self.assertEqual(generate_reply("帮我测试一下"), "测试收到，语音链路正常。")
+
+    def test_generate_reply_echoes_other_text_shortly(self):
+        reply = generate_reply("随便一句话")
+
+        self.assertEqual(reply, "我听到了：随便一句话")
+        self.assertLessEqual(len(reply), 30)
+
+
+class LlmReplyServiceTests(unittest.TestCase):
+    def test_load_deepseek_config_reads_environment_without_leaking_key(self):
+        config = load_deepseek_config(
+            env={
+                "DEEPSEEK_API_KEY": "secret-key",
+                "DEEPSEEK_BASE_URL": "https://example.invalid",
+                "DEEPSEEK_MODEL": "deepseek-v4-flash",
+            },
+            timeout_seconds=9,
+        )
+
+        self.assertEqual(config.api_key, "secret-key")
+        self.assertEqual(config.base_url, "https://example.invalid")
+        self.assertEqual(config.model, "deepseek-v4-flash")
+        self.assertEqual(config.timeout_seconds, 9)
+
+    def test_build_deepseek_request_constructs_single_turn_payload(self):
+        payload = build_deepseek_request("你在干嘛？", model="deepseek-v4-flash")
+
+        self.assertEqual(payload["model"], "deepseek-v4-flash")
+        self.assertEqual(payload["messages"][-1]["role"], "user")
+        self.assertEqual(payload["messages"][-1]["content"], "你在干嘛？")
+        self.assertLessEqual(payload["max_tokens"], 80)
+
+    def test_generate_llm_reply_uses_api_when_key_is_configured(self):
+        calls: list[dict] = []
+        config = LlmReplyConfig(api_key="secret", base_url="https://api.example", model="deepseek-v4-flash", timeout_seconds=15)
+
+        def fake_post_json(url, payload, headers, timeout):
+            calls.append({"url": url, "payload": payload, "headers": headers, "timeout": timeout})
+            return {"choices": [{"message": {"content": "我在等你叫我，有事你直接说。"}}]}
+
+        reply = generate_llm_reply("你在干嘛？", config=config, post_json_func=fake_post_json)
+
+        self.assertEqual(reply, "我在等你叫我，有事你直接说。")
+        self.assertEqual(calls[0]["url"], "https://api.example/chat/completions")
+        self.assertEqual(calls[0]["headers"]["Authorization"], "Bearer secret")
+
+    def test_generate_llm_reply_result_reports_llm_source(self):
+        config = LlmReplyConfig(api_key="secret", base_url="https://api.example", model="deepseek-v4-flash", timeout_seconds=15)
+
+        result = generate_llm_reply_result(
+            "你在干嘛？",
+            config=config,
+            post_json_func=lambda *_args: {"choices": [{"message": {"content": "我在等你。"}}]},
+        )
+
+        self.assertEqual(result, ReplyGenerationResult(text="我在等你。", source="llm"))
+
+    def test_generate_llm_reply_falls_back_without_api_key(self):
+        config = LlmReplyConfig(api_key=None, base_url="https://api.example", model="deepseek-v4-flash", timeout_seconds=15)
+
+        result = generate_llm_reply_result("你在干嘛？", config=config)
+
+        self.assertEqual(result.text, "我在听你说话，准备帮你处理任务。")
+        self.assertEqual(result.source, "rule_fallback_no_key")
+
+    def test_generate_llm_reply_falls_back_on_exception(self):
+        config = LlmReplyConfig(api_key="secret", base_url="https://api.example", model="deepseek-v4-flash", timeout_seconds=15)
+
+        def failing_post_json(_url, _payload, _headers, _timeout):
+            raise TimeoutError("timeout")
+
+        result = generate_llm_reply_result("测试", config=config, post_json_func=failing_post_json)
+
+        self.assertEqual(result.text, "测试收到，语音链路正常。")
+        self.assertEqual(result.source, "rule_fallback_error")
+
+    def test_generate_llm_reply_keeps_reply_short(self):
+        config = LlmReplyConfig(api_key="secret", base_url="https://api.example", model="deepseek-v4-flash", timeout_seconds=15)
+
+        def fake_post_json(_url, _payload, _headers, _timeout):
+            return {"choices": [{"message": {"content": "这是一段非常非常非常非常非常非常长的回复，应该被截断。"}}]}
+
+        reply = generate_llm_reply("随便说一句", config=config, post_json_func=fake_post_json)
+
+        self.assertLessEqual(len(reply), 30)
+
+    def test_generate_llm_reply_does_not_claim_tool_execution(self):
+        config = LlmReplyConfig(api_key="secret", base_url="https://api.example", model="deepseek-v4-flash", timeout_seconds=15)
+
+        reply = generate_llm_reply("帮我打开浏览器", config=config, post_json_func=lambda *_args: {})
+
+        self.assertEqual(reply, "我可以先帮你整理任务，但当前版本还不能执行工具。")
+
+
+class TtsServiceTests(unittest.TestCase):
+    def test_clean_tts_text_removes_extra_whitespace(self):
+        self.assertEqual(clean_tts_text("  你好\n小黄  "), "你好 小黄")
+
+    def test_build_tts_output_path_uses_timestamp_and_mp3_suffix(self):
+        path = build_tts_output_path(Path("data") / "tts", timestamp="20260501_010203")
+
+        self.assertEqual(path, Path("data") / "tts" / "tts_20260501_010203.mp3")
+
+
 class WakeWordServiceTests(unittest.TestCase):
     def test_parse_wake_phrases_splits_comma_separated_text(self):
         self.assertEqual(parse_wake_phrases("小黄, 小黄小黄， 你好小黄"), ["小黄", "小黄小黄", "你好小黄"])
@@ -418,6 +550,48 @@ class WakeWordServiceTests(unittest.TestCase):
 
     def test_is_wake_phrase_detected_ignores_empty_text(self):
         self.assertFalse(is_wake_phrase_detected("  ，。 ", ["小黄"]))
+
+    def test_detect_wake_phrase_exact_match(self):
+        result = detect_wake_phrase("小黄。", ["小黄", "小黄小黄"])
+
+        self.assertTrue(result.detected)
+        self.assertEqual(result.reason, "exact_match")
+        self.assertEqual(result.score, 1.0)
+        self.assertEqual(result.matched_phrase, "小黄")
+
+    def test_detect_wake_phrase_repeated_exact_match(self):
+        result = detect_wake_phrase("小黄小黄。", ["小黄", "小黄小黄"])
+
+        self.assertTrue(result.detected)
+        self.assertEqual(result.reason, "exact_match")
+        self.assertEqual(result.matched_phrase, "小黄小黄")
+
+    def test_detect_wake_phrase_contained_match(self):
+        result = detect_wake_phrase("你好小黄", ["小黄"])
+
+        self.assertTrue(result.detected)
+        self.assertEqual(result.reason, "contains_match")
+
+    def test_detect_wake_phrase_suffix_noise_match(self):
+        result = detect_wake_phrase("小黄ang", ["小黄"])
+
+        self.assertTrue(result.detected)
+        self.assertEqual(result.reason, "suffix_noise_match")
+
+    def test_detect_wake_phrase_default_alias_match(self):
+        result = detect_wake_phrase("小皇", ["小黄"])
+
+        self.assertTrue(result.detected)
+        self.assertEqual(result.reason, "alias_match")
+        self.assertEqual(result.score, 0.75)
+
+    def test_detect_wake_phrase_rejects_unrelated_and_empty_text(self):
+        self.assertFalse(detect_wake_phrase("哦", ["小黄"]).detected)
+        self.assertFalse(detect_wake_phrase("", ["小黄"]).detected)
+
+    def test_detect_wake_phrase_manual_alias_is_opt_in(self):
+        self.assertFalse(detect_wake_phrase("小王", ["小黄"]).detected)
+        self.assertTrue(detect_wake_phrase("小王", ["小黄"], alias_phrases=["小王"]).detected)
 
 
 class OverlayStateServiceTests(unittest.TestCase):
@@ -439,6 +613,22 @@ class OverlayStateServiceTests(unittest.TestCase):
         self.assertEqual(status.state, "error")
         self.assertEqual(status.title, "STT server 未启动")
         self.assertIn("scripts\\stt_server.py", status.subtitle)
+
+    def test_get_overlay_status_text_maps_replying_and_speaking_states(self):
+        replying = get_overlay_status_text("replying")
+        speaking = get_overlay_status_text("speaking")
+
+        self.assertEqual(replying.title, "正在想怎么回复...")
+        self.assertEqual(speaking.title, "小黄正在说话")
+
+
+class OverlayRuntimeServiceTests(unittest.TestCase):
+    def test_resolve_post_response_cooldown_defaults_longer_when_tts_enabled(self):
+        self.assertEqual(resolve_post_response_cooldown(enable_tts=True, requested_seconds=None), 6.0)
+        self.assertEqual(resolve_post_response_cooldown(enable_tts=False, requested_seconds=None), 3.5)
+
+    def test_resolve_post_response_cooldown_respects_explicit_value(self):
+        self.assertEqual(resolve_post_response_cooldown(enable_tts=True, requested_seconds=8.0), 8.0)
 
 
 class WakeLoopServiceTests(unittest.TestCase):

@@ -18,14 +18,15 @@ from xiaohuang.stt_client_service import (
     check_server_health,
 )
 from xiaohuang.wake_loop_service import WakeLoopOptions, run_wake_loop_once
-from xiaohuang.wake_word_service import parse_wake_phrases
+from xiaohuang.wake_word_service import DEFAULT_WAKE_ALIASES, WakeMatchResult, parse_wake_phrases
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Console wake-word prototype using short-window STT matching.")
     parser.add_argument("--device", type=int, default=None, help="Input device ID. Defaults to config audio.device_id or 0.")
-    parser.add_argument("--wake-window-seconds", type=float, default=2.0, help="Short recording window for wake checks. Defaults to 2.")
+    parser.add_argument("--wake-window-seconds", type=float, default=3.0, help="Short recording window for wake checks. Defaults to 3.")
     parser.add_argument("--wake-phrases", default="小黄,小黄小黄", help="Comma-separated wake phrases.")
+    parser.add_argument("--wake-aliases", default=",".join(DEFAULT_WAKE_ALIASES), help="Comma-separated low-confidence wake aliases.")
     parser.add_argument("--server-url", default="http://127.0.0.1:8766", help="Local STT server URL.")
     parser.add_argument("--max-seconds", type=float, default=10.0, help="Maximum VAD command recording duration. Defaults to 10.")
     parser.add_argument("--silence-seconds", type=float, default=0.8, help="Silence duration after command speech before VAD stops.")
@@ -54,6 +55,7 @@ def main() -> int:
     channels = int(audio_config.get("channels", 1))
     recording_dir = PROJECT_ROOT / recording_config.get("output_dir", "data/recordings")
     wake_phrases = parse_wake_phrases(args.wake_phrases)
+    wake_aliases = parse_wake_phrases(args.wake_aliases)
 
     try:
         health = check_server_health(args.server_url)
@@ -64,6 +66,8 @@ def main() -> int:
 
     print(f"STT server ready: {args.server_url} ({health.get('status', 'ok')})")
     print(f"Waiting for wake phrase(s): {', '.join(wake_phrases)}")
+    if wake_aliases:
+        print(f"Wake aliases: {', '.join(wake_aliases)}")
     print("Listening for wake phrase...")
     logger.info("Wake loop started with device=%s server=%s", device_id, args.server_url)
     options = WakeLoopOptions(
@@ -77,6 +81,7 @@ def main() -> int:
         channels=channels,
         recording_dir=recording_dir,
         keep_wake_recordings=args.keep_wake_recordings,
+        wake_aliases=wake_aliases,
     )
 
     try:
@@ -86,6 +91,7 @@ def main() -> int:
                     options,
                     on_state_change=lambda state, payload=None: _print_state(state, payload),
                     on_wake_text=(lambda text: print(f"Wake check transcription: {text}")) if args.debug else None,
+                    on_wake_match=(lambda match: _print_wake_match(match)) if args.debug else None,
                     delete_wake_recording_func=lambda path: _delete_wake_recording(path, logger),
                     before_command_func=lambda: _run_countdown(args.countdown),
                 )
@@ -135,6 +141,11 @@ def _run_countdown(countdown: int) -> None:
 def _print_state(state: str, payload: str | None = None) -> None:
     if state == "wake_checking":
         return
+
+
+def _print_wake_match(match: WakeMatchResult) -> None:
+    detected = "true" if match.detected else "false"
+    print(f"Wake match: detected={detected} score={match.score:.2f} reason={match.reason}")
     if state == "wake_detected":
         print("Wake word detected.")
         return

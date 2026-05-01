@@ -8,6 +8,8 @@ STATE_WAKE_CHECKING = "wake_checking"
 STATE_WAKE_DETECTED = "wake_detected"
 STATE_LISTENING = "listening"
 STATE_TRANSCRIBING = "transcribing"
+STATE_REPLYING = "replying"
+STATE_SPEAKING = "speaking"
 STATE_RESULT = "result"
 STATE_ERROR = "error"
 
@@ -30,6 +32,10 @@ def get_overlay_status_text(state: str, detail: str | None = None) -> OverlaySta
         return OverlayStatus(state=state, title="正在听你说话", subtitle="说完后我会自动停止")
     if state == STATE_TRANSCRIBING:
         return OverlayStatus(state=state, title="识别中...", subtitle="正在转写你的语音")
+    if state == STATE_REPLYING:
+        return OverlayStatus(state=state, title="正在想怎么回复...", subtitle="生成一条简短回复")
+    if state == STATE_SPEAKING:
+        return OverlayStatus(state=state, title="小黄正在说话", subtitle=detail or "正在播放语音回复")
     if state == STATE_RESULT:
         return OverlayStatus(state=state, title="你说：", subtitle=detail or "")
     if state == STATE_ERROR:
@@ -43,3 +49,7 @@ def build_server_unavailable_status(server_url: str) -> OverlayStatus:
         title="STT server 未启动",
         subtitle=f"请先运行 python scripts\\stt_server.py --host 127.0.0.1 --port 8766 ({server_url})",
     )
+
+
+def build_reply_result_text(user_text: str, reply_text: str) -> str:
+    return f"你说：{user_text}\n小黄：{reply_text}"

@@ -2,10 +2,10 @@ numpy>=1.24
 PyYAML>=6.0
 sounddevice>=0.4.6
 soundfile>=0.12.1
+edge-tts
 
 # Optional STT stack for scripts/transcribe_test.py:
 # funasr
 # modelscope
 # torch
 # torchaudio
-

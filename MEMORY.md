@@ -1,8 +1,8 @@
 # XiaoHuang Memory
 
 - Project: `E:\Projects\xiaohuang`
-- Current version: V0.7 Tkinter voice overlay prototype over the V0.6 wake loop.
-- Current goal: show wake/listen/transcribe/result states in a small always-on-top desktop window while preserving console wake_loop behavior.
+- Current version: V0.9 DeepSeek single-turn reply prototype over the V0.8 overlay.
+- Current goal: after wake and one command transcription, optionally call DeepSeek-V4-Flash for one short reply, show `你说 / 小黄` in the overlay, and optionally synthesize/play TTS with `--enable-tts`.
 - Main scripts:
   - `scripts/check_audio_devices.py`
   - `scripts/record_test.py`
@@ -19,24 +19,38 @@
   - `src/xiaohuang/wake_word_service.py`
   - `src/xiaohuang/wake_loop_service.py`
   - `src/xiaohuang/overlay_state_service.py`
+  - `src/xiaohuang/reply_service.py`
+  - `src/xiaohuang/tts_service.py`
+  - `src/xiaohuang/audio_playback_service.py`
+  - `src/xiaohuang/llm_reply_service.py`
   - `src/xiaohuang/config_service.py`
   - `src/xiaohuang/logging_service.py`
 - Validated local runtime: `F:\for_xiaohuang\conda310\python.exe`, microphone `device 0`, ModelScope cache `F:\for_xiaohuang\models\modelscope`, ffmpeg installed through `winget`.
 - Validated V0.3 path: `device 0` recording -> WAV file -> FunASR / SenseVoiceSmall Chinese transcription, with one-shot timing diagnostics.
-- V0.7 boundary: Tkinter overlay state display only; console STT text-matching wake prototype + energy-threshold VAD + local-only STT server/client remain the only behavior.
+- V0.9 boundary: optional DeepSeek single-turn reply + rule fallback + optional edge-tts playback only; no multi-turn memory, no PersonaPlex/Moshi, and no task execution.
 - Recommended VAD command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\listen_once.py --use-server --device 0 --vad --max-seconds 10 --silence-seconds 0.8 --countdown 3 --channels 1 --samplerate 16000`.
 - Recommended wake-loop command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\wake_loop.py --device 0 --once --debug`.
 - Recommended overlay command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug`.
+- Recommended overlay TTS command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug --enable-tts`.
+- Recommended DeepSeek overlay command: set `$env:DEEPSEEK_API_KEY`, then run `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug --enable-llm --enable-tts`.
+- Wake robustness test command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\test_wake_text.py "小黄ang。"`.
 - Overlay help command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --help`.
 - Current usable STT server command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\stt_server.py --host 127.0.0.1 --port 8766`.
 - Successful V0.6 wake test: say `小黄`, wait for `Wake word detected.`, then say `帮我测试一下唤醒后的命令识别。`; wake_loop prints `Listening for wake phrase...`, `Listening for command...`, and `Command transcription: ...`.
 - Successful V0.7 overlay test: `voice_overlay.py --device 0 --debug` completed repeated wake/result cycles. Confirmed examples include `Wake check transcription: 小黄。` -> `Command transcription: 怎么说，这一波。`, `嗯，还不错。`, `你有什么感觉吗？`, `你想干嘛？`, and `我很生气。`; `Wake check transcription: 哦。` did not enter command recording.
 - Overlay shutdown policy: closing the window or pressing `Esc` sets a stop event, prevents later UI updates, and briefly joins the background worker after Tk mainloop exits; an in-flight recording/request may finish before the worker loop observes the stop event.
+- TTS policy: `--enable-tts` is off by default; when enabled, edge-tts writes mp3 files under `data/tts/` and playback failure is warning-only.
+- Self-capture mitigation: `voice_overlay.py --enable-tts` defaults to a 6-second post-response cooldown before wake checks resume; tune with `--post-response-cooldown 8` if speaker playback is still captured.
+- DeepSeek config policy: read only `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, and `DEEPSEEK_MODEL` from environment or CLI overrides. Never write API keys to repo files.
+- LLM fallback policy: if `--enable-llm` is used without an API key or the request fails, print/log a warning and use `reply_service.generate_reply`.
+- Reply debug policy: debug output prints `Reply source: llm`, `rule`, `rule_fallback_no_key`, or `rule_fallback_error`.
+- Wake robustness policy: V0.7.2 still uses STT text matching, not real KWS. Default `--wake-window-seconds` is 3, default low-risk aliases are `小皇,小煌,小凰`, and debug prints `Wake match: detected=... score=... reason=...`.
+- Recommended wake phrase for manual testing: say `小黄小黄` for better STT stability.
 - Wake temp file policy: `wake_loop.py` and `voice_overlay.py` delete wake-check WAVs under `data/recordings/wake/` after STT by default; use `wake_loop.py --keep-wake-recordings` only when debugging console wake checks.
 - STT server path guard: `/transcribe` accepts only existing `.wav` files under project `data/recordings/`; reject missing files, non-wav files, parent traversal, and outside absolute paths.
 - Server fallback policy: `--use-server` no longer falls back automatically; use `--allow-local-fallback` only for manual fallback testing.
 - Successful transcription output: `小黄小黄帮我测试一下语音识别功能，我们正在开发语音识别助手。`
 - Recommended setup helper: run `.\scripts\run_env.ps1` first; it only prints commands and does not record or transcribe automatically.
 - Verification used: real local audio/STT baseline plus unit tests and compileall.
-- Do not commit runtime artifacts: `data/recordings/*.wav`, `data/recordings/wake/`, `logs/`, `models/`, `.venv/`, or `__pycache__/`.
-- Do not add in V0.7: TTS, OpenCLI, opencode, QQ/WeChat, browser automation, crawler, downloader, task scheduler, FunASR KWS, openWakeWord training, installer, or other new assistant features.
+- Do not commit runtime artifacts: `data/recordings/*.wav`, `data/recordings/wake/`, `data/tts/`, `logs/`, `models/`, `.venv/`, or `__pycache__/`.
+- Do not add in V0.9: multi-turn memory, PersonaPlex/Moshi, tool execution, OpenCLI, opencode, QQ/WeChat, browser automation, crawler, downloader, task scheduler, FunASR KWS, openWakeWord training, installer, or other new assistant features.

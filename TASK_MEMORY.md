@@ -1,11 +1,17 @@
 # Task Memory
 
-- Purpose: XiaoHuang V0.7 adds a Tkinter always-on-top voice overlay prototype over the existing V0.6 wake loop flow.
-- Key files: `scripts/voice_overlay.py`, `src/xiaohuang/wake_loop_service.py`, `src/xiaohuang/overlay_state_service.py`, `scripts/wake_loop.py`, `scripts/stt_server.py`.
+- Purpose: XiaoHuang V0.9 adds optional DeepSeek-V4-Flash single-turn reply to the V0.8 overlay flow while preserving rule fallback.
+- Key files: `scripts/voice_overlay.py`, `scripts/wake_loop.py`, `scripts/test_wake_text.py`, `src/xiaohuang/llm_reply_service.py`, `src/xiaohuang/reply_service.py`, `src/xiaohuang/tts_service.py`, `src/xiaohuang/wake_word_service.py`, `src/xiaohuang/wake_loop_service.py`.
 - Current environment: use `F:\for_xiaohuang\conda310\python.exe`; recording works with `device 0`; ModelScope cache is `F:\for_xiaohuang\models\modelscope`; ffmpeg is installed through `winget` and available on PATH.
 - Startup/test: dot-source `.\scripts\run_env.ps1`; set `PYTHONPATH=E:\Projects\xiaohuang\src`; run `& "F:\for_xiaohuang\conda310\python.exe" -m unittest discover -s tests`.
-- Last completed: V0.7 overlay shows idle/wake/listening/transcribing/result/error states and reuses `wake_loop_service.py`.
+- Last completed: V0.8 overlay now generates a short rule reply after command transcription and supports `--enable-tts` for edge-tts mp3 generation/playback.
+- V0.7.2 wake patch: STT text-matching wake now uses `detect_wake_phrase()` scoring, default 3-second wake window, suffix-noise matching like `小黄ang`, low-risk aliases `小皇,小煌,小凰`, and debug `Wake match` output.
+- V0.8.1 self-capture patch: `voice_overlay.py --enable-tts` waits 6 seconds after a reply before resuming wake checks; override with `--post-response-cooldown`.
+- V0.9 LLM patch: `voice_overlay.py --enable-llm` calls DeepSeek only when `DEEPSEEK_API_KEY` is configured; missing key or request failure falls back to local rule reply.
+- Debug now prints `Reply source: llm|rule|rule_fallback_no_key|rule_fallback_error` after each reply.
 - Overlay command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug`.
+- Overlay TTS command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug --enable-tts`.
+- Overlay DeepSeek command: set `$env:DEEPSEEK_API_KEY`, then run `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug --enable-llm --enable-tts`.
 - Overlay help: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --help`.
 - Manual overlay test: start STT server, run `voice_overlay.py --device 0 --debug`, say `小黄`, then speak a command.
 - Latest successful overlay test: repeated cycles detected `小黄` and transcribed commands `怎么说，这一波。`, `嗯，还不错。`, `你有什么感觉吗？`, `你想干嘛？`, `我很生气。`; non-wake `哦。` stayed in wake-check flow.
@@ -16,9 +22,12 @@
 - Recommended wake-loop command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\wake_loop.py --device 0 --once --debug`.
 - Current usable STT server command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\stt_server.py --host 127.0.0.1 --port 8766`.
 - Current successful wake test: start STT server, run `wake_loop.py --device 0 --once --debug`, say `小黄`, then say `帮我测试一下唤醒后的命令识别。`; expected state output includes `Listening for wake phrase...`, `Wake word detected.`, `Listening for command...`, and `Command transcription: ...`.
+- Wake text test command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\test_wake_text.py "小黄ang。"`.
 - Verified output example from earlier STT baseline: input speech `小黄小黄帮我测试一下语音识别功能，我们正在开发语音识别助手。`; output text matched the same sentence.
-- Git ignore boundary: do not commit `data/recordings/*.wav`, `data/recordings/wake/`, `logs/`, `models/`, `.venv/`, or `__pycache__/`.
+- Git ignore boundary: do not commit `data/recordings/*.wav`, `data/recordings/wake/`, `data/tts/`, `logs/`, `models/`, `.venv/`, or `__pycache__/`.
 - Wake temp cleanup: V0.6.1 default cleanup still applies; console `wake_loop.py` only keeps wake-check WAVs when `--keep-wake-recordings` is specified, and `voice_overlay.py` always uses default cleanup.
-- Known traps: V0.7 overlay is a Tkinter UI prototype only, not TTS, task execution, tray background app, installer, or real KWS.
-- Still unfinished: real KWS model, TTS, system tray, installer, and later desktop-assistant integrations.
-- Next likely edit points: manually test `voice_overlay.py`, tune window behavior/positioning, then decide whether V0.8 should be tray/background packaging.
+- Known traps: V0.9 DeepSeek reply is single-turn only, not multi-turn memory, not tool execution, and edge-tts/DeepSeek require network.
+- API key boundary: never commit or write `DEEPSEEK_API_KEY`; use environment variables only.
+- Wake trap: current wake is still short-recording + STT text matching, not openWakeWord/FunASR KWS; avoid broad default aliases such as `小王` or `小杨` unless manually testing.
+- Still unfinished: real KWS model, multi-turn dialogue, system tray, installer, and later desktop-assistant integrations.
+- Next likely edit points: manually test `voice_overlay.py --enable-llm --enable-tts`, tune LLM prompt/timeout, then decide whether V0.10 should add memory or tray/background behavior.

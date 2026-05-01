@@ -8,3 +8,5 @@ logs/*.log
 data/recordings/*.wav
 data/recordings/**/*.wav
 data/recordings/wake/
+data/tts/
+data/tts/*.mp3

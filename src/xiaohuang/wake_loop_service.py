@@ -14,7 +14,7 @@ from xiaohuang.overlay_state_service import (
 )
 from xiaohuang.stt_client_service import request_transcription
 from xiaohuang.vad_recording_service import record_until_silence
-from xiaohuang.wake_word_service import is_wake_phrase_detected, parse_wake_phrases
+from xiaohuang.wake_word_service import WakeMatchResult, detect_wake_phrase, parse_wake_phrases
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,7 @@ class WakeLoopOptions:
     channels: int
     recording_dir: Path
     keep_wake_recordings: bool = False
+    wake_aliases: str | Iterable[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class WakeLoopResult:
 
 StateCallback = Callable[[str, str | None], None]
 TextCallback = Callable[[str], None]
+WakeMatchCallback = Callable[[WakeMatchResult], None]
 
 
 def run_wake_loop_once(
@@ -49,6 +51,7 @@ def run_wake_loop_once(
     *,
     on_state_change: StateCallback | None = None,
     on_wake_text: TextCallback | None = None,
+    on_wake_match: WakeMatchCallback | None = None,
     on_command_text: TextCallback | None = None,
     record_wav_func: Callable[..., Path] = record_wav,
     record_until_silence_func: Callable[..., Any] = record_until_silence,
@@ -79,7 +82,10 @@ def run_wake_loop_once(
         wake_text = str(wake_response.get("text", ""))
         if on_wake_text is not None:
             on_wake_text(wake_text)
-        if not is_wake_phrase_detected(wake_text, wake_phrases):
+        wake_match = detect_wake_phrase(wake_text, wake_phrases, alias_phrases=options.wake_aliases)
+        if on_wake_match is not None:
+            on_wake_match(wake_match)
+        if not wake_match.detected:
             continue
 
         _emit(on_state_change, STATE_WAKE_DETECTED)
