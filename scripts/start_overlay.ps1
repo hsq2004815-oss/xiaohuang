@@ -41,6 +41,25 @@ if ($EnableLlm -and (-not $env:DEEPSEEK_API_KEY)) {
 # ensure logs dir
 New-Item -ItemType Directory -Force $LogDir | Out-Null
 
+# check for existing overlay processes
+$ProjectPattern = [regex]::Escape($ProjectRoot)
+$existing = @()
+try {
+    $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" -ErrorAction Stop
+    foreach ($p in $procs) {
+        $cmd = $p.CommandLine
+        if (-not $cmd) { continue }
+        if ($cmd -notmatch $ProjectPattern) { continue }
+        if ($cmd -match 'voice_overlay') {
+            $existing += $p.ProcessId
+        }
+    }
+} catch { }
+if ($existing) {
+    Write-Host "Voice overlay already running (PID: $($existing -join ', '))"
+    exit 0
+}
+
 Write-Host "Starting voice overlay..."
 $OutLogFile = Join-Path $LogDir "voice_overlay.out.log"
 $ErrLogFile = Join-Path $LogDir "voice_overlay.err.log"
