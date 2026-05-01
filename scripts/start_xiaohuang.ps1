@@ -43,12 +43,14 @@ if ($Elapsed -ge $MaxWait) {
 
 # 3. start overlay
 Write-Host "--- Starting voice overlay ---"
-$OverlayArgs = @("-Device", $Device)
-if ($EnableLlm) { $OverlayArgs += "-EnableLlm" }
-if ($EnableTts) { $OverlayArgs += "-EnableTts" }
-if ($Debug)     { $OverlayArgs += "-Debug" }
+$OverlayParams = @{
+    Device = $Device
+}
+if ($EnableLlm) { $OverlayParams.EnableLlm = $true }
+if ($EnableTts) { $OverlayParams.EnableTts = $true }
+if ($Debug)     { $OverlayParams.Debug = $true }
 
-& "$PSScriptRoot\start_overlay.ps1" @OverlayArgs
+& "$PSScriptRoot\start_overlay.ps1" @OverlayParams
 
 Write-Host ""
 Write-Host "=== XiaoHuang started ==="
