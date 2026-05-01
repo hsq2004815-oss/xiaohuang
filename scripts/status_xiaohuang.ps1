@@ -28,20 +28,27 @@ try {
 
 Write-Host ""
 Write-Host "=== Python Processes ==="
-$procs = Get-WmiObject Win32_Process -Filter "Name='python.exe'" | Where-Object {
-    $_.CommandLine -match "xiaohuang"
-}
-if ($procs) {
+$found = $false
+try {
+    $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" -ErrorAction Stop
     foreach ($p in $procs) {
         $cmd = $p.CommandLine
-        if ($cmd -match "voice_overlay") {
+        if (-not $cmd) { continue }
+        if ($cmd -notmatch [regex]::Escape($ProjectRoot)) { continue }
+        if ($cmd -match 'voice_overlay\.py') {
             Write-Host "voice_overlay : PID=$($p.ProcessId)"
-        } elseif ($cmd -match "stt_server") {
+            $found = $true
+        } elseif ($cmd -match 'stt_server\.py') {
             Write-Host "stt_server    : PID=$($p.ProcessId)"
-        } else {
+            $found = $true
+        } elseif ($cmd -match 'xiaohuang') {
             Write-Host "xiaohuang     : PID=$($p.ProcessId)"
+            $found = $true
         }
     }
-} else {
+} catch {
+    Write-Host "Process check failed: $_"
+}
+if (-not $found) {
     Write-Host "No xiaohuang Python processes found."
 }

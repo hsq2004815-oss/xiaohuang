@@ -12,16 +12,27 @@ param(
 $ErrorActionPreference = "Continue"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
-function Stop-ProjectProcess($Pattern) {
-    $procs = Get-WmiObject Win32_Process -Filter "Name='python.exe'" | Where-Object {
-        $_.CommandLine -match $Pattern -and $_.CommandLine -match [regex]::Escape($ProjectRoot)
+function Stop-ProjectProcess($ScriptName) {
+    $pattern = $ScriptName -replace '\.', '\.'
+    try {
+        $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" -ErrorAction Stop
+    } catch {
+        Write-Host "Process query failed: $_"
+        return
     }
+    $killed = $false
     foreach ($p in $procs) {
-        Write-Host "Stopping $Pattern (PID=$($p.ProcessId))..."
-        Stop-Process -Id $p.ProcessId -Force
+        $cmd = $p.CommandLine
+        if (-not $cmd) { continue }
+        if ($cmd -notmatch [regex]::Escape($ProjectRoot)) { continue }
+        if ($cmd -match $pattern) {
+            Write-Host "Stopping $ScriptName (PID=$($p.ProcessId))..."
+            Stop-Process -Id $p.ProcessId -Force -ErrorAction Continue
+            $killed = $true
+        }
     }
-    if (-not $procs) {
-        Write-Host "No $Pattern process found."
+    if (-not $killed) {
+        Write-Host "No $ScriptName process found."
     }
 }
 
