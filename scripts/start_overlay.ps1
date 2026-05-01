@@ -4,7 +4,8 @@
 .DESCRIPTION
     Launches voice_overlay.py with the project Python environment.
     Supports -Device, -EnableLlm, -EnableTts, -Debug switches.
-    DEEPSEEK_API_KEY must be set by the user in the shell before running.
+    Loads DEEPSEEK_API_KEY from $env:USERPROFILE\.xiaohuang\secrets.ps1
+    if not already set in the current shell.
 #>
 param(
     [int]$Device = 0,
@@ -21,7 +22,18 @@ $LogDir = Join-Path $ProjectRoot "logs"
 # load env
 . "$ProjectRoot\scripts\run_env.ps1"
 
-# warn if no LLM key
+# auto-load local secrets if key not already set
+if (-not $env:DEEPSEEK_API_KEY) {
+    $SecretFile = Join-Path $env:USERPROFILE ".xiaohuang\secrets.ps1"
+    if (Test-Path $SecretFile) {
+        . $SecretFile
+        Write-Host "Loaded local secrets from $SecretFile"
+    } else {
+        Write-Host "No DEEPSEEK_API_KEY found. You may create: $SecretFile"
+    }
+}
+
+# warn if no LLM key after loading secrets
 if ($EnableLlm -and (-not $env:DEEPSEEK_API_KEY)) {
     Write-Host "Note: DEEPSEEK_API_KEY is not set. LLM may fallback to local rule replies."
 }

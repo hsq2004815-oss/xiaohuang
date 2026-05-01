@@ -10,3 +10,8 @@ data/recordings/**/*.wav
 data/recordings/wake/
 data/tts/
 data/tts/*.mp3
+# local secrets — never commit
+.env
+.env.*
+secrets.ps1
+.xiaohuang/
