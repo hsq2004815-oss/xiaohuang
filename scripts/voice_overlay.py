@@ -12,6 +12,12 @@ SRC_DIR = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from xiaohuang.config_service import load_config
+from xiaohuang.conversation_session_service import (
+    SESSION_EXIT_REPLY,
+    ConversationSessionConfig,
+    is_session_exit_text,
+    should_continue_session,
+)
 from xiaohuang.logging_service import configure_logging
 from xiaohuang.llm_reply_service import load_deepseek_config
 from xiaohuang.overlay_state_service import (
@@ -32,8 +38,10 @@ from xiaohuang.reply_pipeline_service import (
     ReplyPipelineConfig,
     generate_reply_pipeline_result,
 )
+from xiaohuang.audio_capture_service import build_recording_path
 from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
 from xiaohuang.tts_service import DEFAULT_TTS_VOICE
+from xiaohuang.vad_recording_service import record_until_silence
 from xiaohuang.wake_loop_service import STT_MODE_WAKE_CHECK, WakeLoopOptions, run_wake_loop_once
 from xiaohuang.wake_word_service import DEFAULT_WAKE_ALIASES, WakeMatchResult, parse_wake_phrases
 
@@ -66,6 +74,23 @@ def parse_args() -> argparse.Namespace:
         "--resident-hidden",
         action="store_true",
         help="Start hidden and show overlay only after wake word is detected.",
+    )
+    parser.add_argument(
+        "--conversation-session",
+        action="store_true",
+        help="Keep listening for follow-up commands after wake without re-waking.",
+    )
+    parser.add_argument(
+        "--session-timeout",
+        type=float,
+        default=30.0,
+        help="Seconds to wait for follow-up commands in conversation session.",
+    )
+    parser.add_argument(
+        "--max-session-turns",
+        type=int,
+        default=5,
+        help="Maximum turns in one active conversation session.",
     )
     return parser.parse_args()
 
@@ -355,6 +380,11 @@ def main() -> int:
             print(f"LLM enabled: model={llm_config.model} max_tokens={llm_config.max_tokens} timeout={llm_config.timeout_seconds}s")
     if args.debug:
         print(f"TTS enabled: {args.enable_tts}")
+    session_config = ConversationSessionConfig(
+        enabled=args.conversation_session,
+        timeout_seconds=args.session_timeout,
+        max_turns=args.max_session_turns,
+    )
     worker = threading.Thread(
         target=_run_overlay_loop,
         args=(
@@ -370,6 +400,7 @@ def main() -> int:
             args.enable_llm,
             llm_config,
             args.resident_hidden,
+            session_config,
         ),
         daemon=True,
     )
@@ -393,6 +424,7 @@ def _run_overlay_loop(
     enable_llm: bool,
     llm_config,
     resident_hidden: bool = False,
+    session_config: ConversationSessionConfig = ConversationSessionConfig(),
 ) -> None:
     def _overlay_stt(path, server_url, *, mode: str):
         try:
@@ -456,9 +488,75 @@ def _run_overlay_loop(
                 _warn(logger, pipeline_result.tts_error)
                 app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
 
-            if debug:
-                print(f"Post-response cooldown: {post_response_cooldown:.1f}s")
-            if stop_event.wait(post_response_cooldown):
+            if debug and post_response_cooldown > 0:
+                _safe_print(f"Post-response cooldown: {post_response_cooldown:.1f}s")
+
+            # --- conversation session: listen for follow-up commands ---
+            turn_count = 1
+            while should_continue_session(turn_count, session_config) and not stop_event.is_set():
+                if debug:
+                    _safe_print(f"Session turn {turn_count + 1}/{session_config.max_turns}")
+                app.thread_safe_set_state(STATE_LISTENING, "你还可以继续说")
+
+                next_text = _record_command_transcribe(
+                    options=options,
+                    max_seconds=min(options.max_seconds, session_config.timeout_seconds),
+                    stt_mode=STT_MODE_COMMAND,
+                    debug=debug,
+                    logger=logger,
+                )
+                if stop_event.is_set():
+                    break
+                if not next_text:
+                    break
+                if debug:
+                    _safe_print(f"Session command: {next_text}")
+
+                if is_session_exit_text(next_text):
+                    if debug:
+                        _safe_print("Session exit phrase detected")
+                    pipeline_result = ReplyPipelineResult(
+                        reply_text=SESSION_EXIT_REPLY, reply_source="session_exit", source_note=None,
+                    )
+                    if enable_tts and not stop_event.is_set():
+                        pipeline_result = generate_reply_pipeline_result(
+                            next_text, config=pipeline_config,
+                            on_debug=_make_llm_debug_handler(logger, debug),
+                            on_before_tts=lambda t: app.thread_safe_set_state(STATE_SPEAKING, t),
+                            playback_warn=lambda m: _playback_warning(logger, m),
+                        )
+                    _safe_print(f"XiaoHuang: {pipeline_result.reply_text}")
+                    logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
+                    app.thread_safe_set_state(
+                        STATE_RESULT,
+                        build_reply_result_text(next_text, pipeline_result.reply_text, pipeline_result.source_note),
+                    )
+                    if stop_event.wait(post_response_cooldown):
+                        break
+                    break
+
+                pipeline_result = generate_reply_pipeline_result(
+                    next_text, config=pipeline_config,
+                    on_debug=_make_llm_debug_handler(logger, debug),
+                    on_before_tts=lambda t: app.thread_safe_set_state(STATE_SPEAKING, t),
+                    playback_warn=lambda m: _playback_warning(logger, m),
+                )
+                _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
+                _safe_print(f"Reply source: {pipeline_result.reply_source}")
+                logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
+                app.thread_safe_set_state(
+                    STATE_RESULT,
+                    build_reply_result_text(next_text, pipeline_result.reply_text, pipeline_result.source_note),
+                )
+                if pipeline_result.tts_error:
+                    _warn(logger, pipeline_result.tts_error)
+                    app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
+                if stop_event.wait(post_response_cooldown):
+                    break
+                turn_count += 1
+
+            # --- end session, return to standby ---
+            if stop_event.wait(0.5 if post_response_cooldown > 0 else 0):
                 break
             app.thread_safe_set_state(STATE_IDLE)
             if resident_hidden:
@@ -469,7 +567,7 @@ def _run_overlay_loop(
                 break
             logger.warning("Command STT failed: %s", exc)
             if debug:
-                print(f"Command STT failed: {exc}")
+                _safe_print(f"Command STT failed: {exc}")
             app.thread_safe_set_state(STATE_ERROR, f"STT 转写失败：{exc}")
             if stop_event.wait(2.0):
                 break
@@ -480,6 +578,36 @@ def _run_overlay_loop(
             app.thread_safe_set_state(STATE_ERROR, str(exc))
             if stop_event.wait(2.0):
                 break
+
+
+def _record_command_transcribe(
+    *,
+    options,
+    max_seconds: float,
+    stt_mode: str,
+    debug: bool,
+    logger,
+) -> str:
+    try:
+        cmd_path = build_recording_path(options.recording_dir)
+        cmd_result = record_until_silence(
+            cmd_path,
+            device_id=options.device_id,
+            sample_rate=options.sample_rate,
+            channels=options.channels,
+            max_seconds=max_seconds,
+            silence_seconds=options.silence_seconds,
+        )
+        cmd_response = request_transcription(cmd_result.path, options.server_url)
+        return str(cmd_response.get("text", ""))
+    except (SttServerUnavailable, SttServerError) as exc:
+        if debug:
+            _safe_print(f"Session command STT failed: {exc}")
+        logger.warning("Session command STT failed: %s", exc)
+        return ""
+    except Exception as exc:
+        logger.warning("Session command recording failed: %s", exc)
+        return ""
 
 
 def _safe_print(message: str) -> None:

@@ -10,7 +10,10 @@ param(
     [switch]$EnableLlm,
     [switch]$EnableTts,
     [switch]$Debug,
-    [switch]$ResidentHidden
+    [switch]$ResidentHidden,
+    [switch]$ConversationSession,
+    [double]$SessionTimeout = 30,
+    [int]$MaxSessionTurns = 5
 )
 
 $ErrorActionPreference = "Stop"
@@ -50,7 +53,10 @@ $OverlayParams = @{
 if ($EnableLlm)      { $OverlayParams.EnableLlm = $true }
 if ($EnableTts)      { $OverlayParams.EnableTts = $true }
 if ($Debug)          { $OverlayParams.Debug = $true }
-if ($ResidentHidden) { $OverlayParams.ResidentHidden = $true }
+if ($ResidentHidden)       { $OverlayParams.ResidentHidden = $true }
+if ($ConversationSession)  { $OverlayParams.ConversationSession = $true }
+$OverlayParams.SessionTimeout = $SessionTimeout
+$OverlayParams.MaxSessionTurns = $MaxSessionTurns
 
 & "$PSScriptRoot\start_overlay.ps1" @OverlayParams
 

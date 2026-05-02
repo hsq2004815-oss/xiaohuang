@@ -12,7 +12,10 @@ param(
     [switch]$EnableLlm,
     [switch]$EnableTts,
     [switch]$Debug,
-    [switch]$ResidentHidden
+    [switch]$ResidentHidden,
+    [switch]$ConversationSession,
+    [double]$SessionTimeout = 30,
+    [int]$MaxSessionTurns = 5
 )
 
 $ErrorActionPreference = "Stop"
@@ -73,7 +76,10 @@ $ArgParts = @(
 if ($EnableLlm)   { $ArgParts += "--enable-llm" }
 if ($EnableTts)   { $ArgParts += "--enable-tts" }
 if ($Debug)          { $ArgParts += "--debug" }
-if ($ResidentHidden) { $ArgParts += "--resident-hidden" }
+if ($ResidentHidden)       { $ArgParts += "--resident-hidden" }
+if ($ConversationSession)  { $ArgParts += "--conversation-session" }
+$ArgParts += @("--session-timeout", $SessionTimeout)
+$ArgParts += @("--max-session-turns", $MaxSessionTurns)
 
 $ArgList = $ArgParts -join " "
 

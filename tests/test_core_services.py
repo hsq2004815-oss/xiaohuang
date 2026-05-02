@@ -1966,5 +1966,38 @@ class V111DeepSeekDiagnosticsTests(unittest.TestCase):
         self.assertIn("JSONDecodeError", calls[0])
 
 
+class V111ConversationSessionTests(unittest.TestCase):
+    def test_normalize_removes_punctuation_and_spaces(self):
+        from xiaohuang.conversation_session_service import normalize_session_text
+        self.assertEqual(normalize_session_text(" 好，了。！"), "好了")
+
+    def test_is_exit_text_recognizes_exit_phrases(self):
+        from xiaohuang.conversation_session_service import is_session_exit_text
+        for phrase in ["好了", "没事了", "退出", "休息吧", "可以了"]:
+            with self.subTest(phrase=phrase):
+                self.assertTrue(is_session_exit_text(phrase), f"Should be exit: {phrase}")
+
+    def test_is_exit_text_not_false_positive(self):
+        from xiaohuang.conversation_session_service import is_session_exit_text
+        for phrase in ["你好", "今天天气不错", "毛泽东是谁"]:
+            with self.subTest(phrase=phrase):
+                self.assertFalse(is_session_exit_text(phrase), f"Should not be exit: {phrase}")
+
+    def test_should_continue_disabled_returns_false(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, should_continue_session
+        config = ConversationSessionConfig(enabled=False)
+        self.assertFalse(should_continue_session(1, config))
+
+    def test_should_continue_over_max_turns_returns_false(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, should_continue_session
+        config = ConversationSessionConfig(enabled=True, max_turns=3)
+        self.assertFalse(should_continue_session(3, config))
+
+    def test_should_continue_under_max_turns_returns_true(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, should_continue_session
+        config = ConversationSessionConfig(enabled=True, max_turns=3)
+        self.assertTrue(should_continue_session(2, config))
+
+
 if __name__ == "__main__":
     unittest.main()
