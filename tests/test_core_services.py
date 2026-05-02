@@ -409,27 +409,189 @@ class V114CLaunchControlTests(unittest.TestCase):
         guard.finish()
         self.assertIsNone(guard.current_operation)
 
+    def test_guarded_start_success_releases_busy_flag(self):
+        import tray_app
+
+        guard = tray_app.OperationGuard()
+        original_show_message = tray_app.show_message
+        try:
+            tray_app.show_message = lambda *args, **kwargs: None
+            tray_app._execute_guarded_operation(
+                "启动",
+                lambda: tray_app.OperationResult("ok", "ready"),
+                guard=guard,
+            )
+        finally:
+            tray_app.show_message = original_show_message
+
+        self.assertIsNone(guard.current_operation)
+
+    def test_guarded_start_timeout_releases_busy_flag(self):
+        import tray_app
+
+        guard = tray_app.OperationGuard()
+        original_show_message = tray_app.show_message
+        try:
+            tray_app.show_message = lambda *args, **kwargs: None
+            tray_app._execute_guarded_operation(
+                "启动",
+                lambda: tray_app.OperationResult("timeout", "not ready", error=True),
+                guard=guard,
+            )
+        finally:
+            tray_app.show_message = original_show_message
+
+        self.assertIsNone(guard.current_operation)
+
+    def test_guarded_start_exception_releases_busy_flag(self):
+        import tray_app
+
+        guard = tray_app.OperationGuard()
+        original_show_message = tray_app.show_message
+
+        def boom():
+            raise RuntimeError("boom")
+
+        try:
+            tray_app.show_message = lambda *args, **kwargs: None
+            tray_app._execute_guarded_operation("启动", boom, guard=guard)
+        finally:
+            tray_app.show_message = original_show_message
+
+        self.assertIsNone(guard.current_operation)
+
+    def test_guarded_stop_success_releases_busy_flag(self):
+        import tray_app
+
+        guard = tray_app.OperationGuard()
+        original_show_message = tray_app.show_message
+        try:
+            tray_app.show_message = lambda *args, **kwargs: None
+            tray_app._execute_guarded_operation(
+                "停止",
+                lambda: tray_app.OperationResult("ok", "stopped"),
+                guard=guard,
+            )
+        finally:
+            tray_app.show_message = original_show_message
+
+        self.assertIsNone(guard.current_operation)
+
+    def test_guarded_stop_error_releases_busy_flag(self):
+        import tray_app
+
+        guard = tray_app.OperationGuard()
+        original_show_message = tray_app.show_message
+        try:
+            tray_app.show_message = lambda *args, **kwargs: None
+            tray_app._execute_guarded_operation(
+                "停止",
+                lambda: tray_app.OperationResult("stop failed", "timeout", error=True),
+                guard=guard,
+            )
+        finally:
+            tray_app.show_message = original_show_message
+
+        self.assertIsNone(guard.current_operation)
+
+    def test_guarded_restart_success_releases_busy_flag(self):
+        import tray_app
+
+        guard = tray_app.OperationGuard()
+        original_show_message = tray_app.show_message
+        try:
+            tray_app.show_message = lambda *args, **kwargs: None
+            tray_app._execute_guarded_operation(
+                "重启",
+                lambda: tray_app.OperationResult("ok", "ready"),
+                guard=guard,
+            )
+        finally:
+            tray_app.show_message = original_show_message
+
+        self.assertIsNone(guard.current_operation)
+
+    def test_guarded_restart_error_releases_busy_flag(self):
+        import tray_app
+
+        guard = tray_app.OperationGuard()
+        original_show_message = tray_app.show_message
+        try:
+            tray_app.show_message = lambda *args, **kwargs: None
+            tray_app._execute_guarded_operation(
+                "重启",
+                lambda: tray_app.OperationResult("restart failed", "timeout", error=True),
+                guard=guard,
+            )
+        finally:
+            tray_app.show_message = original_show_message
+
+        self.assertIsNone(guard.current_operation)
+
+    def test_start_readiness_success_releases_even_if_process_still_running(self):
+        import tray_app
+        from xiaohuang.launch_control_service import ProcessStatus
+
+        class FakeProcess:
+            pid = 1234
+
+            def poll(self):
+                return None
+
+        guard = tray_app.OperationGuard()
+        original_get_status = tray_app.get_process_status
+        original_launch = tray_app._launch_command_async
+        original_wait_ready = tray_app._wait_ready_result
+        original_log_async = tray_app._log_async_process_summary
+        original_show_message = tray_app.show_message
+        try:
+            tray_app.get_process_status = lambda **kwargs: ProcessStatus(False, False, 0)
+            tray_app._launch_command_async = lambda *args, **kwargs: FakeProcess()
+            tray_app._wait_ready_result = lambda *args, **kwargs: tray_app.OperationResult("ready", "ready")
+            tray_app._log_async_process_summary = lambda *args, **kwargs: None
+            tray_app.show_message = lambda *args, **kwargs: None
+            tray_app._execute_guarded_operation(
+                "启动",
+                tray_app.start_xiaohuang,
+                Path(r"C:\Users\tester\.xiaohuang\config.json"),
+                guard=guard,
+            )
+        finally:
+            tray_app.get_process_status = original_get_status
+            tray_app._launch_command_async = original_launch
+            tray_app._wait_ready_result = original_wait_ready
+            tray_app._log_async_process_summary = original_log_async
+            tray_app.show_message = original_show_message
+
+        self.assertIsNone(guard.current_operation)
+
     def test_restart_order_is_stop_start_wait_ready(self):
         import tray_app
 
         events = []
 
         original_run_command = tray_app._run_command
-        original_wait_stopped = tray_app._wait_stopped_or_report
-        original_wait_ready = tray_app._wait_ready_or_report
+        original_launch_command = tray_app._launch_command_async
+        original_wait_stopped = tray_app._wait_stopped_result
+        original_wait_ready = tray_app._wait_ready_result
+        original_log_async = tray_app._log_async_process_summary
         original_show_message = tray_app.show_message
         original_sleep = tray_app.time.sleep
         try:
             tray_app._run_command = lambda command, label, **kwargs: events.append(label) or True
-            tray_app._wait_stopped_or_report = lambda message, **kwargs: events.append("wait_stopped") or True
-            tray_app._wait_ready_or_report = lambda message, **kwargs: events.append("wait_ready") or True
+            tray_app._launch_command_async = lambda command, label, **kwargs: events.append(label) or object()
+            tray_app._wait_stopped_result = lambda message, **kwargs: events.append("wait_stopped") or tray_app.OperationResult("ok", "ok")
+            tray_app._wait_ready_result = lambda message, **kwargs: events.append("wait_ready") or tray_app.OperationResult("ok", "ok")
+            tray_app._log_async_process_summary = lambda *args, **kwargs: None
             tray_app.show_message = lambda *args, **kwargs: None
             tray_app.time.sleep = lambda seconds: None
             tray_app.restart_xiaohuang(Path(r"C:\Users\tester\.xiaohuang\config.json"), project_root=Path(r"E:\Projects\xiaohuang"))
         finally:
             tray_app._run_command = original_run_command
-            tray_app._wait_stopped_or_report = original_wait_stopped
-            tray_app._wait_ready_or_report = original_wait_ready
+            tray_app._launch_command_async = original_launch_command
+            tray_app._wait_stopped_result = original_wait_stopped
+            tray_app._wait_ready_result = original_wait_ready
+            tray_app._log_async_process_summary = original_log_async
             tray_app.show_message = original_show_message
             tray_app.time.sleep = original_sleep
 

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -59,6 +60,13 @@ class OperationGuard:
 
 
 OPERATION_GUARD = OperationGuard()
+
+
+@dataclass(frozen=True)
+class OperationResult:
+    title: str
+    message: str
+    error: bool = False
 
 
 def get_default_config_path(env: Mapping[str, str] | None = None) -> Path:
@@ -164,19 +172,35 @@ def _run_background(name: str, target, *args) -> None:
     thread.start()
 
 
-def _run_guarded_background(operation_name: str, target, *args) -> None:
-    started, current_operation = OPERATION_GUARD.begin(operation_name)
+def _execute_guarded_operation(operation_name: str, target, *args, guard: OperationGuard = OPERATION_GUARD) -> bool:
+    started, current_operation = guard.begin(operation_name)
     if not started:
         show_message("操作进行中", f"正在执行{current_operation}操作，请稍候。")
-        return
+        return False
 
-    def _runner() -> None:
-        try:
-            target(*args)
-        finally:
-            OPERATION_GUARD.finish()
+    write_tray_log(f"operation={operation_name} acquired")
+    result = OperationResult("操作失败", "操作异常，请查看 logs/tray_app.log。", error=True)
+    release_reason = "exception"
+    try:
+        result = target(*args) or OperationResult("操作完成", "操作已结束。")
+        release_reason = "success" if not result.error else "error"
+    except Exception as exc:
+        write_tray_log(f"operation={operation_name} exception: {exc}")
+        result = OperationResult("操作异常", "操作异常，请查看 logs/tray_app.log。", error=True)
+        release_reason = "exception"
+    finally:
+        guard.finish()
+        write_tray_log(f"operation={operation_name} release reason={release_reason}")
 
-    _run_background(f"xiaohuang-{operation_name}", _runner)
+    try:
+        show_message(result.title, result.message, error=result.error)
+    except Exception as exc:
+        write_tray_log(f"operation={operation_name} messagebox failed after release: {exc}")
+    return True
+
+
+def _run_guarded_background(operation_name: str, target, *args) -> None:
+    _run_background(f"xiaohuang-{operation_name}", _execute_guarded_operation, operation_name, target, *args)
 
 
 def _sanitize_process_output(text: str, *, max_chars: int = 3000) -> str:
@@ -224,6 +248,48 @@ def _run_command(command: list[str], label: str, *, project_root: Path = PROJECT
     return True
 
 
+def _launch_command_async(
+    command: list[str],
+    label: str,
+    *,
+    project_root: Path = PROJECT_ROOT,
+) -> subprocess.Popen | None:
+    try:
+        write_tray_log(f"{label} started async", project_root=project_root)
+        write_tray_log(f"{label} argv={_sanitize_process_output(repr(command))}", project_root=project_root)
+        process = subprocess.Popen(
+            command,
+            cwd=str(project_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_build_child_env(),
+            shell=False,
+        )
+        write_tray_log(f"{label} pid={process.pid}", project_root=project_root)
+        return process
+    except Exception as exc:
+        write_tray_log(f"{label} async launch failed: {exc}", project_root=project_root)
+        return None
+
+
+def _log_async_process_summary(label: str, process: subprocess.Popen | None, *, project_root: Path = PROJECT_ROOT) -> None:
+    if process is None:
+        write_tray_log(f"{label} async process missing", project_root=project_root)
+        return
+    returncode = process.poll()
+    if returncode is None:
+        write_tray_log(f"{label} async process still running pid={process.pid}", project_root=project_root)
+        return
+    write_tray_log(f"{label} async process returncode={returncode}", project_root=project_root)
+    try:
+        stdout, stderr = process.communicate(timeout=0.2)
+    except Exception as exc:
+        write_tray_log(f"{label} async output unavailable: {exc}", project_root=project_root)
+        return
+    _write_command_output(label, stdout or "", stderr or "", project_root=project_root)
+
+
 def get_process_status(*, project_root: Path = PROJECT_ROOT):
     return summarize_process_status(detect_xiaohuang_processes(project_root))
 
@@ -241,7 +307,7 @@ def _log_wait_result(operation: str, result, *, project_root: Path = PROJECT_ROO
     )
 
 
-def _wait_ready_or_report(success_message: str, *, project_root: Path = PROJECT_ROOT) -> bool:
+def _wait_ready_result(success_message: str, *, project_root: Path = PROJECT_ROOT) -> OperationResult:
     write_tray_log("readiness polling started", project_root=project_root)
     result = wait_until_ready(
         project_root,
@@ -251,17 +317,15 @@ def _wait_ready_or_report(success_message: str, *, project_root: Path = PROJECT_
     )
     _log_wait_result("readiness", result, project_root=project_root)
     if result.ok:
-        show_message("小黄已就绪", success_message)
-        return True
-    show_message(
+        return OperationResult("小黄已就绪", success_message)
+    return OperationResult(
         "启动未就绪",
         "启动命令已发出，但服务未在限定时间内就绪，请查看 logs/tray_app.log。",
         error=True,
     )
-    return False
 
 
-def _wait_stopped_or_report(success_message: str | None, *, project_root: Path = PROJECT_ROOT) -> bool:
+def _wait_stopped_result(success_message: str | None, *, project_root: Path = PROJECT_ROOT) -> OperationResult:
     write_tray_log("stop polling started", project_root=project_root)
     result = wait_until_stopped(
         project_root,
@@ -270,19 +334,15 @@ def _wait_stopped_or_report(success_message: str | None, *, project_root: Path =
     )
     _log_wait_result("stopped", result, project_root=project_root)
     if result.ok:
-        if success_message:
-            show_message("小黄已停止", success_message)
-        return True
-    show_message("停止未确认", "停止命令已发出，但进程未在限定时间内退出，请查看 logs/tray_app.log。", error=True)
-    return False
+        return OperationResult("小黄已停止", success_message or "小黄相关进程已停止。")
+    return OperationResult("停止未确认", "停止命令已发出，但进程未在限定时间内退出，请查看 logs/tray_app.log。", error=True)
 
 
-def start_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:
+def start_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> OperationResult:
     status = get_process_status(project_root=project_root)
     if status.is_fully_running:
         write_tray_log("start_xiaohuang skipped: fully running", project_root=project_root)
-        show_message("启动小黄", "小黄已在运行。")
-        return
+        return OperationResult("启动小黄", "小黄已在运行。")
 
     commands = build_start_sequence_for_status(status, project_root, config_path)
     if status.is_partial:
@@ -298,35 +358,49 @@ def start_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> 
         label = "启动小黄"
         if len(commands) > 1:
             label = "启动小黄：清理残留" if index == 0 else "启动小黄：完整启动"
-        timeout = 60 if index == 0 and len(commands) > 1 else 120
-        if not _run_command(command, label, project_root=project_root, timeout=timeout):
-            return
+        is_start_command = index == len(commands) - 1
+        if is_start_command:
+            process = _launch_command_async(command, label, project_root=project_root)
+            if process is None:
+                return OperationResult("启动失败", "启动命令未能发出，请查看 logs/tray_app.log。", error=True)
+            result = _wait_ready_result("小黄已启动并就绪，可以说“贾维斯”唤醒。", project_root=project_root)
+            _log_async_process_summary(label, process, project_root=project_root)
+            return result
+
+        if not _run_command(command, label, project_root=project_root, timeout=60):
+            return OperationResult("启动失败", "清理残留进程失败，请查看 logs/tray_app.log。", error=True)
         if index == 0 and len(commands) > 1:
-            if not _wait_stopped_or_report(None, project_root=project_root):
-                return
+            stopped = _wait_stopped_result(None, project_root=project_root)
+            if stopped.error:
+                return stopped
             time.sleep(2)
 
-    if commands:
-        _wait_ready_or_report("小黄已启动并就绪，可以说“贾维斯”唤醒。", project_root=project_root)
+    return OperationResult("启动小黄", "没有需要执行的启动命令。")
 
 
-def stop_xiaohuang(*, project_root: Path = PROJECT_ROOT) -> None:
+def stop_xiaohuang(*, project_root: Path = PROJECT_ROOT) -> OperationResult:
     show_message("停止小黄", "正在停止小黄，请稍候。")
     command = build_stop_command(project_root)
     if _run_command(command, "停止小黄", project_root=project_root):
-        _wait_stopped_or_report("小黄已停止，托盘仍在运行。", project_root=project_root)
+        return _wait_stopped_result("小黄已停止，托盘仍在运行。", project_root=project_root)
+    return OperationResult("停止失败", "停止命令失败或超时，请查看 logs/tray_app.log。", error=True)
 
 
-def restart_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:
+def restart_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> OperationResult:
     show_message("重启小黄", "正在重启小黄，请稍候。首次加载 STT 模型可能需要十几秒。")
     stop_command, start_command = build_restart_commands(project_root, config_path)
     if not _run_command(stop_command, "重启小黄：停止", project_root=project_root, timeout=60):
-        return
-    if not _wait_stopped_or_report(None, project_root=project_root):
-        return
+        return OperationResult("重启失败", "停止旧进程失败，请查看 logs/tray_app.log。", error=True)
+    stopped = _wait_stopped_result(None, project_root=project_root)
+    if stopped.error:
+        return OperationResult("重启失败", stopped.message, error=True)
     time.sleep(2)
-    if _run_command(start_command, "重启小黄：启动", project_root=project_root):
-        _wait_ready_or_report("重启完成，小黄已就绪。", project_root=project_root)
+    process = _launch_command_async(start_command, "重启小黄：启动", project_root=project_root)
+    if process is None:
+        return OperationResult("重启失败", "启动命令未能发出，请查看 logs/tray_app.log。", error=True)
+    result = _wait_ready_result("重启完成，小黄已就绪。", project_root=project_root)
+    _log_async_process_summary("重启小黄：启动", process, project_root=project_root)
+    return result
 
 
 def show_about(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:

@@ -2,13 +2,13 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.4C — 托盘 readiness / 防重复点击修复
+- **阶段**：V1.1.4C — 托盘 operation release blocker 修复
 - **最新功能 commit**：待提交 `feat: add tray launch controls`
 - **最新文档 commit**：`65927ea` docs: record V1.1.4B tray validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`（V1.1.4C 开发前）
-- **工作区**：V1.1.4C tray launch readiness / operation lock；运行产物均 ignored
-- **测试**：287 tests OK、compileall OK、tray/settings/overlay help OK；真人托盘菜单点击需用户本机确认
+- **工作区**：V1.1.4C tray launch operation lock release；运行产物均 ignored
+- **测试**：295 tests OK、compileall OK、tray/settings/overlay help OK；真人托盘菜单点击需用户本机确认
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
 
@@ -61,6 +61,8 @@
 - Readiness 修复：启动/重启不再只看 PowerShell returncode；必须等待 STT server 进程、voice_overlay 进程和 `/health` ready/model_loaded。
 - 防重复点击：`scripts/tray_app.py` 新增 `OperationGuard`，启动/停止/重启同一时间只允许一个操作线程；重复点击只提示当前操作进行中。
 - 停止确认：停止命令完成后等待 STT server / voice_overlay 都消失；超时提示查看 `logs/tray_app.log`。
+- Operation release 修复：用户确认没有残留 pwsh/powershell 启停脚本进程，但托盘仍显示“启动操作进行中”；修复为 `_execute_guarded_operation()` 统一 acquire/release，所有 success/error/timeout/exception 路径都在 finally 中释放，并记录 `operation=<name> release reason=<...>`。
+- 启动命令改为 async 发出后直接 wait readiness；readiness 成功即可释放 busy flag，不再等待 `start_xiaohuang.ps1` 进程完全退出作为唯一成功条件。
 
 ### V1.1.3B 真实验证结果（2026-05-02）
 

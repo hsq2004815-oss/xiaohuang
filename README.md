@@ -215,6 +215,7 @@ V1.1.4C 边界：
 - 托盘调用 PowerShell 使用 argv list + `-File` + `shell=False`，优先 `pwsh.exe`，找不到再回退 `powershell.exe`。
 - 启动/重启会等待 readiness：STT server 进程、`voice_overlay.py` 进程和 `/health` ready/model_loaded 都满足后才提示已就绪。
 - 启动/停止/重启带操作锁；进行中重复点击会提示“正在执行操作，请稍候”，不会并发启动多套脚本。
+- 启动命令异步发出，readiness 成功后释放操作锁；`logs/tray_app.log` 会记录 operation acquired/release。
 - “退出托盘”只退出托盘程序，不停止 STT server 或 `voice_overlay.py`。
 - 托盘程序不读取、不显示、不保存真实 API key。
 
