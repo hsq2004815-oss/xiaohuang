@@ -159,6 +159,7 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 | V1.1.2 | latency metrics、adaptive follow-up session window、会话 UI 状态修复、会话日志 |
 | V1.1.3A | 用户配置中控层：config.json、app_config_service、wake/audio/llm/tts/conversation/overlay/runtime/assistant 配置段、assistant identity |
 | V1.1.3B | LLM Provider Router：deepseek/qwen/doubao/openai_compatible 多 provider 切换 |
+| V1.1.3C | Settings UI Prototype：Tkinter 配置编辑器（settings_ui.py） |
 
 </details>
 
@@ -179,3 +180,16 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 - [configuration.md](docs/configuration.md) — 用户配置字段参考
 - [LLM_PROVIDER_CONFIGURATION.md](docs/LLM_PROVIDER_CONFIGURATION.md) — LLM Provider 多 provider 配置指南
 - [V1.1.3A_CONFIG_AUDIT.md](docs/V1.1.3A_CONFIG_AUDIT.md) — 中控层收口审计
+
+## Settings UI
+
+```powershell
+# 打开设置界面
+& "F:\for_xiaohuang\conda310\python.exe" scripts\settings_ui.py
+
+# 指定配置文件
+& "F:\for_xiaohuang\conda310\python.exe" scripts\settings_ui.py --config "path\to\config.json"
+
+# 只校验不打开窗口
+& "F:\for_xiaohuang\conda310\python.exe" scripts\settings_ui.py --check
+```

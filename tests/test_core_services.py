@@ -2517,5 +2517,94 @@ class V113BLlmProviderRouterTests(unittest.TestCase):
         self.assertEqual(cfg.llm.base_url, "https://api.deepseek.com")
 
 
+class V113CSettingsConfigFileServiceTests(unittest.TestCase):
+    def test_load_missing_config_returns_defaults(self):
+        from xiaohuang.settings_config_file_service import load_config_with_unknown
+        data, err = load_config_with_unknown(Path("/nonexistent/xyz.json"))
+        self.assertIsNone(err)
+        self.assertIn("wake", data)
+        self.assertIn("assistant", data)
+
+    def test_save_and_preserve_unknown_fields(self):
+        import tempfile, json
+        from xiaohuang.settings_config_file_service import save_config
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "orig.json"
+            orig = {"wake": {"phrases": ["小黄"]}, "custom_section": {"foo": "bar"}}
+            fp.write_text(json.dumps(orig, ensure_ascii=False), encoding="utf-8")
+
+            new_data = {"wake": {"phrases": ["贾维斯"]}}
+            err = save_config(fp, new_data, original_data=orig)
+            self.assertIsNone(err)
+
+            loaded = json.loads(fp.read_text(encoding="utf-8"))
+            self.assertEqual(loaded["wake"]["phrases"], ["贾维斯"])
+            self.assertEqual(loaded["custom_section"]["foo"], "bar")
+
+    def test_parse_list_from_comma_string(self):
+        from xiaohuang.settings_config_file_service import normalize_ui_inputs
+        data = {"wake": {"phrases": "贾维斯, 小黄", "aliases": "贾"}}
+        result, errs = normalize_ui_inputs(data)
+        self.assertEqual(result["wake"]["phrases"], ["贾维斯", "小黄"])
+        self.assertEqual(result["wake"]["aliases"], ["贾"])
+        self.assertEqual(len(errs), 0)
+
+    def test_parse_list_from_chinese_comma(self):
+        from xiaohuang.settings_config_file_service import normalize_ui_inputs
+        data = {"wake": {"phrases": "贾维斯，小黄"}}
+        result, errs = normalize_ui_inputs(data)
+        self.assertEqual(result["wake"]["phrases"], ["贾维斯", "小黄"])
+
+    def test_empty_wake_phrases_rejected(self):
+        from xiaohuang.settings_config_file_service import validate_config
+        v = validate_config({"wake": {"phrases": []}})
+        self.assertFalse(v.valid)
+        self.assertTrue(any("不能为空" in e for e in v.errors))
+
+    def test_api_key_env_rejects_sk_prefix(self):
+        from xiaohuang.settings_config_file_service import validate_config
+        v = validate_config({"llm": {"api_key_env": "sk-abc123def456"}})
+        self.assertFalse(v.valid)
+        self.assertTrue(any("疑似真实 API key" in e for e in v.errors))
+
+    def test_api_key_env_rejects_long_secret(self):
+        from xiaohuang.settings_config_file_service import validate_config
+        v = validate_config({"llm": {"api_key_env": "a" * 60}})
+        self.assertFalse(v.valid)
+
+    def test_api_key_env_allows_valid_env_name(self):
+        from xiaohuang.settings_config_file_service import validate_config
+        v = validate_config({"llm": {"api_key_env": "DEEPSEEK_API_KEY"}})
+        self.assertTrue(v.valid)
+
+    def test_provider_must_be_valid(self):
+        from xiaohuang.settings_config_file_service import validate_config
+        v = validate_config({"llm": {"provider": "anthropic"}})
+        self.assertFalse(v.valid)
+        self.assertTrue(any("无效" in e for e in v.errors))
+
+    def test_number_range_validated(self):
+        from xiaohuang.settings_config_file_service import normalize_ui_inputs
+        data = {"llm": {"temperature": "5.0"}}
+        _, errs = normalize_ui_inputs(data)
+        self.assertTrue(any("应在" in e for e in errs))
+
+    def test_bool_fields_normalized(self):
+        from xiaohuang.settings_config_file_service import normalize_ui_inputs
+        data = {"llm": {"enabled": False}, "tts": {"enabled": True}}
+        result, errs = normalize_ui_inputs(data)
+        self.assertEqual(result["llm"]["enabled"], False)
+        self.assertEqual(result["tts"]["enabled"], True)
+
+    def test_save_creates_parent_dir(self):
+        import tempfile
+        from xiaohuang.settings_config_file_service import save_config
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "sub" / "deep" / "config.json"
+            err = save_config(fp, {"wake": {"phrases": ["test"]}})
+            self.assertIsNone(err)
+            self.assertTrue(fp.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

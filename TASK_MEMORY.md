@@ -2,9 +2,10 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.3B — LLM Provider Router（已完成并真实验证）
+- **阶段**：V1.1.3C — Settings UI Prototype（开发中）
 - **最新功能 commit**：`ab4d058` feat: add LLM provider router
-- **最新文档 commit**：`fb63070` docs: add LLM provider configuration guide
+- **最新文档 commit**：`5883177` docs: record V1.1.3B verification results
+- **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main`，与 `origin/main` 同步
 - **工作区**：clean
 - **测试**：245 tests OK，compileall OK，help OK
@@ -60,7 +61,7 @@
 | 版本 | 内容 |
 |------|------|
 | V1.1.3B | LLM Provider Router ✅ 已完成 |
-| V1.1.3C | Settings UI Prototype |
+| V1.1.3C | Settings UI Prototype ✅ 开发完成，待人工 UI 验证 |
 | V1.1.4 | HUD / 托盘 / 高级悬浮窗 |
 | V1.2 | Wake Engine Abstraction |
 
