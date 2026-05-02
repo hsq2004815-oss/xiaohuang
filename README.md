@@ -213,6 +213,8 @@ V1.1.4C 边界：
 - “重启小黄”先停止再启动。
 - “已在运行”必须同时检测到 STT server 和 `voice_overlay.py`；如果只检测到其中一个，托盘会先清理残留再完整启动。
 - 托盘调用 PowerShell 使用 argv list + `-File` + `shell=False`，优先 `pwsh.exe`，找不到再回退 `powershell.exe`。
+- 启动/重启会等待 readiness：STT server 进程、`voice_overlay.py` 进程和 `/health` ready/model_loaded 都满足后才提示已就绪。
+- 启动/停止/重启带操作锁；进行中重复点击会提示“正在执行操作，请稍候”，不会并发启动多套脚本。
 - “退出托盘”只退出托盘程序，不停止 STT server 或 `voice_overlay.py`。
 - 托盘程序不读取、不显示、不保存真实 API key。
 

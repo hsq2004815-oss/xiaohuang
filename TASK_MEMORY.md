@@ -2,13 +2,13 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.4C — 托盘 PowerShell 调用 blocker 修复
+- **阶段**：V1.1.4C — 托盘 readiness / 防重复点击修复
 - **最新功能 commit**：待提交 `feat: add tray launch controls`
 - **最新文档 commit**：`65927ea` docs: record V1.1.4B tray validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`（V1.1.4C 开发前）
-- **工作区**：V1.1.4C tray launch controls PowerShell argv 修复；运行产物均 ignored
-- **测试**：279 tests OK、compileall OK、tray/settings/overlay help OK；命令构造确认优先 `pwsh.exe` + `-File` argv；真人托盘菜单点击需用户本机确认
+- **工作区**：V1.1.4C tray launch readiness / operation lock；运行产物均 ignored
+- **测试**：287 tests OK、compileall OK、tray/settings/overlay help OK；真人托盘菜单点击需用户本机确认
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
 
@@ -58,6 +58,9 @@
 - 修复策略：新增 `ProcessStatus.is_fully_running` / `is_partial` 和 `build_start_sequence_for_status()`；partial/broken 状态下“启动小黄”先调用 `stop_xiaohuang.ps1 -StopSttServer` 清理，再调用 `start_xiaohuang.ps1 -ConfigPath <config_path>` 完整拉起链路。
 - PowerShell 调用 blocker：`powershell.exe -File start_xiaohuang.ps1` 会在 dot-source `run_env.ps1` 时解析示例命令里的 `&` / 引号失败；同一 argv list 用 `pwsh.exe` 可正常拉起 STT server 和 overlay。
 - 修复策略：启停命令仍返回 argv list、仍用 `-File`、仍 `shell=False`，但优先解析 `pwsh.exe`，找不到才回退 `powershell.exe`；不修改 `start_xiaohuang.ps1` / `stop_xiaohuang.ps1` / `run_env.ps1`。
+- Readiness 修复：启动/重启不再只看 PowerShell returncode；必须等待 STT server 进程、voice_overlay 进程和 `/health` ready/model_loaded。
+- 防重复点击：`scripts/tray_app.py` 新增 `OperationGuard`，启动/停止/重启同一时间只允许一个操作线程；重复点击只提示当前操作进行中。
+- 停止确认：停止命令完成后等待 STT server / voice_overlay 都消失；超时提示查看 `logs/tray_app.log`。
 
 ### V1.1.3B 真实验证结果（2026-05-02）
 

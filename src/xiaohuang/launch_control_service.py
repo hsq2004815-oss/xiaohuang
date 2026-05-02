@@ -3,9 +3,15 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Sequence
+
+
+DEFAULT_HEALTH_URL = "http://127.0.0.1:8766/health"
 
 
 @dataclass(frozen=True)
@@ -35,6 +41,21 @@ class ProcessStatus:
     @property
     def is_partial(self) -> bool:
         return self.any_running and not self.all_running
+
+
+@dataclass(frozen=True)
+class HealthCheckResult:
+    ready: bool
+    summary: str
+
+
+@dataclass(frozen=True)
+class WaitResult:
+    ok: bool
+    reason: str
+    status: ProcessStatus
+    health: HealthCheckResult | None
+    elapsed_seconds: float
 
 
 def get_project_root() -> Path:
@@ -182,6 +203,82 @@ def summarize_process_status(processes: Sequence[XiaoHuangProcess]) -> ProcessSt
         voice_overlay_running=voice_overlay_running,
         process_count=len(processes),
     )
+
+
+def check_stt_health(health_url: str = DEFAULT_HEALTH_URL, *, timeout_seconds: float = 2.0) -> HealthCheckResult:
+    try:
+        with urllib.request.urlopen(health_url, timeout=timeout_seconds) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        return HealthCheckResult(ready=False, summary=f"health_unavailable:{type(exc).__name__}")
+
+    ok = bool(payload.get("ok"))
+    status = str(payload.get("status") or "")
+    model_loaded = bool(payload.get("model_loaded"))
+    ready = ok and (model_loaded or status.lower() == "ready")
+    return HealthCheckResult(
+        ready=ready,
+        summary=f"ok={ok} status={status or 'unknown'} model_loaded={model_loaded}",
+    )
+
+
+def wait_until_ready(
+    project_root: Path,
+    *,
+    timeout_seconds: float = 90.0,
+    poll_interval_seconds: float = 2.0,
+    health_url: str = DEFAULT_HEALTH_URL,
+    process_detector: Callable[[Path], Sequence[XiaoHuangProcess]] = detect_xiaohuang_processes,
+    health_checker: Callable[[str], HealthCheckResult] = check_stt_health,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> WaitResult:
+    started_at = monotonic()
+    deadline = started_at + timeout_seconds
+    last_status = summarize_process_status([])
+    last_health: HealthCheckResult | None = None
+
+    while True:
+        now = monotonic()
+        processes = process_detector(project_root)
+        last_status = summarize_process_status(processes)
+        last_health = health_checker(health_url)
+        if last_status.is_fully_running and last_health.ready:
+            return WaitResult(True, "ready", last_status, last_health, now - started_at)
+        if now >= deadline:
+            reason = "timeout"
+            if not last_status.stt_server_running:
+                reason = "timeout_stt_server_missing"
+            elif not last_status.voice_overlay_running:
+                reason = "timeout_voice_overlay_missing"
+            elif not last_health.ready:
+                reason = "timeout_health_not_ready"
+            return WaitResult(False, reason, last_status, last_health, now - started_at)
+        sleeper(min(poll_interval_seconds, max(0.0, deadline - now)))
+
+
+def wait_until_stopped(
+    project_root: Path,
+    *,
+    timeout_seconds: float = 30.0,
+    poll_interval_seconds: float = 1.0,
+    process_detector: Callable[[Path], Sequence[XiaoHuangProcess]] = detect_xiaohuang_processes,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> WaitResult:
+    started_at = monotonic()
+    deadline = started_at + timeout_seconds
+    last_status = summarize_process_status([])
+
+    while True:
+        now = monotonic()
+        processes = process_detector(project_root)
+        last_status = summarize_process_status(processes)
+        if not last_status.any_running:
+            return WaitResult(True, "stopped", last_status, None, now - started_at)
+        if now >= deadline:
+            return WaitResult(False, "timeout_processes_still_running", last_status, None, now - started_at)
+        sleeper(min(poll_interval_seconds, max(0.0, deadline - now)))
 
 
 def format_status_message(status: ProcessStatus, config_path: Path) -> str:

@@ -263,6 +263,178 @@ class V114CLaunchControlTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["shell"], False)
         self.assertEqual(calls[0][1]["cwd"], str(PROJECT_ROOT))
 
+    def test_wait_until_ready_returns_true_when_processes_and_health_ready(self):
+        from xiaohuang.launch_control_service import (
+            HealthCheckResult,
+            XiaoHuangProcess,
+            wait_until_ready,
+        )
+
+        result = wait_until_ready(
+            Path(r"E:\Projects\xiaohuang"),
+            timeout_seconds=1,
+            process_detector=lambda root: [
+                XiaoHuangProcess(1, "stt_server"),
+                XiaoHuangProcess(2, "voice_overlay"),
+            ],
+            health_checker=lambda url: HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            monotonic=lambda: 0.0,
+            sleeper=lambda seconds: None,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.reason, "ready")
+
+    def test_wait_until_ready_eventually_succeeds_after_health_failure(self):
+        from xiaohuang.launch_control_service import (
+            HealthCheckResult,
+            XiaoHuangProcess,
+            wait_until_ready,
+        )
+
+        now = [0.0]
+        health_results = [
+            HealthCheckResult(False, "health_unavailable"),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+        ]
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        def health_checker(url):
+            return health_results.pop(0)
+
+        result = wait_until_ready(
+            Path(r"E:\Projects\xiaohuang"),
+            timeout_seconds=2,
+            poll_interval_seconds=0.5,
+            process_detector=lambda root: [
+                XiaoHuangProcess(1, "stt_server"),
+                XiaoHuangProcess(2, "voice_overlay"),
+            ],
+            health_checker=health_checker,
+            monotonic=lambda: now[0],
+            sleeper=sleep,
+        )
+
+        self.assertTrue(result.ok)
+
+    def test_wait_until_ready_times_out_with_reason(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, wait_until_ready
+
+        now = [0.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        result = wait_until_ready(
+            Path(r"E:\Projects\xiaohuang"),
+            timeout_seconds=1,
+            poll_interval_seconds=0.5,
+            process_detector=lambda root: [],
+            health_checker=lambda url: HealthCheckResult(False, "health_unavailable"),
+            monotonic=lambda: now[0],
+            sleeper=sleep,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reason, "timeout_stt_server_missing")
+
+    def test_wait_until_ready_does_not_treat_command_returncode_as_ready(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, wait_until_ready
+
+        now = [0.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        result = wait_until_ready(
+            Path(r"E:\Projects\xiaohuang"),
+            timeout_seconds=1,
+            poll_interval_seconds=0.5,
+            process_detector=lambda root: [],
+            health_checker=lambda url: HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            monotonic=lambda: now[0],
+            sleeper=sleep,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertNotEqual(result.reason, "ready")
+
+    def test_wait_until_stopped_returns_true_when_processes_gone(self):
+        from xiaohuang.launch_control_service import wait_until_stopped
+
+        result = wait_until_stopped(
+            Path(r"E:\Projects\xiaohuang"),
+            timeout_seconds=1,
+            process_detector=lambda root: [],
+            monotonic=lambda: 0.0,
+            sleeper=lambda seconds: None,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.reason, "stopped")
+
+    def test_wait_until_stopped_times_out_when_processes_remain(self):
+        from xiaohuang.launch_control_service import XiaoHuangProcess, wait_until_stopped
+
+        now = [0.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        result = wait_until_stopped(
+            Path(r"E:\Projects\xiaohuang"),
+            timeout_seconds=1,
+            poll_interval_seconds=0.5,
+            process_detector=lambda root: [XiaoHuangProcess(1, "voice_overlay")],
+            monotonic=lambda: now[0],
+            sleeper=sleep,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reason, "timeout_processes_still_running")
+
+    def test_operation_guard_blocks_duplicate_operation(self):
+        import tray_app
+
+        guard = tray_app.OperationGuard()
+        started, current = guard.begin("启动")
+        second_started, second_current = guard.begin("重启")
+
+        self.assertTrue(started)
+        self.assertEqual(current, "启动")
+        self.assertFalse(second_started)
+        self.assertEqual(second_current, "启动")
+        guard.finish()
+        self.assertIsNone(guard.current_operation)
+
+    def test_restart_order_is_stop_start_wait_ready(self):
+        import tray_app
+
+        events = []
+
+        original_run_command = tray_app._run_command
+        original_wait_stopped = tray_app._wait_stopped_or_report
+        original_wait_ready = tray_app._wait_ready_or_report
+        original_show_message = tray_app.show_message
+        original_sleep = tray_app.time.sleep
+        try:
+            tray_app._run_command = lambda command, label, **kwargs: events.append(label) or True
+            tray_app._wait_stopped_or_report = lambda message, **kwargs: events.append("wait_stopped") or True
+            tray_app._wait_ready_or_report = lambda message, **kwargs: events.append("wait_ready") or True
+            tray_app.show_message = lambda *args, **kwargs: None
+            tray_app.time.sleep = lambda seconds: None
+            tray_app.restart_xiaohuang(Path(r"C:\Users\tester\.xiaohuang\config.json"), project_root=Path(r"E:\Projects\xiaohuang"))
+        finally:
+            tray_app._run_command = original_run_command
+            tray_app._wait_stopped_or_report = original_wait_stopped
+            tray_app._wait_ready_or_report = original_wait_ready
+            tray_app.show_message = original_show_message
+            tray_app.time.sleep = original_sleep
+
+        self.assertEqual(events, ["重启小黄：停止", "wait_stopped", "重启小黄：启动", "wait_ready"])
+
     def test_process_row_parser_detects_stt_and_overlay(self):
         from xiaohuang.launch_control_service import parse_process_rows, summarize_process_status
 

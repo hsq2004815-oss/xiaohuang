@@ -23,11 +23,42 @@ from xiaohuang.launch_control_service import (
     build_start_command,
     build_start_sequence_for_status,
     build_stop_command,
+    DEFAULT_HEALTH_URL,
     detect_xiaohuang_processes,
     ensure_log_dir as ensure_launch_log_dir,
     format_status_message,
     summarize_process_status,
+    wait_until_ready,
+    wait_until_stopped,
 )
+
+READINESS_TIMEOUT_SECONDS = 90.0
+STOP_TIMEOUT_SECONDS = 30.0
+
+
+class OperationGuard:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._current_operation: str | None = None
+
+    def begin(self, operation_name: str) -> tuple[bool, str | None]:
+        with self._lock:
+            if self._current_operation:
+                return False, self._current_operation
+            self._current_operation = operation_name
+            return True, operation_name
+
+    def finish(self) -> None:
+        with self._lock:
+            self._current_operation = None
+
+    @property
+    def current_operation(self) -> str | None:
+        with self._lock:
+            return self._current_operation
+
+
+OPERATION_GUARD = OperationGuard()
 
 
 def get_default_config_path(env: Mapping[str, str] | None = None) -> Path:
@@ -133,6 +164,21 @@ def _run_background(name: str, target, *args) -> None:
     thread.start()
 
 
+def _run_guarded_background(operation_name: str, target, *args) -> None:
+    started, current_operation = OPERATION_GUARD.begin(operation_name)
+    if not started:
+        show_message("操作进行中", f"正在执行{current_operation}操作，请稍候。")
+        return
+
+    def _runner() -> None:
+        try:
+            target(*args)
+        finally:
+            OPERATION_GUARD.finish()
+
+    _run_background(f"xiaohuang-{operation_name}", _runner)
+
+
 def _sanitize_process_output(text: str, *, max_chars: int = 3000) -> str:
     redacted = re.sub(r"sk-[A-Za-z0-9_\-]{8,}", "sk-***", text)
     redacted = re.sub(r"(DEEPSEEK_API_KEY\s*=\s*)\S+", r"\1***", redacted)
@@ -182,6 +228,55 @@ def get_process_status(*, project_root: Path = PROJECT_ROOT):
     return summarize_process_status(detect_xiaohuang_processes(project_root))
 
 
+def _log_wait_result(operation: str, result, *, project_root: Path = PROJECT_ROOT) -> None:
+    health_summary = result.health.summary if result.health else "none"
+    write_tray_log(
+        (
+            f"{operation} wait_result ok={result.ok} reason={result.reason} "
+            f"elapsed={result.elapsed_seconds:.1f}s "
+            f"stt={result.status.stt_server_running} overlay={result.status.voice_overlay_running} "
+            f"health={_sanitize_process_output(health_summary)}"
+        ),
+        project_root=project_root,
+    )
+
+
+def _wait_ready_or_report(success_message: str, *, project_root: Path = PROJECT_ROOT) -> bool:
+    write_tray_log("readiness polling started", project_root=project_root)
+    result = wait_until_ready(
+        project_root,
+        timeout_seconds=READINESS_TIMEOUT_SECONDS,
+        poll_interval_seconds=2.0,
+        health_url=DEFAULT_HEALTH_URL,
+    )
+    _log_wait_result("readiness", result, project_root=project_root)
+    if result.ok:
+        show_message("小黄已就绪", success_message)
+        return True
+    show_message(
+        "启动未就绪",
+        "启动命令已发出，但服务未在限定时间内就绪，请查看 logs/tray_app.log。",
+        error=True,
+    )
+    return False
+
+
+def _wait_stopped_or_report(success_message: str | None, *, project_root: Path = PROJECT_ROOT) -> bool:
+    write_tray_log("stop polling started", project_root=project_root)
+    result = wait_until_stopped(
+        project_root,
+        timeout_seconds=STOP_TIMEOUT_SECONDS,
+        poll_interval_seconds=1.0,
+    )
+    _log_wait_result("stopped", result, project_root=project_root)
+    if result.ok:
+        if success_message:
+            show_message("小黄已停止", success_message)
+        return True
+    show_message("停止未确认", "停止命令已发出，但进程未在限定时间内退出，请查看 logs/tray_app.log。", error=True)
+    return False
+
+
 def start_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:
     status = get_process_status(project_root=project_root)
     if status.is_fully_running:
@@ -196,6 +291,8 @@ def start_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> 
             project_root=project_root,
         )
         show_message("启动小黄", "检测到小黄处于不完整状态，正在重新启动完整链路。")
+    else:
+        show_message("启动小黄", "正在启动小黄，请稍候。首次加载 STT 模型可能需要十几秒。")
 
     for index, command in enumerate(commands):
         label = "启动小黄"
@@ -205,25 +302,31 @@ def start_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> 
         if not _run_command(command, label, project_root=project_root, timeout=timeout):
             return
         if index == 0 and len(commands) > 1:
+            if not _wait_stopped_or_report(None, project_root=project_root):
+                return
             time.sleep(2)
 
     if commands:
-        show_message("启动小黄", "启动命令已完成。")
+        _wait_ready_or_report("小黄已启动并就绪，可以说“贾维斯”唤醒。", project_root=project_root)
 
 
 def stop_xiaohuang(*, project_root: Path = PROJECT_ROOT) -> None:
+    show_message("停止小黄", "正在停止小黄，请稍候。")
     command = build_stop_command(project_root)
     if _run_command(command, "停止小黄", project_root=project_root):
-        show_message("停止小黄", "停止命令已完成。")
+        _wait_stopped_or_report("小黄已停止，托盘仍在运行。", project_root=project_root)
 
 
 def restart_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:
+    show_message("重启小黄", "正在重启小黄，请稍候。首次加载 STT 模型可能需要十几秒。")
     stop_command, start_command = build_restart_commands(project_root, config_path)
     if not _run_command(stop_command, "重启小黄：停止", project_root=project_root, timeout=60):
         return
+    if not _wait_stopped_or_report(None, project_root=project_root):
+        return
     time.sleep(2)
     if _run_command(start_command, "重启小黄：启动", project_root=project_root):
-        show_message("重启小黄", "重启命令已完成。")
+        _wait_ready_or_report("重启完成，小黄已就绪。", project_root=project_root)
 
 
 def show_about(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:
@@ -270,9 +373,9 @@ def run_tray(config_path: Path) -> int:
         image,
         "小黄托盘控制器",
         menu=pystray.Menu(
-            pystray.MenuItem("启动小黄", lambda _icon, _item: _run_background("xiaohuang-start", start_xiaohuang, config_path)),
-            pystray.MenuItem("停止小黄", lambda _icon, _item: _run_background("xiaohuang-stop", stop_xiaohuang)),
-            pystray.MenuItem("重启小黄", lambda _icon, _item: _run_background("xiaohuang-restart", restart_xiaohuang, config_path)),
+            pystray.MenuItem("启动小黄", lambda _icon, _item: _run_guarded_background("启动", start_xiaohuang, config_path)),
+            pystray.MenuItem("停止小黄", lambda _icon, _item: _run_guarded_background("停止", stop_xiaohuang)),
+            pystray.MenuItem("重启小黄", lambda _icon, _item: _run_guarded_background("重启", restart_xiaohuang, config_path)),
             pystray.MenuItem("打开设置", lambda _icon, _item: open_settings(config_path)),
             pystray.MenuItem("打开日志目录", lambda _icon, _item: open_log_dir()),
             pystray.MenuItem("关于/状态", lambda _icon, _item: show_about(config_path)),
