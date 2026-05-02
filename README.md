@@ -196,3 +196,11 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 # 只校验不打开窗口
 & "F:\for_xiaohuang\conda310\python.exe" scripts\settings_ui.py --check
 ```
+
+## Tray App
+
+V1.1.4B 提供最小托盘入口，只支持打开设置、打开日志目录和退出托盘。它不会启动、停止或重启小黄主链路；这些能力留到 V1.1.4C。
+
+```powershell
+& "F:\for_xiaohuang\conda310\python.exe" scripts\tray_app.py --config "$env:USERPROFILE\.xiaohuang\config.json"
+```

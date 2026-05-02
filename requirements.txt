@@ -3,6 +3,8 @@ PyYAML>=6.0
 sounddevice>=0.4.6
 soundfile>=0.12.1
 edge-tts
+pystray>=0.19.5
+Pillow>=10.0
 
 # Optional STT stack for scripts/transcribe_test.py:
 # funasr

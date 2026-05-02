@@ -75,6 +75,59 @@ class ConfigServiceTests(unittest.TestCase):
             self.assertEqual(config["recording"]["duration_seconds"], 5)
 
 
+class V114BTrayAppTests(unittest.TestCase):
+    def test_tray_app_help_runs(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "scripts/tray_app.py", "--help"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--config", result.stdout)
+
+    def test_default_config_path_uses_userprofile(self):
+        import tray_app
+        config_path = tray_app.get_default_config_path(env={"USERPROFILE": r"C:\Users\tester"})
+        self.assertEqual(config_path, Path(r"C:\Users\tester") / ".xiaohuang" / "config.json")
+
+    def test_ensure_log_dir_creates_project_logs_dir(self):
+        import tray_app
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_dir = tray_app.ensure_log_dir(Path(temp_dir))
+            self.assertTrue(log_dir.exists())
+            self.assertEqual(log_dir, Path(temp_dir) / "logs")
+
+    def test_build_settings_command_does_not_include_api_key(self):
+        import tray_app
+        command = tray_app.build_settings_command(
+            Path(r"C:\Users\tester\.xiaohuang\config.json"),
+            python_executable="python.exe",
+            project_root=Path(r"E:\Projects\xiaohuang"),
+        )
+        joined = " ".join(str(part) for part in command)
+        self.assertIn("settings_ui.py", joined)
+        self.assertIn("--config", command)
+        self.assertNotIn("sk-", joined)
+        self.assertNotIn("secrets.ps1", joined)
+        self.assertNotIn("DEEPSEEK_API_KEY=", joined)
+
+    def test_exit_tray_only_stops_tray_icon(self):
+        import tray_app
+
+        class FakeIcon:
+            def __init__(self):
+                self.stopped = False
+
+            def stop(self):
+                self.stopped = True
+
+        fake_icon = FakeIcon()
+        tray_app.exit_tray(fake_icon)
+        self.assertTrue(fake_icon.stopped)
+
+
 class AudioCaptureServiceTests(unittest.TestCase):
     def test_build_recording_path_uses_timestamp_and_wav_suffix(self):
         output_dir = Path("data") / "recordings"

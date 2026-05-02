@@ -2,12 +2,12 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.4A — Resident / Tray / Launch Control 设计文档
+- **阶段**：V1.1.4B — 最小托盘入口实现
 - **最新功能 commit**：`dd87fb3` Stabilize Settings UI verification before publishing
 - **最新文档 commit**：`cb8522d` docs: record V1.1.3C final validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`（提交文档前）
-- **工作区**：docs-only V1.1.4 tray launch control design 待提交；运行产物均 ignored
+- **工作区**：V1.1.4B tray_app.py 最小托盘入口待验证/提交；运行产物均 ignored
 - **测试**：262 tests OK，compileall OK，settings_ui/voice_overlay help OK，settings_ui --check PASS；最终本机真人验证通过
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
@@ -30,6 +30,17 @@
 - 设计覆盖：启动/停止/重启小黄、打开 Settings UI、打开 logs 目录、状态显示、安全退出、进程识别、配置路径、日志、风险和验收。
 - 推荐入口：未来新增 `scripts/tray_app.py`；可选服务 `process_status_service.py` / `launch_control_service.py`。
 - 详细设计见 `docs/V1.1.4_TRAY_LAUNCH_CONTROL_DESIGN.md`。
+
+### V1.1.4B 实现记录（2026-05-02）
+
+- 新增 `scripts/tray_app.py`，使用 pystray + Pillow 创建最小托盘入口。
+- 菜单只包含：打开设置、打开日志目录、关于/状态、退出托盘。
+- `打开设置` 调用当前 Python 运行 `scripts/settings_ui.py --config <config_path>`，不阻塞托盘主线程。
+- `打开日志目录` 创建并打开 `logs/`。
+- `退出托盘` 只停止托盘图标，不调用 `stop_xiaohuang.ps1`，不停止 STT/overlay。
+- 新增依赖：`pystray>=0.19.5`、`Pillow>=10.0`。
+- 自动验证：267 tests OK、compileall OK、tray/settings/overlay help OK。
+- 启动 smoke：`tray_app.py --config config_settings_ui_test.json` 可启动为常驻进程；未完成右键菜单人工点击验证。
 
 ### V1.1.3B 真实验证结果（2026-05-02）
 
