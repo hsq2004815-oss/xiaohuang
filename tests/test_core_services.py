@@ -2133,5 +2133,42 @@ class V111TtsBackgroundPlaybackTests(unittest.TestCase):
                 self.assertTrue(any("playback failed" in w for w in warns))
 
 
+class V112LatencyMetricsTests(unittest.TestCase):
+    def test_tracker_start_end_produces_ms(self):
+        from xiaohuang.latency_metrics_service import LatencyTracker
+        t = LatencyTracker(clock=iter([0.0, 0.25]).__next__)
+        t.start("test")
+        t.end("test")
+        self.assertEqual(t.summary_ms(), {"test": 250.0})
+
+    def test_tracker_end_without_start_no_crash(self):
+        from xiaohuang.latency_metrics_service import LatencyTracker
+        t = LatencyTracker()
+        t.end("nonexistent")
+        self.assertEqual(t.summary_ms(), {})
+
+    def test_tracker_double_end_no_change(self):
+        from xiaohuang.latency_metrics_service import LatencyTracker
+        clock = iter([0.0, 0.1, 0.3]).__next__
+        t = LatencyTracker(clock=clock)
+        t.start("x")
+        t.end("x")
+        t.end("x")
+        self.assertEqual(t.summary_ms(), {"x": 100.0})
+
+    def test_format_latency_summary_output(self):
+        from xiaohuang.latency_metrics_service import format_latency_summary
+        s = format_latency_summary({"llm_ms": 820.5, "turn_total_ms": 9820.4}, turn=1, source="llm")
+        self.assertIn("turn=1", s)
+        self.assertIn("source=llm", s)
+        self.assertIn("llm_ms=820.5", s)
+        self.assertIn("Overlay latency:", s)
+
+    def test_format_latency_summary_no_none(self):
+        from xiaohuang.latency_metrics_service import format_latency_summary
+        s = format_latency_summary({}, turn=1)
+        self.assertNotIn("None", s)
+
+
 if __name__ == "__main__":
     unittest.main()

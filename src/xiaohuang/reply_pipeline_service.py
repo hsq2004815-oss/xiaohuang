@@ -44,7 +44,10 @@ def generate_reply_pipeline_result(
     on_debug: Callable[[str], None] | None = None,
     on_before_tts: Callable[[str], None] | None = None,
     playback_warn: Callable[[str], None] | None = None,
+    latency_tracker: Any | None = None,
 ) -> ReplyPipelineResult:
+    _track = _make_track(latency_tracker)
+
     task = route_task(command_text)
     if task.is_task_request:
         reply_text = TOOL_UNAVAILABLE_REPLY
@@ -59,9 +62,11 @@ def generate_reply_pipeline_result(
         )
 
     if config.enable_llm and config.llm_config is not None and config.llm_config.is_configured:
+        _track("llm_ms", start=True)
         reply_result = llm_reply_func(
             command_text, config=config.llm_config, on_debug=on_debug,
         )
+        _track("llm_ms", start=False)
         reply_text = reply_result.text
         reply_source = reply_result.source
     elif config.enable_llm:
@@ -73,7 +78,7 @@ def generate_reply_pipeline_result(
 
     source_note = _source_note_for_source(reply_source)
     tts_path, tts_played, tts_error = _run_tts(
-        reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts,
+        reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts, latency_tracker=latency_tracker,
     )
 
     return ReplyPipelineResult(
@@ -93,13 +98,19 @@ def _run_tts(
     play_audio_func: Callable[..., bool],
     playback_warn: Callable[[str], None] | None,
     on_before_tts: Callable[[str], None] | None,
+    latency_tracker: Any | None = None,
 ) -> tuple[Path | None, bool, str | None]:
+    _track = _make_track(latency_tracker)
     if not config.enable_tts:
         return None, False, None
     _safe_call(on_before_tts, reply_text)
     try:
+        _track("tts_synthesis_ms", start=True)
         tts_path = tts_func(reply_text, config.tts_output_dir, voice=config.tts_voice)
+        _track("tts_synthesis_ms", start=False)
+        _track("tts_playback_ms", start=True)
         tts_played = _call_play_audio(play_audio_func, tts_path, playback_warn)
+        _track("tts_playback_ms", start=False)
         if not tts_played:
             return tts_path, False, "Audio playback returned False"
         return tts_path, True, None
@@ -107,6 +118,17 @@ def _run_tts(
         return None, False, str(exc)
     except Exception as exc:
         return None, False, f"TTS failed: {exc}"
+
+
+def _make_track(tracker: Any | None):
+    if tracker is None:
+        return lambda name, **kw: None
+    def _t(name, *, start=False):
+        if start:
+            tracker.start(name)
+        else:
+            tracker.end(name)
+    return _t
 
 
 def _safe_call(callback: Callable[..., None] | None, *args: Any) -> None:

@@ -12,6 +12,10 @@ SRC_DIR = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from xiaohuang.config_service import load_config
+from xiaohuang.latency_metrics_service import (
+    LatencyTracker,
+    format_latency_summary,
+)
 from xiaohuang.conversation_session_service import (
     SESSION_EXIT_REPLY,
     ConversationSessionConfig,
@@ -440,6 +444,8 @@ def _run_overlay_loop(
 
     while not stop_event.is_set():
         try:
+            turn_tracker = LatencyTracker()
+
             on_wake_shown: Callable[[], None] | None = None
             if resident_hidden:
                 on_wake_shown = lambda: (
@@ -455,6 +461,7 @@ def _run_overlay_loop(
                 on_command_text=(lambda text: _safe_print(f"Command transcription: {text}")) if debug else None,
                 on_wake_detected=on_wake_shown,
                 request_transcription_func=_overlay_stt,
+                latency_tracker=turn_tracker,
             )
             if stop_event.is_set():
                 break
@@ -474,11 +481,16 @@ def _run_overlay_loop(
                 on_debug=_make_llm_debug_handler(logger, debug),
                 on_before_tts=lambda text: app.thread_safe_set_state(STATE_SPEAKING, text),
                 playback_warn=lambda message: _playback_warning(logger, message),
+                latency_tracker=turn_tracker,
             )
 
             if debug:
                 _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
                 _safe_print(f"Reply source: {pipeline_result.reply_source}")
+                summary = turn_tracker.summary_ms()
+                if summary:
+                    _safe_print(format_latency_summary(summary, turn=1, source=pipeline_result.reply_source))
+            logger.info(format_latency_summary(turn_tracker.summary_ms(), turn=1, source=pipeline_result.reply_source))
             logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
             app.thread_safe_set_state(
                 STATE_RESULT,
@@ -495,6 +507,7 @@ def _run_overlay_loop(
             # --- conversation session: listen for follow-up commands ---
             turn_count = 1
             while should_continue_session(turn_count, session_config) and not stop_event.is_set():
+                st = LatencyTracker()
                 if debug:
                     _safe_print(f"Session turn {turn_count + 1}/{session_config.max_turns}")
                 app.thread_safe_set_state(STATE_LISTENING, "你还可以继续说")
@@ -525,9 +538,11 @@ def _run_overlay_loop(
                             on_debug=_make_llm_debug_handler(logger, debug),
                             on_before_tts=lambda t: app.thread_safe_set_state(STATE_SPEAKING, t),
                             playback_warn=lambda m: _playback_warning(logger, m),
+                            latency_tracker=st,
                         )
                     _safe_print(f"XiaoHuang: {pipeline_result.reply_text}")
                     logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
+                    logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
                     app.thread_safe_set_state(
                         STATE_RESULT,
                         build_reply_result_text(next_text, pipeline_result.reply_text, pipeline_result.source_note),
@@ -541,9 +556,11 @@ def _run_overlay_loop(
                     on_debug=_make_llm_debug_handler(logger, debug),
                     on_before_tts=lambda t: app.thread_safe_set_state(STATE_SPEAKING, t),
                     playback_warn=lambda m: _playback_warning(logger, m),
+                    latency_tracker=st,
                 )
                 _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
                 _safe_print(f"Reply source: {pipeline_result.reply_source}")
+                logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
                 logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
                 app.thread_safe_set_state(
                     STATE_RESULT,

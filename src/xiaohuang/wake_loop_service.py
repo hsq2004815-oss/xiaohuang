@@ -64,13 +64,17 @@ def run_wake_loop_once(
     build_recording_path_func: Callable[..., Path] = build_recording_path,
     delete_wake_recording_func: Callable[[Path], None] | None = None,
     before_command_func: Callable[[], None] | None = None,
+    latency_tracker: Any | None = None,
 ) -> WakeLoopResult:
     wake_dir = options.recording_dir / "wake"
     wake_phrases = parse_wake_phrases(options.wake_phrases)
 
+    _track = _latency_tracker(latency_tracker)
+
     while True:
         _emit(on_state_change, STATE_WAKE_CHECKING)
         wake_path = build_recording_path_func(wake_dir)
+        _track("wake_record_ms", start=True)
         record_wav_func(
             wake_path,
             duration_seconds=options.wake_window_seconds,
@@ -79,6 +83,8 @@ def run_wake_loop_once(
             device_id=options.device_id,
         )
         try:
+            _track("wake_record_ms", start=False)
+            _track("wake_stt_ms", start=True)
             wake_response = _call_transcription(
                 request_transcription_func, wake_path, options.server_url, STT_MODE_WAKE_CHECK,
             )
@@ -95,12 +101,14 @@ def run_wake_loop_once(
         if not wake_match.detected:
             continue
 
+        _track("wake_stt_ms", start=False)
         _emit(on_state_change, STATE_WAKE_DETECTED)
         _safe_call(on_wake_detected)
         if before_command_func is not None:
             before_command_func()
         _emit(on_state_change, STATE_LISTENING)
         command_path = build_recording_path_func(options.recording_dir)
+        _track("command_record_ms", start=True)
         command_result = record_until_silence_func(
             command_path,
             device_id=options.device_id,
@@ -110,6 +118,8 @@ def run_wake_loop_once(
             silence_seconds=options.silence_seconds,
         )
         _emit(on_state_change, STATE_TRANSCRIBING)
+        _track("command_record_ms", start=False)
+        _track("command_stt_ms", start=True)
         command_response = _call_transcription(
                 request_transcription_func, command_result.path, options.server_url, STT_MODE_COMMAND,
             )
@@ -117,6 +127,7 @@ def run_wake_loop_once(
         if on_command_text is not None:
             on_command_text(command_text)
         _emit(on_state_change, STATE_RESULT, command_text)
+        _track("command_stt_ms", start=False)
         return WakeLoopResult(
             wake_text=wake_text,
             command_text=command_text,
@@ -136,6 +147,17 @@ def _call_transcription(
         return func(wav_path, server_url, mode=mode)
     except TypeError:
         return func(wav_path, server_url)
+
+
+def _latency_tracker(tracker: Any | None):
+    if tracker is None:
+        return lambda name, **kw: None
+    def _track(name, *, start=False):
+        if start:
+            tracker.start(name)
+        else:
+            tracker.end(name)
+    return _track
 
 
 def _safe_call(callback: VoidCallback | None) -> None:
