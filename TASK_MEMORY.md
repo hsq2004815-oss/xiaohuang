@@ -2,13 +2,13 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.4B — 最小托盘入口真人验证通过
-- **最新功能 commit**：`2eb2c5e` feat: add minimal tray app
-- **最新文档 commit**：待提交 `docs: record V1.1.4B tray validation`
+- **阶段**：V1.1.4C — 托盘启动 / 停止 / 重启控制实现中
+- **最新功能 commit**：待提交 `feat: add tray launch controls`
+- **最新文档 commit**：`65927ea` docs: record V1.1.4B tray validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
-- **分支**：`main...origin/main`（提交 V1.1.4B 验证文档前）
-- **工作区**：docs-only 记录 V1.1.4B 真人验证结果；运行产物均 ignored
-- **测试**：V1.1.4B 实现阶段已通过 267 tests OK、compileall OK、tray/settings/overlay help OK；本轮为文档收口
+- **分支**：`main...origin/main`（V1.1.4C 开发前）
+- **工作区**：V1.1.4C tray launch controls；运行产物均 ignored
+- **测试**：274 tests OK、compileall OK、tray/settings/overlay help OK；tray_app 受控启动 smoke OK；真人托盘菜单点击需用户本机确认
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
 
@@ -44,6 +44,16 @@
 - 最终真人验证已通过：托盘图标出现、右键菜单打开、打开 Settings UI、读取 `config_settings_ui_test.json`、打开 `logs/`、关于/状态、退出托盘均正常。
 - 边界验证通过：V1.1.4B 没有启动/停止/重启小黄；退出托盘不会停止 STT server / voice_overlay；未影响 voice_overlay / wake / session / TTS / LLM router 主链路。
 - 详细记录见 `docs/V1.1.4B_TRAY_VALIDATION.md`。
+
+### V1.1.4C 实现记录（2026-05-02）
+
+- 新增 `src/xiaohuang/launch_control_service.py`，封装 PowerShell 启停命令构造、重启顺序、日志目录、进程检测和状态摘要。
+- `scripts/tray_app.py` 菜单新增：启动小黄、停止小黄、重启小黄。
+- 启动小黄会先检测 STT server / voice_overlay；任一已运行时提示“已在运行”，避免重复启动。
+- 启动命令会传递当前托盘 `--config` 到 `start_xiaohuang.ps1 -ConfigPath <config_path>`，避免丢失 `config_settings_ui_test.json`。
+- 停止命令调用 `stop_xiaohuang.ps1 -StopSttServer`；退出托盘仍只退出托盘程序，不停止小黄。
+- 本阶段未修改 PowerShell、voice_overlay、wake、session、TTS、LLM router，也未新增依赖。
+- 自动验证：274 tests OK、compileall OK、tray_app/settings_ui/voice_overlay help OK；托盘进程受控启动 5 秒 smoke 后按 PID 停止，未触发小黄启动/停止菜单。
 
 ### V1.1.3B 真实验证结果（2026-05-02）
 
@@ -98,7 +108,7 @@
 | V1.1.3B | LLM Provider Router ✅ 已完成 |
 | V1.1.3C | Settings UI Prototype ✅ 最终真人验证通过，阶段性收口 |
 | V1.1.4B | 最小托盘入口 ✅ 已实现并真人验证通过 |
-| V1.1.4C | 托盘启动 / 停止 / 重启控制，待实现 |
+| V1.1.4C | 托盘启动 / 停止 / 重启控制，自动验证后需真人验证 |
 | V1.2 | Wake Engine Abstraction |
 
 ---

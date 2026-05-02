@@ -127,6 +127,89 @@ class V114BTrayAppTests(unittest.TestCase):
         tray_app.exit_tray(fake_icon)
         self.assertTrue(fake_icon.stopped)
 
+    def test_tray_process_output_redacts_api_key(self):
+        import tray_app
+
+        text = tray_app._sanitize_process_output("DEEPSEEK_API_KEY = sk-abcdefghijklmnopqrstuvwxyz")
+
+        self.assertNotIn("sk-abcdefghijklmnopqrstuvwxyz", text)
+        self.assertIn("***", text)
+
+
+class V114CLaunchControlTests(unittest.TestCase):
+    def test_build_start_command_uses_start_script_and_config_path(self):
+        from xiaohuang.launch_control_service import build_start_command
+
+        command = build_start_command(
+            Path(r"E:\Projects\xiaohuang"),
+            Path(r"C:\Users\tester\.xiaohuang\config_settings_ui_test.json"),
+        )
+
+        joined = " ".join(command)
+        self.assertIn("start_xiaohuang.ps1", joined)
+        self.assertIn("-ConfigPath", command)
+        self.assertIn(r"C:\Users\tester\.xiaohuang\config_settings_ui_test.json", command)
+
+    def test_build_stop_command_uses_stop_script_and_stops_stt(self):
+        from xiaohuang.launch_control_service import build_stop_command
+
+        command = build_stop_command(Path(r"E:\Projects\xiaohuang"))
+
+        joined = " ".join(command)
+        self.assertIn("stop_xiaohuang.ps1", joined)
+        self.assertIn("-StopSttServer", command)
+
+    def test_build_restart_commands_stop_before_start(self):
+        from xiaohuang.launch_control_service import build_restart_commands
+
+        commands = build_restart_commands(
+            Path(r"E:\Projects\xiaohuang"),
+            Path(r"C:\Users\tester\.xiaohuang\config.json"),
+        )
+
+        self.assertEqual(len(commands), 2)
+        self.assertIn("stop_xiaohuang.ps1", " ".join(commands[0]))
+        self.assertIn("start_xiaohuang.ps1", " ".join(commands[1]))
+
+    def test_status_summary_handles_no_processes(self):
+        from xiaohuang.launch_control_service import summarize_process_status
+
+        status = summarize_process_status([])
+
+        self.assertFalse(status.stt_server_running)
+        self.assertFalse(status.voice_overlay_running)
+        self.assertFalse(status.any_running)
+        self.assertEqual(status.process_count, 0)
+
+    def test_process_row_parser_detects_stt_and_overlay(self):
+        from xiaohuang.launch_control_service import parse_process_rows, summarize_process_status
+
+        rows = [
+            {"ProcessId": 1001, "CommandLine": r'python E:\Projects\xiaohuang\scripts\stt_server.py --port 8766'},
+            {"ProcessId": 1002, "CommandLine": r'python E:\Projects\xiaohuang\scripts\voice_overlay.py --config x.json'},
+            {"ProcessId": 1003, "CommandLine": r'python E:\Projects\other\scripts\voice_overlay.py'},
+        ]
+
+        processes = parse_process_rows(rows, Path(r"E:\Projects\xiaohuang"))
+        status = summarize_process_status(processes)
+
+        self.assertEqual(len(processes), 2)
+        self.assertTrue(status.stt_server_running)
+        self.assertTrue(status.voice_overlay_running)
+
+    def test_format_status_message_includes_basic_state_and_config(self):
+        from xiaohuang.launch_control_service import ProcessStatus, format_status_message
+
+        message = format_status_message(
+            ProcessStatus(stt_server_running=True, voice_overlay_running=False, process_count=1),
+            Path(r"C:\Users\tester\.xiaohuang\config.json"),
+        )
+
+        self.assertIn("V1.1.4C", message)
+        self.assertIn("STT server: running", message)
+        self.assertIn("Voice overlay: not detected", message)
+        self.assertIn(r"C:\Users\tester\.xiaohuang\config.json", message)
+
 
 class AudioCaptureServiceTests(unittest.TestCase):
     def test_build_recording_path_uses_timestamp_and_wav_suffix(self):

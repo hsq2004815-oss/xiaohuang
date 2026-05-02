@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -12,6 +15,18 @@ from typing import Mapping, Sequence
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 LOG_DIR = PROJECT_ROOT / "logs"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from xiaohuang.launch_control_service import (
+    build_restart_commands,
+    build_start_command,
+    build_stop_command,
+    detect_xiaohuang_processes,
+    ensure_log_dir as ensure_launch_log_dir,
+    format_status_message,
+    summarize_process_status,
+)
 
 
 def get_default_config_path(env: Mapping[str, str] | None = None) -> Path:
@@ -23,7 +38,7 @@ def get_default_config_path(env: Mapping[str, str] | None = None) -> Path:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="XiaoHuang minimal tray controller V1.1.4B")
+    parser = argparse.ArgumentParser(description="XiaoHuang tray launch controller V1.1.4C")
     parser.add_argument(
         "--config",
         default=str(get_default_config_path()),
@@ -33,9 +48,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def ensure_log_dir(project_root: Path = PROJECT_ROOT) -> Path:
-    log_dir = project_root / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir
+    return ensure_launch_log_dir(project_root)
 
 
 def build_settings_command(
@@ -114,10 +127,89 @@ def open_log_dir(*, project_root: Path = PROJECT_ROOT) -> bool:
         return False
 
 
-def show_about() -> None:
+def _run_background(name: str, target, *args) -> None:
+    thread = threading.Thread(target=target, args=args, name=name, daemon=True)
+    thread.start()
+
+
+def _sanitize_process_output(text: str, *, max_chars: int = 3000) -> str:
+    redacted = re.sub(r"sk-[A-Za-z0-9_\-]{8,}", "sk-***", text)
+    redacted = re.sub(r"(DEEPSEEK_API_KEY\s*=\s*)\S+", r"\1***", redacted)
+    if len(redacted) > max_chars:
+        return redacted[:max_chars] + "\n...[truncated]"
+    return redacted
+
+
+def _write_command_output(label: str, stdout: str, stderr: str, *, project_root: Path = PROJECT_ROOT) -> None:
+    if stdout.strip():
+        write_tray_log(f"{label} stdout: {_sanitize_process_output(stdout).strip()}", project_root=project_root)
+    if stderr.strip():
+        write_tray_log(f"{label} stderr: {_sanitize_process_output(stderr).strip()}", project_root=project_root)
+
+
+def _run_command(command: list[str], label: str, *, project_root: Path = PROJECT_ROOT, timeout: int = 120) -> bool:
+    try:
+        write_tray_log(f"{label} started", project_root=project_root)
+        result = subprocess.run(
+            command,
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=_build_child_env(),
+        )
+    except subprocess.TimeoutExpired:
+        write_tray_log(f"{label} timeout", project_root=project_root)
+        show_message(label, "操作超时，请查看 logs/tray_app.log", error=True)
+        return False
+    except Exception as exc:
+        write_tray_log(f"{label} failed: {exc}", project_root=project_root)
+        show_message(label, "操作失败，请查看 logs/tray_app.log", error=True)
+        return False
+
+    write_tray_log(f"{label} completed returncode={result.returncode}", project_root=project_root)
+    _write_command_output(label, result.stdout, result.stderr, project_root=project_root)
+    if result.returncode != 0:
+        show_message(label, "操作返回错误，请查看 logs/tray_app.log", error=True)
+        return False
+    return True
+
+
+def get_process_status(*, project_root: Path = PROJECT_ROOT):
+    return summarize_process_status(detect_xiaohuang_processes(project_root))
+
+
+def start_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:
+    status = get_process_status(project_root=project_root)
+    if status.any_running:
+        write_tray_log("start_xiaohuang skipped: already running", project_root=project_root)
+        show_message("启动小黄", "小黄已在运行。")
+        return
+    command = build_start_command(project_root, config_path)
+    if _run_command(command, "启动小黄", project_root=project_root):
+        show_message("启动小黄", "启动命令已完成。")
+
+
+def stop_xiaohuang(*, project_root: Path = PROJECT_ROOT) -> None:
+    command = build_stop_command(project_root)
+    if _run_command(command, "停止小黄", project_root=project_root):
+        show_message("停止小黄", "停止命令已完成。")
+
+
+def restart_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:
+    stop_command, start_command = build_restart_commands(project_root, config_path)
+    if not _run_command(stop_command, "重启小黄：停止", project_root=project_root, timeout=60):
+        return
+    time.sleep(2)
+    if _run_command(start_command, "重启小黄：启动", project_root=project_root):
+        show_message("重启小黄", "重启命令已完成。")
+
+
+def show_about(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:
+    status = get_process_status(project_root=project_root)
     show_message(
         "小黄托盘控制器",
-        "小黄托盘控制器 V1.1.4B\n\n当前版本只支持打开设置和日志。\n启动/停止/重启将在 V1.1.4C 实现。",
+        format_status_message(status, config_path),
     )
 
 
@@ -157,9 +249,12 @@ def run_tray(config_path: Path) -> int:
         image,
         "小黄托盘控制器",
         menu=pystray.Menu(
+            pystray.MenuItem("启动小黄", lambda _icon, _item: _run_background("xiaohuang-start", start_xiaohuang, config_path)),
+            pystray.MenuItem("停止小黄", lambda _icon, _item: _run_background("xiaohuang-stop", stop_xiaohuang)),
+            pystray.MenuItem("重启小黄", lambda _icon, _item: _run_background("xiaohuang-restart", restart_xiaohuang, config_path)),
             pystray.MenuItem("打开设置", lambda _icon, _item: open_settings(config_path)),
             pystray.MenuItem("打开日志目录", lambda _icon, _item: open_log_dir()),
-            pystray.MenuItem("关于/状态", lambda _icon, _item: show_about()),
+            pystray.MenuItem("关于/状态", lambda _icon, _item: show_about(config_path)),
             pystray.MenuItem("退出托盘", lambda icon_obj, _item: exit_tray(icon_obj)),
         ),
     )
