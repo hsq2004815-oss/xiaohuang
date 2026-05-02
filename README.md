@@ -160,6 +160,7 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 | V1.1.3A | 用户配置中控层：config.json、app_config_service、wake/audio/llm/tts/conversation/overlay/runtime/assistant 配置段、assistant identity |
 | V1.1.3B | LLM Provider Router：deepseek/qwen/doubao/openai_compatible 多 provider 切换 |
 | V1.1.3C | Settings UI Prototype：Tkinter 配置编辑器（settings_ui.py） |
+| V1.1.4 | Resident / Tray / Launch Control：托盘常驻、启动/停止/重启、打开设置和日志目录（设计完成，待实现） |
 
 </details>
 
@@ -180,6 +181,8 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 - [configuration.md](docs/configuration.md) — 用户配置字段参考
 - [LLM_PROVIDER_CONFIGURATION.md](docs/LLM_PROVIDER_CONFIGURATION.md) — LLM Provider 多 provider 配置指南
 - [V1.1.3A_CONFIG_AUDIT.md](docs/V1.1.3A_CONFIG_AUDIT.md) — 中控层收口审计
+- [V1.1.3C_SETTINGS_UI_VALIDATION.md](docs/V1.1.3C_SETTINGS_UI_VALIDATION.md) — Settings UI 最终真人验证记录
+- [V1.1.4_TRAY_LAUNCH_CONTROL_DESIGN.md](docs/V1.1.4_TRAY_LAUNCH_CONTROL_DESIGN.md) — 托盘常驻与启动控制设计
 
 ## Settings UI
 

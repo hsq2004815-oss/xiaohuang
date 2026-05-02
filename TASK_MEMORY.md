@@ -2,12 +2,12 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.3C — Settings UI Prototype（最终真人验证通过，阶段性收口）
+- **阶段**：V1.1.4A — Resident / Tray / Launch Control 设计文档
 - **最新功能 commit**：`dd87fb3` Stabilize Settings UI verification before publishing
-- **最新文档 commit**：待提交 `docs: record V1.1.3C final validation`
+- **最新文档 commit**：`cb8522d` docs: record V1.1.3C final validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`（提交文档前）
-- **工作区**：docs-only final validation record 待提交；运行产物均 ignored
+- **工作区**：docs-only V1.1.4 tray launch control design 待提交；运行产物均 ignored
 - **测试**：262 tests OK，compileall OK，settings_ui/voice_overlay help OK，settings_ui --check PASS；最终本机真人验证通过
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
@@ -22,6 +22,14 @@
 - 最终真人验证已通过：Settings UI 保存后的 `config_settings_ui_test.json` 可真实启动小黄；“贾维斯”可唤醒，`assistant.display_name` 生效，问“你是谁”保持贾维斯身份，TTS 有声音，session exit 正常。
 - 日志检查无 Traceback / ERROR / HTTPError / TypeError / UnboundLocalError。
 - 详细记录见 `docs/V1.1.3C_SETTINGS_UI_VALIDATION.md`。
+
+### V1.1.4A 设计记录（2026-05-02）
+
+- 目标：让小黄从手动命令启动演进为可由托盘管理的桌面常驻助手。
+- 本阶段只设计，不写托盘代码，不改 `.py/.ps1/.json/.yaml` 运行文件。
+- 设计覆盖：启动/停止/重启小黄、打开 Settings UI、打开 logs 目录、状态显示、安全退出、进程识别、配置路径、日志、风险和验收。
+- 推荐入口：未来新增 `scripts/tray_app.py`；可选服务 `process_status_service.py` / `launch_control_service.py`。
+- 详细设计见 `docs/V1.1.4_TRAY_LAUNCH_CONTROL_DESIGN.md`。
 
 ### V1.1.3B 真实验证结果（2026-05-02）
 
@@ -75,7 +83,7 @@
 |------|------|
 | V1.1.3B | LLM Provider Router ✅ 已完成 |
 | V1.1.3C | Settings UI Prototype ✅ 最终真人验证通过，阶段性收口 |
-| V1.1.4 | HUD / 托盘 / 高级悬浮窗 |
+| V1.1.4 | Resident / Tray / Launch Control 设计完成，待分阶段实现 |
 | V1.2 | Wake Engine Abstraction |
 
 ---
