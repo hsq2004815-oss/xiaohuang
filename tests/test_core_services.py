@@ -2031,5 +2031,17 @@ class V111SessionRecordTests(unittest.TestCase):
             self.assertEqual(text, "那邓小平呢？")
 
 
+class V111ReplyPipelineResultImportTests(unittest.TestCase):
+    def test_reply_pipeline_result_importable(self):
+        from xiaohuang.reply_pipeline_service import ReplyPipelineResult
+        result = ReplyPipelineResult(
+            reply_text="好的，我先待命。",
+            reply_source="session_exit",
+            source_note=None,
+        )
+        self.assertEqual(result.reply_text, "好的，我先待命。")
+        self.assertEqual(result.reply_source, "session_exit")
+
+
 if __name__ == "__main__":
     unittest.main()

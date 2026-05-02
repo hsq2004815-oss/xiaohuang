@@ -36,6 +36,7 @@ from xiaohuang.overlay_state_service import (
 from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
 from xiaohuang.reply_pipeline_service import (
     ReplyPipelineConfig,
+    ReplyPipelineResult,
     generate_reply_pipeline_result,
 )
 from xiaohuang.audio_capture_service import build_recording_path
