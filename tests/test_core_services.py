@@ -2095,5 +2095,43 @@ class V111NoSpeechTests(unittest.TestCase):
         self.assertTrue(data["meta"]["no_speech"])
 
 
+class V111TtsBackgroundPlaybackTests(unittest.TestCase):
+    def test_play_audio_file_missing_returns_false(self):
+        import tempfile
+        from xiaohuang.audio_playback_service import play_audio_file
+        warns: list[str] = []
+        result = play_audio_file(Path("nonexistent.mp3"), warn=warns.append)
+        self.assertFalse(result)
+        self.assertTrue(len(warns) > 0)
+
+    def test_play_audio_file_mci_success(self):
+        import tempfile
+        from unittest.mock import patch
+        from xiaohuang.audio_playback_service import play_audio_file
+        with tempfile.TemporaryDirectory() as d:
+            mp3 = Path(d) / "test.mp3"
+            mp3.write_bytes(b"fake mp3")
+            with patch("xiaohuang.audio_playback_service._mci_send") as mock_mci:
+                result = play_audio_file(mp3)
+                self.assertTrue(result)
+                commands = [c[0][0] for c in mock_mci.call_args_list]
+                self.assertTrue(any("open" in c for c in commands))
+                self.assertTrue(any("play" in c for c in commands))
+                self.assertTrue(any("close" in c for c in commands))
+
+    def test_play_audio_file_mci_failure_returns_false(self):
+        import tempfile
+        from unittest.mock import patch
+        from xiaohuang.audio_playback_service import play_audio_file
+        warns: list[str] = []
+        with tempfile.TemporaryDirectory() as d:
+            mp3 = Path(d) / "test.mp3"
+            mp3.write_bytes(b"fake mp3")
+            with patch("xiaohuang.audio_playback_service._mci_send", side_effect=OSError("MCI error: device not ready")):
+                result = play_audio_file(mp3, warn=warns.append)
+                self.assertFalse(result)
+                self.assertTrue(any("playback failed" in w for w in warns))
+
+
 if __name__ == "__main__":
     unittest.main()
