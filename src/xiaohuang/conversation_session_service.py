@@ -4,10 +4,10 @@ import re
 from dataclasses import dataclass
 
 DEFAULT_SESSION_TIMEOUT_SECONDS = 30.0
-DEFAULT_MAX_SESSION_TURNS = 5
-DEFAULT_FOLLOWUP_TIMEOUT_SECONDS = 10.0
-DEFAULT_MAX_SESSION_SECONDS = 90.0
-DEFAULT_MAX_NO_SPEECH_RETRIES = 1
+DEFAULT_MAX_SESSION_TURNS = 12
+DEFAULT_FOLLOWUP_TIMEOUT_SECONDS = 12.0
+DEFAULT_MAX_SESSION_SECONDS = 300.0
+DEFAULT_MAX_NO_SPEECH_RETRIES = 2
 
 _SESSION_EXIT_PHRASES = (
     "好了", "没事了", "不用了", "退出", "结束",
@@ -70,3 +70,25 @@ def should_continue_session(
 
 def should_exit_for_no_speech(no_speech_retries: int, config: ConversationSessionConfig) -> bool:
     return no_speech_retries > config.max_no_speech_retries
+
+
+def get_session_end_reason(
+    *,
+    turn_count: int,
+    config: ConversationSessionConfig,
+    elapsed_seconds: float,
+    no_speech_retries: int,
+    exit_phrase_detected: bool = False,
+    stop_event_set: bool = False,
+) -> str | None:
+    if stop_event_set:
+        return "stop_event"
+    if exit_phrase_detected:
+        return "exit_phrase"
+    if turn_count >= config.max_turns:
+        return "max_turns"
+    if elapsed_seconds >= config.max_session_seconds:
+        return "max_session_seconds"
+    if no_speech_retries > config.max_no_speech_retries:
+        return "no_speech"
+    return None

@@ -2174,7 +2174,7 @@ class V112AdaptiveFollowupTests(unittest.TestCase):
     def test_followup_timeout_default(self):
         from xiaohuang.conversation_session_service import ConversationSessionConfig, get_followup_timeout_seconds
         config = ConversationSessionConfig()
-        self.assertEqual(get_followup_timeout_seconds(config), 10.0)
+        self.assertEqual(get_followup_timeout_seconds(config), 12.0)
 
     def test_followup_timeout_fallback_to_timeout(self):
         from xiaohuang.conversation_session_service import ConversationSessionConfig, get_followup_timeout_seconds
@@ -2213,6 +2213,49 @@ class V112DirectListeningTests(unittest.TestCase):
         from xiaohuang.reply_pipeline_service import ReplyPipelineConfig, generate_reply_pipeline_result
         result = generate_reply_pipeline_result("你好", ReplyPipelineConfig(enable_llm=False, enable_tts=False))
         self.assertIsNotNone(result.reply_text)
+
+
+class V112SessionDefaultsTests(unittest.TestCase):
+    def test_default_followup_timeout_is_12(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, get_followup_timeout_seconds
+        self.assertEqual(get_followup_timeout_seconds(ConversationSessionConfig()), 12.0)
+
+    def test_default_max_turns_is_12(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig
+        self.assertEqual(ConversationSessionConfig().max_turns, 12)
+
+    def test_default_max_session_seconds_is_300(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig
+        self.assertEqual(ConversationSessionConfig().max_session_seconds, 300.0)
+
+    def test_default_max_no_speech_retries_is_2(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig
+        self.assertEqual(ConversationSessionConfig().max_no_speech_retries, 2)
+
+    def test_should_continue_at_turn_11(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, should_continue_session
+        config = ConversationSessionConfig(enabled=True)
+        self.assertTrue(should_continue_session(11, config))
+
+    def test_should_continue_stops_at_turn_12(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, should_continue_session
+        config = ConversationSessionConfig(enabled=True)
+        self.assertFalse(should_continue_session(12, config))
+
+    def test_end_reason_max_turns(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, get_session_end_reason
+        config = ConversationSessionConfig(max_turns=12)
+        self.assertEqual(get_session_end_reason(turn_count=12, config=config, elapsed_seconds=0, no_speech_retries=0), "max_turns")
+
+    def test_end_reason_exit_phrase(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, get_session_end_reason
+        config = ConversationSessionConfig()
+        self.assertEqual(get_session_end_reason(turn_count=1, config=config, elapsed_seconds=0, no_speech_retries=0, exit_phrase_detected=True), "exit_phrase")
+
+    def test_end_reason_no_speech(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, get_session_end_reason
+        config = ConversationSessionConfig(max_no_speech_retries=2)
+        self.assertEqual(get_session_end_reason(turn_count=1, config=config, elapsed_seconds=0, no_speech_retries=3), "no_speech")
 
 
 if __name__ == "__main__":

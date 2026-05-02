@@ -21,6 +21,7 @@ from xiaohuang.conversation_session_service import (
     SESSION_EXIT_REPLY,
     ConversationSessionConfig,
     get_followup_timeout_seconds,
+    get_session_end_reason,
     is_session_exit_text,
     should_continue_session,
     should_exit_for_no_speech,
@@ -97,25 +98,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-session-turns",
         type=int,
-        default=5,
+        default=12,
         help="Maximum turns in one active conversation session.",
     )
     parser.add_argument(
         "--followup-timeout",
         type=float,
-        default=10.0,
+        default=12.0,
         help="Seconds to wait for follow-up speech after each reply.",
     )
     parser.add_argument(
         "--max-session-seconds",
         type=float,
-        default=90.0,
+        default=300.0,
         help="Maximum total seconds for one conversation session.",
     )
     parser.add_argument(
         "--max-no-speech-retries",
         type=int,
-        default=1,
+        default=2,
         help="Exit session after this many no-speech follow-up attempts.",
     )
     return parser.parse_args()
@@ -414,6 +415,14 @@ def main() -> int:
         max_session_seconds=args.max_session_seconds,
         max_no_speech_retries=args.max_no_speech_retries,
     )
+    if args.debug and session_config.enabled:
+        _safe_print(
+            f"Conversation session config: "
+            f"followup_timeout={session_config.followup_timeout_seconds} "
+            f"max_turns={session_config.max_turns} "
+            f"max_session_seconds={session_config.max_session_seconds} "
+            f"max_no_speech_retries={session_config.max_no_speech_retries}"
+        )
     worker = threading.Thread(
         target=_run_overlay_loop,
         args=(
@@ -545,6 +554,7 @@ def _run_overlay_loop(
             turn_count = 1
             session_started = time.perf_counter()
             no_speech_retries = 0
+            exit_phrase_detected = False
             while (
                 should_continue_session(
                     turn_count, session_config,
@@ -605,6 +615,7 @@ def _run_overlay_loop(
                         STATE_RESULT,
                         build_reply_result_text(next_text, pipeline_result.reply_text, pipeline_result.source_note),
                     )
+                    exit_phrase_detected = True
                     if stop_event.wait(post_response_cooldown):
                         break
                     break
@@ -628,6 +639,21 @@ def _run_overlay_loop(
                 turn_count += 1
 
             # --- end session, return to standby ---
+            reason = get_session_end_reason(
+                turn_count=turn_count, config=session_config,
+                elapsed_seconds=time.perf_counter() - session_started,
+                no_speech_retries=no_speech_retries,
+                exit_phrase_detected=exit_phrase_detected,
+                stop_event_set=stop_event.is_set(),
+            )
+            if reason:
+                logger.info(
+                    "Session ended: reason=%s turn_count=%s max_turns=%s elapsed_seconds=%.1f "
+                    "max_session_seconds=%.1f no_speech_retries=%s max_no_speech_retries=%s",
+                    reason, turn_count, session_config.max_turns,
+                    time.perf_counter() - session_started, session_config.max_session_seconds,
+                    no_speech_retries, session_config.max_no_speech_retries,
+                )
             if stop_event.wait(0.5 if post_response_cooldown > 0 else 0):
                 break
             app.thread_safe_set_state(STATE_IDLE)

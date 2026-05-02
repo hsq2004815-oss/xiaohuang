@@ -13,10 +13,10 @@ param(
     [switch]$ResidentHidden,
     [switch]$ConversationSession,
     [double]$SessionTimeout = 30,
-    [int]$MaxSessionTurns = 5,
-    [double]$FollowupTimeout = 10,
-    [double]$MaxSessionSeconds = 90,
-    [int]$MaxNoSpeechRetries = 1
+    [int]$MaxSessionTurns = 12,
+    [double]$FollowupTimeout = 12,
+    [double]$MaxSessionSeconds = 300,
+    [int]$MaxNoSpeechRetries = 2
 )
 
 $ErrorActionPreference = "Stop"
