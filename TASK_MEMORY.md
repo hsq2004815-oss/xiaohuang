@@ -1,10 +1,66 @@
 # Task Memory
 
+## 当前最新状态
+
+- **阶段**：V1.1.3A — User Config Foundation / 用户配置中控层
+- **最新代码 commit**：`67583d8` feat: add assistant identity configuration
+- **最新文档 commit**：`c982fbb` docs: add V1.1.3A config audit
+- **分支**：`main`，与 `origin/main` 同步
+- **工作区**：clean
+- **测试**：234 tests OK，compileall OK，help OK
+
+### V1.1.3A 已完成
+
+- 用户配置中控层 `app_config_service.py`（`XiaoHuangConfig` dataclass，8 个配置段）
+- `--config` / `-ConfigPath` 打通
+- `wake.phrases` 自定义唤醒词（完全替换默认值）
+- `tts.voice` 配置
+- `conversation` 参数配置
+- `assistant.name` / `display_name` / `persona` 配置（V1.1.3A.4）
+- `wake.phrases` 与 `assistant.name` 独立
+- `llm` provider/model/base_url/api_key_env 预留
+- `config.json` 不存 API key，只存 `api_key_env`
+- `secrets.ps1` 仍加载
+- PowerShell 不再用默认值覆盖 config
+- 配置优先级：CLI > config.json > 默认值
+
+### V1.1.3A 文档
+
+- `docs/configuration.md` — 用户配置字段参考
+- `docs/V1.1.3A_CONFIG_AUDIT.md` — 中控层收口审计
+
+## 已踩坑（V1.1.3A 修复记录）
+
+| # | 现象 | 根因 | 修复 commit |
+|---|------|------|------------|
+| 1 | `TypeError: 'XiaoHuangConfig' object is not subscriptable` | 新旧 `load_config` 同名覆盖；dataclass 被当作 dict 访问 | `af77b75` |
+| 2 | `store_true` 的 `False` 覆盖 config 的 `true` | argparse `action="store_true"` 默认 `False`，直接赋值覆盖 | `cdeb5e5`（内建 `_or_config`） |
+| 3 | `UnboundLocalError: local variable 'debug' referenced before assignment` | `debug = app_config.runtime.debug` 在 `apply_cli_overrides` 之前执行 | `cd1e218` |
+| 4 | PowerShell 默认 `$Device = 0` 覆盖 `config.json` 的 `audio.device_id` | PS 参数默认值始终传入 Python | `763e566` + `50a3823` |
+| 5 | argparse `--wake-phrases default="小黄,小黄小黄"` 覆盖 config | argparse 的 `default` 在未传参时生效 | `7beee12` |
+| 6 | 唤唤醒"贾维斯"后助手自称"小黄" | `build_deepseek_request` 硬编码 system prompt | `67583d8` |
+
+## 下一阶段建议
+
+| 版本 | 内容 |
+|------|------|
+| V1.1.3B | LLM Provider Router |
+| V1.1.3C | Settings UI Prototype |
+| V1.1.4 | HUD / 托盘 / 高级悬浮窗 |
+| V1.2 | Wake Engine Abstraction |
+
+---
+
+## 历史阶段
+
+<details>
+<summary>V0.9.1 — DeepSeek 单句对话原型（收尾稳定版）</summary>
+
 - Purpose: XiaoHuang V0.9.1 is a stabilization patch over V0.9 — DeepSeek error handling, LLM reply cleaning, TTS/LLM combination stability, artifact protection, and docs.
 - V0.9.1 scope: no new features, no backend foundation, no multi-turn memory, no tool execution.
 - V0.9.1 changes:
   - LLM reply execution claim filter (blocks "我已经打开"/"已下载"/"已执行" etc.)
-  - Expanded tool request keywords (17 categories: 打开浏览器/下载/发消息/回微信/回QQ/改代码/删除/上传/登录/支付/爬虫/opencode/opencli etc.)
+  - Expanded tool request keywords (17 categories)
   - Overlay result displays fallback source note when DeepSeek unavailable
   - Improved shutdown: exception handler checks stop_event before sleeping
   - No-key startup message only in debug mode, not every round
@@ -15,24 +71,27 @@
 - Startup/test: dot-source `.\scripts\run_env.ps1`; set `PYTHONPATH=E:\Projects\xiaohuang\src`; run `& "F:\for_xiaohuang\conda310\python.exe" -m unittest discover -s tests`.
 - Last completed: V0.9.1 stabilization — 81 tests pass (9 new), compileall clean, --help verified.
 - Overlay command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug`.
-- Overlay TTS command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug --enable-tts`.
-- Overlay DeepSeek command: set `$env:DEEPSEEK_API_KEY`, then run `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --device 0 --debug --enable-llm --enable-tts`.
-- Overlay help: `& "F:\for_xiaohuang\conda310\python.exe" scripts\voice_overlay.py --help`.
-- Manual overlay test: start STT server, run `voice_overlay.py --device 0 --debug`, say `小黄`, then speak a command.
-- Latest successful overlay test: repeated cycles detected `小黄` and transcribed commands `怎么说，这一波。`, `嗯，还不错。`, `你有什么感觉吗？`, `你想干嘛？`, `我很生气。`; non-wake `哦。` stayed in wake-check flow.
-- Overlay shutdown: close window or press `Esc`; `voice_overlay.py` sets a stop event and joins the daemon worker briefly after Tk exits. In-flight recording/request can finish before the loop observes the stop event.
-- STT server guard: `/transcribe` only accepts existing `.wav` files under project `data/recordings/`, including `data/recordings/wake/`.
-- Server fallback policy: `listen_once.py --use-server` requires the resident server by default; add `--allow-local-fallback` only when local direct STT fallback is acceptable.
-- Recommended VAD command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\listen_once.py --use-server --device 0 --vad --max-seconds 10 --silence-seconds 0.8 --countdown 3 --channels 1 --samplerate 16000`.
-- Recommended wake-loop command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\wake_loop.py --device 0 --once --debug`.
-- Current usable STT server command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\stt_server.py --host 127.0.0.1 --port 8766`.
-- Current successful wake test: start STT server, run `wake_loop.py --device 0 --once --debug`, say `小黄`, then say `帮我测试一下唤醒后的命令识别。`; expected state output includes `Listening for wake phrase...`, `Wake word detected.`, `Listening for command...`, and `Command transcription: ...`.
-- Wake text test command: `& "F:\for_xiaohuang\conda310\python.exe" scripts\test_wake_text.py "小黄ang。"`.
-- Verified output example from earlier STT baseline: input speech `小黄小黄帮我测试一下语音识别功能，我们正在开发语音识别助手。`; output text matched the same sentence.
-- Git ignore boundary: do not commit `data/recordings/*.wav`, `data/recordings/wake/`, `data/tts/`, `logs/`, `models/`, `.venv/`, or `__pycache__/`.
-- Wake temp cleanup: V0.6.1 default cleanup still applies; console `wake_loop.py` only keeps wake-check WAVs when `--keep-wake-recordings` is specified, and `voice_overlay.py` always uses default cleanup.
-- Known traps: V0.9 DeepSeek reply is single-turn only, not multi-turn memory, not tool execution, and edge-tts/DeepSeek require network.
 - API key boundary: never commit or write `DEEPSEEK_API_KEY`; use environment variables only.
-- Wake trap: current wake is still short-recording + STT text matching, not openWakeWord/FunASR KWS; avoid broad default aliases such as `小王` or `小杨` unless manually testing.
-- Still unfinished: real KWS model, multi-turn dialogue, system tray, installer, and later desktop-assistant integrations.
-- Next likely edit points: manually test `voice_overlay.py --enable-llm --enable-tts`, tune LLM prompt/timeout, then decide whether V0.10 should add memory or tray/background behavior.
+- Wake trap: V0.9.1 wake is short-recording + STT text matching, not openWakeWord/FunASR KWS.
+- Still unfinished at V0.9.1: real KWS model, multi-turn dialogue, system tray, installer, desktop-assistant integrations.
+
+</details>
+
+<details>
+<summary>V1.1.x 演进</summary>
+
+| 版本 | Commits | 内容 |
+|------|---------|------|
+| V1.1.1D/E | `4cfb9a1`~`5db0e11` | command STT mode, session exit import, empty speech handling, TTS background playback |
+| V1.1.2A/B/C | `652c00d`~`3b9f683` | latency metrics, adaptive follow-up session, session UI state fixes, session logs |
+| V1.1.3A | `cdeb5e5`~`67583d8` | user config foundation, PowerShell respect config, dataclass/CLI/wake bug fixes, assistant identity |
+
+</details>
+
+## 运行环境（不变）
+
+- Python: `F:\for_xiaohuang\conda310\python.exe`
+- 麦克风: `device 0`
+- 模型缓存: `F:\for_xiaohuang\models\modelscope`
+- STT: FunASR / SenseVoiceSmall
+- Git ignore: `data/recordings/*.wav`, `data/recordings/wake/`, `data/tts/`, `logs/`, `models/`, `.venv/`, `__pycache__/`
