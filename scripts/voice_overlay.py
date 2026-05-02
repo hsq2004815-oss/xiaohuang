@@ -519,17 +519,30 @@ def _run_overlay_loop(
             turn_tracker.end("turn_total_ms")
             logger.info(format_latency_summary(turn_tracker.summary_ms(), turn=1, source=pipeline_result.reply_source))
             logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
-            app.thread_safe_set_state(
-                STATE_RESULT,
-                build_reply_result_text(result.command_text, pipeline_result.reply_text, pipeline_result.source_note),
-            )
 
             if pipeline_result.tts_error:
                 _warn(logger, pipeline_result.tts_error)
-                app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
+                if not session_config.enabled:
+                    app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
 
-            if debug and post_response_cooldown > 0:
-                _safe_print(f"Post-response cooldown: {post_response_cooldown:.1f}s")
+            if session_config.enabled:
+                cooldown = min(post_response_cooldown, 1.0) if post_response_cooldown > 0 else 0
+                if debug and cooldown > 0:
+                    _safe_print(f"Post-response cooldown: {cooldown:.1f}s")
+                if stop_event.wait(cooldown):
+                    break
+            else:
+                app.thread_safe_set_state(
+                    STATE_RESULT,
+                    build_reply_result_text(result.command_text, pipeline_result.reply_text, pipeline_result.source_note),
+                )
+                if pipeline_result.tts_error:
+                    _warn(logger, pipeline_result.tts_error)
+                    app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
+                if debug and post_response_cooldown > 0:
+                    _safe_print(f"Post-response cooldown: {post_response_cooldown:.1f}s")
+                if stop_event.wait(post_response_cooldown):
+                    break
 
             # --- conversation session: listen for follow-up commands ---
             turn_count = 1

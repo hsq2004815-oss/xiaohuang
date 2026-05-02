@@ -2203,5 +2203,17 @@ class V112AdaptiveFollowupTests(unittest.TestCase):
         self.assertTrue(should_continue_session(2, config))
 
 
+class V112DirectListeningTests(unittest.TestCase):
+    def test_single_turn_cooldown_unchanged_without_session(self):
+        from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
+        self.assertGreater(resolve_post_response_cooldown(enable_tts=True, requested_seconds=None), 0)
+        self.assertGreater(resolve_post_response_cooldown(enable_tts=False, requested_seconds=None), 0)
+
+    def test_session_skip_result_hold_still_passes_pipeline(self):
+        from xiaohuang.reply_pipeline_service import ReplyPipelineConfig, generate_reply_pipeline_result
+        result = generate_reply_pipeline_result("你好", ReplyPipelineConfig(enable_llm=False, enable_tts=False))
+        self.assertIsNotNone(result.reply_text)
+
+
 if __name__ == "__main__":
     unittest.main()
