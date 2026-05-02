@@ -2305,5 +2305,36 @@ class V113AppConfigTests(unittest.TestCase):
             self.assertEqual(cfg.tts.voice, "zh-CN-YunxiNeural")
 
 
+class V113WakeConfigOverrideTests(unittest.TestCase):
+    def test_config_wake_phrases_replace_default(self):
+        import tempfile, json
+        from xiaohuang.app_config_service import load_config as load_user_config
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "c.json"
+            fp.write_text(json.dumps({"wake": {"phrases": ["贾维斯"]}}), encoding="utf-8")
+            cfg = load_user_config(fp)
+            self.assertEqual(cfg.wake.phrases, ["贾维斯"])
+            self.assertNotIn("小黄", cfg.wake.phrases)
+
+    def test_config_wake_aliases_replace_default(self):
+        import tempfile, json
+        from xiaohuang.app_config_service import load_config as load_user_config
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "c.json"
+            fp.write_text(json.dumps({"wake": {"aliases": ["嘉维斯"]}}), encoding="utf-8")
+            cfg = load_user_config(fp)
+            self.assertEqual(cfg.wake.aliases, ["嘉维斯"])
+
+    def test_cli_none_preserves_config_wake_phrases(self):
+        import argparse
+        from xiaohuang.app_config_service import apply_cli_overrides, get_default_config
+        parser = argparse.ArgumentParser()
+        for a in ['wake-phrases','wake-aliases','wake-window-seconds','device','max-seconds','silence-seconds','enable-llm','enable-tts','debug','resident-hidden','conversation-session','llm-model','llm-base-url','llm-timeout','llm-max-tokens','tts-voice','tts-output-dir','post-response-cooldown','session-timeout','max-session-turns','followup-timeout','max-session-seconds','max-no-speech-retries']:
+            parser.add_argument(f'--{a}', default=None)
+        args = parser.parse_args([])
+        cfg = apply_cli_overrides(get_default_config(), args)
+        self.assertEqual(cfg.wake.phrases, ["小黄"])
+
+
 if __name__ == "__main__":
     unittest.main()

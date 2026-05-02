@@ -61,8 +61,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=int, default=None, help="Input device ID. Defaults to config audio.device_id or 0.")
     parser.add_argument("--server-url", default="http://127.0.0.1:8766", help="Local STT server URL.")
     parser.add_argument("--wake-window-seconds", type=float, default=3.0, help="Short recording window for wake checks. Defaults to 3.")
-    parser.add_argument("--wake-phrases", default="小黄,小黄小黄", help="Comma-separated wake phrases.")
-    parser.add_argument("--wake-aliases", default=",".join(DEFAULT_WAKE_ALIASES), help="Comma-separated low-confidence wake aliases.")
+    parser.add_argument("--wake-phrases", default=None, help="Comma-separated wake phrases. Defaults to config or '小黄,小黄小黄'.")
+    parser.add_argument("--wake-aliases", default=None, help="Comma-separated low-confidence wake aliases.")
     parser.add_argument("--max-seconds", type=float, default=10.0, help="Maximum VAD command recording duration. Defaults to 10.")
     parser.add_argument("--silence-seconds", type=float, default=0.8, help="Silence duration after command speech before VAD stops.")
     parser.add_argument("--debug", action="store_true", help="Print wake-window and command transcription debug output.")
@@ -384,8 +384,8 @@ def main() -> int:
         config_device = audio_config.get("device_id")
         device_id = int(config_device) if config_device is not None else 0
     recording_dir = PROJECT_ROOT / recording_config.get("output_dir", "data/recordings")
-    wake_phrases = parse_wake_phrases(args.wake_phrases) or app_config.wake.phrases
-    wake_aliases = parse_wake_phrases(args.wake_aliases) or app_config.wake.aliases
+    wake_phrases = parse_wake_phrases(args.wake_phrases) if args.wake_phrases else app_config.wake.phrases
+    wake_aliases = parse_wake_phrases(args.wake_aliases) if args.wake_aliases else app_config.wake.aliases
     options = WakeLoopOptions(
         device_id=device_id,
         server_url=args.server_url,
@@ -416,6 +416,8 @@ def main() -> int:
         elif debug:
             print(f"LLM enabled: model={llm_config.model} max_tokens={llm_config.max_tokens} timeout={llm_config.timeout_seconds}s")
     if debug:
+        print(f"Resolved wake phrases: {wake_phrases}")
+        print(f"Resolved wake aliases: {wake_aliases}")
         print(f"TTS enabled: {enable_tts}")
     session_config = ConversationSessionConfig(
         enabled=app_config.conversation.enabled,
