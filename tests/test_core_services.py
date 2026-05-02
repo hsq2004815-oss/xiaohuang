@@ -2170,5 +2170,38 @@ class V112LatencyMetricsTests(unittest.TestCase):
         self.assertNotIn("None", s)
 
 
+class V112AdaptiveFollowupTests(unittest.TestCase):
+    def test_followup_timeout_default(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, get_followup_timeout_seconds
+        config = ConversationSessionConfig()
+        self.assertEqual(get_followup_timeout_seconds(config), 10.0)
+
+    def test_followup_timeout_fallback_to_timeout(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, get_followup_timeout_seconds
+        config = ConversationSessionConfig(followup_timeout_seconds=0, timeout_seconds=30)
+        self.assertEqual(get_followup_timeout_seconds(config), 30.0)
+
+    def test_should_continue_max_session_seconds(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, should_continue_session
+        config = ConversationSessionConfig(enabled=True, max_turns=10, max_session_seconds=60)
+        self.assertFalse(should_continue_session(1, config, elapsed_seconds=61))
+
+    def test_should_continue_no_speech_retries(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, should_continue_session
+        config = ConversationSessionConfig(enabled=True, max_no_speech_retries=1)
+        self.assertFalse(should_continue_session(1, config, no_speech_retries=2))
+
+    def test_should_exit_for_no_speech(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, should_exit_for_no_speech
+        config = ConversationSessionConfig(max_no_speech_retries=1)
+        self.assertTrue(should_exit_for_no_speech(2, config))
+        self.assertFalse(should_exit_for_no_speech(1, config))
+
+    def test_old_should_continue_signature_still_works(self):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig, should_continue_session
+        config = ConversationSessionConfig(enabled=True, max_turns=3)
+        self.assertTrue(should_continue_session(2, config))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,7 @@ import argparse
 import math
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 
@@ -19,8 +20,10 @@ from xiaohuang.latency_metrics_service import (
 from xiaohuang.conversation_session_service import (
     SESSION_EXIT_REPLY,
     ConversationSessionConfig,
+    get_followup_timeout_seconds,
     is_session_exit_text,
     should_continue_session,
+    should_exit_for_no_speech,
 )
 from xiaohuang.logging_service import configure_logging
 from xiaohuang.llm_reply_service import load_deepseek_config
@@ -96,6 +99,24 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=5,
         help="Maximum turns in one active conversation session.",
+    )
+    parser.add_argument(
+        "--followup-timeout",
+        type=float,
+        default=10.0,
+        help="Seconds to wait for follow-up speech after each reply.",
+    )
+    parser.add_argument(
+        "--max-session-seconds",
+        type=float,
+        default=90.0,
+        help="Maximum total seconds for one conversation session.",
+    )
+    parser.add_argument(
+        "--max-no-speech-retries",
+        type=int,
+        default=1,
+        help="Exit session after this many no-speech follow-up attempts.",
     )
     return parser.parse_args()
 
@@ -389,6 +410,9 @@ def main() -> int:
         enabled=args.conversation_session,
         timeout_seconds=args.session_timeout,
         max_turns=args.max_session_turns,
+        followup_timeout_seconds=args.followup_timeout,
+        max_session_seconds=args.max_session_seconds,
+        max_no_speech_retries=args.max_no_speech_retries,
     )
     worker = threading.Thread(
         target=_run_overlay_loop,
@@ -509,16 +533,26 @@ def _run_overlay_loop(
 
             # --- conversation session: listen for follow-up commands ---
             turn_count = 1
-            while should_continue_session(turn_count, session_config) and not stop_event.is_set():
+            session_started = time.perf_counter()
+            no_speech_retries = 0
+            while (
+                should_continue_session(
+                    turn_count, session_config,
+                    elapsed_seconds=time.perf_counter() - session_started,
+                    no_speech_retries=no_speech_retries,
+                )
+                and not stop_event.is_set()
+            ):
+                followup_timeout = get_followup_timeout_seconds(session_config)
                 st = LatencyTracker()
                 st.start("turn_total_ms")
                 if debug:
-                    _safe_print(f"Session turn {turn_count + 1}/{session_config.max_turns}")
+                    _safe_print(f"Session turn {turn_count + 1}/{session_config.max_turns} (follow-up window: {followup_timeout:.1f}s)")
                 app.thread_safe_set_state(STATE_LISTENING, "你还可以继续说")
 
                 next_text = _record_command_transcribe(
                     options=options,
-                    max_seconds=min(options.max_seconds, session_config.timeout_seconds),
+                    max_seconds=followup_timeout,
                     stt_mode=STT_MODE_COMMAND,
                     debug=debug,
                     logger=logger,
@@ -527,9 +561,17 @@ def _run_overlay_loop(
                 if stop_event.is_set():
                     break
                 if not next_text:
-                    break
+                    no_speech_retries += 1
+                    if debug:
+                        _safe_print(f"Session no speech retry {no_speech_retries}/{session_config.max_no_speech_retries + 1}")
+                    if should_exit_for_no_speech(no_speech_retries, session_config):
+                        logger.info("Session ended: no_speech")
+                        break
+                    continue
                 if debug:
                     _safe_print(f"Session command: {next_text}")
+
+                no_speech_retries = 0
 
                 if is_session_exit_text(next_text):
                     if debug:

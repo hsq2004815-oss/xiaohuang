@@ -5,6 +5,9 @@ from dataclasses import dataclass
 
 DEFAULT_SESSION_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_SESSION_TURNS = 5
+DEFAULT_FOLLOWUP_TIMEOUT_SECONDS = 10.0
+DEFAULT_MAX_SESSION_SECONDS = 90.0
+DEFAULT_MAX_NO_SPEECH_RETRIES = 1
 
 _SESSION_EXIT_PHRASES = (
     "好了", "没事了", "不用了", "退出", "结束",
@@ -21,6 +24,9 @@ class ConversationSessionConfig:
     enabled: bool = False
     timeout_seconds: float = DEFAULT_SESSION_TIMEOUT_SECONDS
     max_turns: int = DEFAULT_MAX_SESSION_TURNS
+    followup_timeout_seconds: float = DEFAULT_FOLLOWUP_TIMEOUT_SECONDS
+    max_session_seconds: float = DEFAULT_MAX_SESSION_SECONDS
+    max_no_speech_retries: int = DEFAULT_MAX_NO_SPEECH_RETRIES
 
 
 def normalize_session_text(text: str) -> str:
@@ -34,9 +40,33 @@ def is_session_exit_text(text: str) -> bool:
     return any(phrase in normalized for phrase in _SESSION_EXIT_PHRASES)
 
 
-def should_continue_session(turn_count: int, config: ConversationSessionConfig) -> bool:
+def get_followup_timeout_seconds(config: ConversationSessionConfig) -> float:
+    if config.followup_timeout_seconds > 0:
+        return config.followup_timeout_seconds
+    if config.timeout_seconds > 0:
+        return config.timeout_seconds
+    return 1.0
+
+
+def should_continue_session(
+    turn_count: int,
+    config: ConversationSessionConfig,
+    *,
+    elapsed_seconds: float | None = None,
+    no_speech_retries: int = 0,
+) -> bool:
     if not config.enabled:
         return False
     if config.max_turns <= 0:
         return False
-    return turn_count < config.max_turns
+    if turn_count >= config.max_turns:
+        return False
+    if elapsed_seconds is not None and elapsed_seconds >= config.max_session_seconds:
+        return False
+    if no_speech_retries > config.max_no_speech_retries:
+        return False
+    return True
+
+
+def should_exit_for_no_speech(no_speech_retries: int, config: ConversationSessionConfig) -> bool:
+    return no_speech_retries > config.max_no_speech_retries

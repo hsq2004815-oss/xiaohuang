@@ -15,7 +15,10 @@ param(
     [switch]$ResidentHidden,
     [switch]$ConversationSession,
     [double]$SessionTimeout = 30,
-    [int]$MaxSessionTurns = 5
+    [int]$MaxSessionTurns = 5,
+    [double]$FollowupTimeout = 10,
+    [double]$MaxSessionSeconds = 90,
+    [int]$MaxNoSpeechRetries = 1
 )
 
 $ErrorActionPreference = "Stop"
@@ -80,6 +83,9 @@ if ($ResidentHidden)       { $ArgParts += "--resident-hidden" }
 if ($ConversationSession)  { $ArgParts += "--conversation-session" }
 $ArgParts += @("--session-timeout", $SessionTimeout)
 $ArgParts += @("--max-session-turns", $MaxSessionTurns)
+$ArgParts += @("--followup-timeout", $FollowupTimeout)
+$ArgParts += @("--max-session-seconds", $MaxSessionSeconds)
+$ArgParts += @("--max-no-speech-retries", $MaxNoSpeechRetries)
 
 $ArgList = $ArgParts -join " "
 

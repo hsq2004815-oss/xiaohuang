@@ -13,7 +13,10 @@ param(
     [switch]$ResidentHidden,
     [switch]$ConversationSession,
     [double]$SessionTimeout = 30,
-    [int]$MaxSessionTurns = 5
+    [int]$MaxSessionTurns = 5,
+    [double]$FollowupTimeout = 10,
+    [double]$MaxSessionSeconds = 90,
+    [int]$MaxNoSpeechRetries = 1
 )
 
 $ErrorActionPreference = "Stop"
@@ -57,6 +60,9 @@ if ($ResidentHidden)       { $OverlayParams.ResidentHidden = $true }
 if ($ConversationSession)  { $OverlayParams.ConversationSession = $true }
 $OverlayParams.SessionTimeout = $SessionTimeout
 $OverlayParams.MaxSessionTurns = $MaxSessionTurns
+$OverlayParams.FollowupTimeout = $FollowupTimeout
+$OverlayParams.MaxSessionSeconds = $MaxSessionSeconds
+$OverlayParams.MaxNoSpeechRetries = $MaxNoSpeechRetries
 
 & "$PSScriptRoot\start_overlay.ps1" @OverlayParams
 
