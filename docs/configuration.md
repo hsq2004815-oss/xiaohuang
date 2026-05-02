@@ -97,7 +97,7 @@ notepad "$env:USERPROFILE\.xiaohuang\config.json"
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | enabled | bool | true | Enable LLM replies |
-| provider | string | `"deepseek"` | Provider (placeholder for future multi-provider) |
+| provider | string | `"deepseek"` | Provider: `deepseek`, `qwen`, `doubao`, or `openai_compatible` |
 | model | string | `"deepseek-v4-flash"` | Model name |
 | base_url | string | `"https://api.deepseek.com"` | API base URL |
 | timeout_seconds | float | 20.0 | Request timeout |
@@ -152,7 +152,34 @@ wake with "贾维斯" but keep the assistant named "小黄", or vice versa.
 API key is NOT stored in config.json. Set it via:
 
 - `$env:USERPROFILE\.xiaohuang\secrets.ps1` (recommended)
-- Environment variable `DEEPSEEK_API_KEY`
+- Environment variable
+
+### Provider env vars
+
+| Provider | `api_key_env` | Default base URL | Default model |
+|----------|-------------|------------------|---------------|
+| `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com` | `deepseek-v4-flash` |
+| `qwen` | `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-turbo` |
+| `doubao` | `DOUBAO_API_KEY` | `https://ark.cn-beijing.volces.com/api/v3` | `doubao-lite-32k` |
+| `openai_compatible` | `OPENAI_API_KEY` | `http://127.0.0.1:8080/v1` | `default` |
+
+All providers use OpenAI-compatible chat completions protocol.
+
+### secrets.ps1 example
+
+```powershell
+# DeepSeek
+$env:DEEPSEEK_API_KEY = "sk-..."
+
+# Qwen (通义千问)
+$env:QWEN_API_KEY = "sk-..."
+
+# Doubao (豆包)
+$env:DOUBAO_API_KEY = "..."
+
+# OpenAI-compatible local or proxy
+$env:OPENAI_API_KEY = "sk-..."
+```
 
 Never commit real keys to Git.
 

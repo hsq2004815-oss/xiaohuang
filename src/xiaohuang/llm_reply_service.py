@@ -13,6 +13,29 @@ DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 TOOL_UNAVAILABLE_REPLY = "我可以先帮你整理任务，但当前版本还不能执行工具。"
 
+_PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
+    "deepseek": {
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-v4-flash",
+        "api_key_env": "DEEPSEEK_API_KEY",
+    },
+    "qwen": {
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-turbo",
+        "api_key_env": "QWEN_API_KEY",
+    },
+    "doubao": {
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "model": "doubao-lite-32k",
+        "api_key_env": "DOUBAO_API_KEY",
+    },
+    "openai_compatible": {
+        "base_url": "http://127.0.0.1:8080/v1",
+        "model": "default",
+        "api_key_env": "OPENAI_API_KEY",
+    },
+}
+
 _EXECUTION_CLAIM_KEYWORDS = (
     "我已经打开", "我已经下载", "我已经发送", "我已经执行",
     "我已经修改", "我已经删除", "我已经上传", "我已经登录",
@@ -32,6 +55,8 @@ class LlmReplyConfig:
     model: str
     timeout_seconds: float
     max_tokens: int = 256
+    temperature: float = 0.4
+    provider: str = "deepseek"
 
     @property
     def is_configured(self) -> bool:
@@ -66,6 +91,69 @@ def load_deepseek_config(
     )
 
 
+def load_llm_provider_config(
+    app_llm_config: Any,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> LlmReplyConfig:
+    """Build LlmReplyConfig from app_config_service LlmConfig.
+
+    Reads api_key from the environment variable named in app_llm_config.api_key_env.
+    Falls back to provider defaults for model/base_url when config values match built-in defaults.
+    """
+    source = os.environ if env is None else env
+    provider = str(app_llm_config.provider or "deepseek").strip()
+    pd = _PROVIDER_DEFAULTS.get(provider, _PROVIDER_DEFAULTS["deepseek"])
+
+    api_key_env = str(app_llm_config.api_key_env or pd["api_key_env"]).strip()
+    api_key = _empty_to_none(source.get(api_key_env))
+
+    model = str(app_llm_config.model or pd["model"]).strip()
+    base_url = str(app_llm_config.base_url or pd["base_url"]).strip().rstrip("/")
+    timeout = float(app_llm_config.timeout_seconds if app_llm_config.timeout_seconds is not None else 20.0)
+    max_tokens = int(app_llm_config.max_tokens) if app_llm_config.max_tokens is not None else 256
+    temperature = float(app_llm_config.temperature) if app_llm_config.temperature is not None else 0.4
+
+    return LlmReplyConfig(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        timeout_seconds=timeout,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        provider=provider,
+    )
+
+
+def build_openai_compatible_chat_request(
+    user_text: str,
+    *,
+    model: str,
+    max_tokens: int = 256,
+    temperature: float = 0.4,
+    persona: str | None = None,
+    provider: str = "deepseek",
+) -> dict[str, Any]:
+    system_content = (
+        persona
+        if persona
+        else "你是小黄，一个友好、简洁、可靠的 Windows 桌面语音助手。回答要自然、简短，适合语音播报。"
+    )
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": str(user_text or "").strip()},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": False,
+    }
+    if provider == "deepseek":
+        payload["thinking"] = {"type": "disabled"}
+    return payload
+
+
 def build_deepseek_request(
     user_text: str,
     *,
@@ -73,22 +161,13 @@ def build_deepseek_request(
     max_tokens: int = 256,
     persona: str | None = None,
 ) -> dict[str, Any]:
-    system_content = (
-        persona
-        if persona
-        else "你是小黄，一个友好、简洁、可靠的 Windows 桌面语音助手。回答要自然、简短，适合语音播报。"
+    return build_openai_compatible_chat_request(
+        user_text,
+        model=model,
+        max_tokens=max_tokens,
+        persona=persona,
+        provider="deepseek",
     )
-    return {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": str(user_text or "").strip()},
-        ],
-        "temperature": 0.4,
-        "max_tokens": max_tokens,
-        "stream": False,
-        "thinking": {"type": "disabled"},
-    }
 
 
 def generate_llm_reply(
@@ -126,10 +205,18 @@ def generate_llm_reply_result(
     if not resolved_config.is_configured:
         return ReplyGenerationResult(fallback_func(user_text), "rule_fallback_no_key")
 
+    provider_label = resolved_config.provider or "deepseek"
     try:
         response = (post_json_func or _post_json)(
             _chat_completions_url(resolved_config.base_url),
-            build_deepseek_request(user_text, model=resolved_config.model, max_tokens=resolved_config.max_tokens, persona=persona),
+            build_openai_compatible_chat_request(
+                user_text,
+                model=resolved_config.model,
+                max_tokens=resolved_config.max_tokens,
+                temperature=resolved_config.temperature,
+                persona=persona,
+                provider=provider_label,
+            ),
             {
                 "Authorization": f"Bearer {resolved_config.api_key}",
                 "Content-Type": "application/json",
@@ -137,13 +224,13 @@ def generate_llm_reply_result(
             resolved_config.timeout_seconds,
         )
     except json.JSONDecodeError:
-        _emit_debug(on_debug, "DeepSeek JSONDecodeError: response body is not valid JSON")
+        _emit_debug(on_debug, f"LLM JSONDecodeError ({provider_label}): response body is not valid JSON")
         return ReplyGenerationResult(fallback_func(user_text), "rule_fallback_error")
     except UnicodeError:
-        _emit_debug(on_debug, "DeepSeek UnicodeError: response encoding issue")
+        _emit_debug(on_debug, f"LLM UnicodeError ({provider_label}): response encoding issue")
         return ReplyGenerationResult(fallback_func(user_text), "rule_fallback_error")
     except Exception as exc:
-        _emit_debug(on_debug, _format_request_exception(exc, on_debug))
+        _emit_debug(on_debug, _format_request_exception(exc, on_debug, provider_label))
         return ReplyGenerationResult(fallback_func(user_text), "rule_fallback_error")
 
     if isinstance(response.get("error"), dict):
@@ -273,7 +360,7 @@ def _get_finish_reason(response: Mapping[str, Any]) -> str | None:
     return str(finish_reason)
 
 
-def _format_request_exception(exc: Exception, on_debug: object) -> str:
+def _format_request_exception(exc: Exception, on_debug: object, provider: str = "deepseek") -> str:
     exc_type = type(exc).__name__
     from urllib.error import HTTPError, URLError
     if isinstance(exc, HTTPError):
@@ -282,14 +369,14 @@ def _format_request_exception(exc: Exception, on_debug: object) -> str:
             body = exc.read(500).decode("utf-8", errors="replace")
         except Exception:
             pass
-        return f"DeepSeek HTTPError status={exc.code} url={_redact_url(str(exc.url))} body_truncated={body}"
+        return f"LLM HTTPError ({provider}) status={exc.code} url={_redact_url(str(exc.url))} body_truncated={body}"
     if isinstance(exc, URLError):
-        return f"DeepSeek URLError reason={exc.reason}"
+        return f"LLM URLError ({provider}) reason={exc.reason}"
     if isinstance(exc, TimeoutError):
-        return f"DeepSeek TimeoutError: request timed out"
+        return f"LLM TimeoutError ({provider}): request timed out"
     if isinstance(exc, OSError):
-        return f"DeepSeek OSError: {exc}"
-    return f"DeepSeek {exc_type}: {exc}"
+        return f"LLM OSError ({provider}): {exc}"
+    return f"LLM {exc_type} ({provider}): {exc}"
 
 
 def _redact_url(url: str) -> str:

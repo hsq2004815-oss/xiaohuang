@@ -2398,5 +2398,124 @@ class V113AssistantConfigTests(unittest.TestCase):
             self.assertNotIn("小黄", cfg.wake.phrases)
 
 
+class V113BLlmProviderRouterTests(unittest.TestCase):
+    def test_provider_deepseek_loads_api_key_from_env(self):
+        from xiaohuang.llm_reply_service import load_llm_provider_config
+        from types import SimpleNamespace
+        app_cfg = SimpleNamespace(
+            provider="deepseek", model="deepseek-v4-flash",
+            base_url="https://api.deepseek.com", api_key_env="DEEPSEEK_API_KEY",
+            timeout_seconds=20, max_tokens=256, temperature=0.4,
+        )
+        cfg = load_llm_provider_config(app_cfg, env={"DEEPSEEK_API_KEY": "sk-test"})
+        self.assertTrue(cfg.is_configured)
+        self.assertEqual(cfg.provider, "deepseek")
+        self.assertEqual(cfg.model, "deepseek-v4-flash")
+
+    def test_provider_qwen_uses_qwen_defaults(self):
+        from xiaohuang.llm_reply_service import load_llm_provider_config
+        from types import SimpleNamespace
+        app_cfg = SimpleNamespace(
+            provider="qwen", model="qwen-turbo",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key_env="QWEN_API_KEY", timeout_seconds=20, max_tokens=256, temperature=0.4,
+        )
+        cfg = load_llm_provider_config(app_cfg, env={"QWEN_API_KEY": "sk-qwen"})
+        self.assertTrue(cfg.is_configured)
+        self.assertEqual(cfg.provider, "qwen")
+        self.assertEqual(cfg.base_url.rstrip("/"), "https://dashscope.aliyuncs.com/compatible-mode/v1")
+
+    def test_provider_doubao_uses_doubao_defaults(self):
+        from xiaohuang.llm_reply_service import load_llm_provider_config
+        from types import SimpleNamespace
+        app_cfg = SimpleNamespace(
+            provider="doubao", model="doubao-lite-32k",
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+            api_key_env="DOUBAO_API_KEY", timeout_seconds=20, max_tokens=256, temperature=0.4,
+        )
+        cfg = load_llm_provider_config(app_cfg, env={"DOUBAO_API_KEY": "sk-doubao"})
+        self.assertTrue(cfg.is_configured)
+        self.assertEqual(cfg.provider, "doubao")
+
+    def test_provider_openai_compatible_works(self):
+        from xiaohuang.llm_reply_service import load_llm_provider_config
+        from types import SimpleNamespace
+        app_cfg = SimpleNamespace(
+            provider="openai_compatible", model="default",
+            base_url="http://127.0.0.1:8080/v1", api_key_env="OPENAI_API_KEY",
+            timeout_seconds=20, max_tokens=256, temperature=0.4,
+        )
+        cfg = load_llm_provider_config(app_cfg, env={"OPENAI_API_KEY": "sk-openai"})
+        self.assertTrue(cfg.is_configured)
+        self.assertEqual(cfg.provider, "openai_compatible")
+
+    def test_missing_api_key_env_falls_back_gracefully(self):
+        from xiaohuang.llm_reply_service import load_llm_provider_config
+        from types import SimpleNamespace
+        app_cfg = SimpleNamespace(
+            provider="qwen", model="qwen-turbo",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key_env="QWEN_API_KEY", timeout_seconds=20, max_tokens=256, temperature=0.4,
+        )
+        cfg = load_llm_provider_config(app_cfg, env={})
+        self.assertFalse(cfg.is_configured)
+        self.assertIsNone(cfg.api_key)
+
+    def test_config_temperature_flows_to_llm_request(self):
+        from xiaohuang.llm_reply_service import build_openai_compatible_chat_request
+        req = build_openai_compatible_chat_request(
+            "你好", model="test", temperature=0.9, provider="qwen",
+        )
+        self.assertEqual(req["temperature"], 0.9)
+        self.assertNotIn("thinking", req)
+
+    def test_deepseek_request_includes_thinking_disabled(self):
+        from xiaohuang.llm_reply_service import build_openai_compatible_chat_request
+        req = build_openai_compatible_chat_request(
+            "你好", model="deepseek-v4-flash", provider="deepseek",
+        )
+        self.assertIn("thinking", req)
+        self.assertEqual(req["thinking"], {"type": "disabled"})
+
+    def test_build_deepseek_request_backward_compat(self):
+        from xiaohuang.llm_reply_service import build_deepseek_request
+        req = build_deepseek_request("测试", model="deepseek-chat")
+        self.assertEqual(req["model"], "deepseek-chat")
+        self.assertIn("thinking", req)
+
+    def test_persona_flows_to_openai_compatible_request(self):
+        from xiaohuang.llm_reply_service import build_openai_compatible_chat_request
+        persona = "你是贾维斯。"
+        req = build_openai_compatible_chat_request(
+            "你是谁", model="test", persona=persona, provider="qwen",
+        )
+        self.assertEqual(req["messages"][0]["content"], persona)
+
+    def test_api_key_not_leaked_in_config(self):
+        from xiaohuang.llm_reply_service import load_llm_provider_config
+        from types import SimpleNamespace
+        app_cfg = SimpleNamespace(
+            provider="deepseek", model="deepseek-v4-flash",
+            base_url="https://api.deepseek.com", api_key_env="DEEPSEEK_API_KEY",
+            timeout_seconds=20, max_tokens=256, temperature=0.4,
+        )
+        cfg = load_llm_provider_config(app_cfg, env={"DEEPSEEK_API_KEY": "sk-secret-abc"})
+        self.assertEqual(cfg.api_key, "sk-secret-abc")
+        # api_key is in the config object but never logged to output
+        self.assertNotIn("sk-secret-abc", str(cfg.base_url))
+        self.assertNotIn("sk-secret-abc", str(cfg.model))
+
+    def test_cli_args_dont_override_config_when_not_passed(self):
+        import argparse
+        from xiaohuang.app_config_service import get_default_config, apply_cli_overrides
+        parser = argparse.ArgumentParser()
+        for a in ['wake-phrases','wake-aliases','wake-window-seconds','device','max-seconds','silence-seconds','enable-llm','enable-tts','debug','resident-hidden','conversation-session','llm-model','llm-base-url','llm-timeout','llm-max-tokens','tts-voice','tts-output-dir','post-response-cooldown','session-timeout','max-session-turns','followup-timeout','max-session-seconds','max-no-speech-retries']:
+            parser.add_argument(f'--{a}', default=None)
+        args = parser.parse_args([])
+        cfg = apply_cli_overrides(get_default_config(), args)
+        self.assertEqual(cfg.llm.model, "deepseek-v4-flash")
+        self.assertEqual(cfg.llm.base_url, "https://api.deepseek.com")
+
+
 if __name__ == "__main__":
     unittest.main()

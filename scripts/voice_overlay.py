@@ -27,7 +27,7 @@ from xiaohuang.conversation_session_service import (
     should_exit_for_no_speech,
 )
 from xiaohuang.logging_service import configure_logging
-from xiaohuang.llm_reply_service import load_deepseek_config
+from xiaohuang.llm_reply_service import load_llm_provider_config
 from xiaohuang.overlay_state_service import (
     STATE_ERROR,
     STATE_IDLE,
@@ -402,19 +402,14 @@ def main() -> int:
 
     tts_output_dir = PROJECT_ROOT / args.tts_output_dir
     post_response_cooldown = resolve_post_response_cooldown(enable_tts, app_config.overlay.post_response_cooldown)
-    llm_config = load_deepseek_config(
-        timeout_seconds=app_config.llm.timeout_seconds,
-        model_override=app_config.llm.model,
-        base_url_override=app_config.llm.base_url,
-        max_tokens_override=app_config.llm.max_tokens,
-    )
+    llm_config = load_llm_provider_config(app_config.llm)
     if enable_llm:
         if not llm_config.is_configured:
             if debug:
-                print("DeepSeek API key 未配置，已使用本地规则回复")
-            logger.info("--enable-llm specified but DEEPSEEK_API_KEY is not set; using local rule replies")
+                print(f"LLM API key 未配置（{app_config.llm.api_key_env}），已使用本地规则回复")
+            logger.info("--enable-llm specified but %s is not set; using local rule replies", app_config.llm.api_key_env)
         elif debug:
-            print(f"LLM enabled: model={llm_config.model} max_tokens={llm_config.max_tokens} timeout={llm_config.timeout_seconds}s")
+            print(f"LLM enabled: provider={llm_config.provider} model={llm_config.model} max_tokens={llm_config.max_tokens} timeout={llm_config.timeout_seconds}s")
     if debug:
         print(f"Resolved wake phrases: {wake_phrases}")
         print(f"Resolved wake aliases: {wake_aliases}")

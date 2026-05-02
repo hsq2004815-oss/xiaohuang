@@ -156,13 +156,13 @@ def _source_note_for_source(source: str) -> str | None:
     if source in ("rule", "llm"):
         return None
     if source == "rule_fallback_no_key":
-        return "DeepSeek 未配置 key，已使用本地回复"
+        return "LLM 未配置 key，已使用本地回复"
     if source == "rule_fallback_error":
-        return "DeepSeek 不可用，已使用本地回复"
+        return "LLM 不可用，已使用本地回复"
     if source == "rule_fallback_empty":
-        return "DeepSeek 返回为空，已使用本地回复"
+        return "LLM 返回为空，已使用本地回复"
     if source == "rule_fallback_length":
-        return "DeepSeek 输出被截断，已使用本地回复"
+        return "LLM 输出被截断，已使用本地回复"
     if source == "tool_unavailable":
         return "当前版本还不能执行工具"
     return None
