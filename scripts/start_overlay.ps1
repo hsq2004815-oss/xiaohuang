@@ -70,9 +70,11 @@ Write-Host "Starting voice overlay..."
 $OutLogFile = Join-Path $LogDir "voice_overlay.out.log"
 $ErrLogFile = Join-Path $LogDir "voice_overlay.err.log"
 $ArgParts = @(
-    "`"$ProjectRoot\scripts\voice_overlay.py`"",
-    "--device", $Device
+    "`"$ProjectRoot\scripts\voice_overlay.py`""
 )
+if ($PSBoundParameters.ContainsKey("Device")) {
+    $ArgParts += @("--device", $Device)
+}
 if ($EnableLlm)   { $ArgParts += "--enable-llm" }
 if ($EnableTts)   { $ArgParts += "--enable-tts" }
 if ($Debug)          { $ArgParts += "--debug" }
