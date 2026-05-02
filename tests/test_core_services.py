@@ -1999,5 +1999,37 @@ class V111ConversationSessionTests(unittest.TestCase):
         self.assertTrue(should_continue_session(2, config))
 
 
+class V111SessionRecordTests(unittest.TestCase):
+    def test_record_command_transcribe_uses_command_mode(self):
+        import tempfile, logging
+        from types import SimpleNamespace
+        from pathlib import Path
+        from voice_overlay import _record_command_transcribe
+        from xiaohuang.wake_loop_service import STT_MODE_COMMAND
+
+        modes: list[str] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            wav_path = Path(tmp) / "cmd.wav"
+            wav_path.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+
+            def fake_record(output_path, **kwargs):
+                return SimpleNamespace(path=Path(output_path), duration_seconds=0.5, stop_reason="silence")
+            def fake_transcribe(path, server_url):
+                return {"text": "那邓小平呢？"}
+
+            opts = SimpleNamespace(
+                device_id=0, server_url="http://127.0.0.1:8766",
+                sample_rate=16000, channels=1, silence_seconds=0.2,
+                recording_dir=Path(tmp),
+            )
+            logger = logging.getLogger("test")
+            text = _record_command_transcribe(
+                options=opts, max_seconds=1.0, stt_mode=STT_MODE_COMMAND,
+                debug=False, logger=logger, record_func=fake_record,
+                transcribe_func=fake_transcribe,
+            )
+            self.assertEqual(text, "那邓小平呢？")
+
+
 if __name__ == "__main__":
     unittest.main()

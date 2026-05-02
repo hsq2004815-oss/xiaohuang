@@ -42,7 +42,7 @@ from xiaohuang.audio_capture_service import build_recording_path
 from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
 from xiaohuang.tts_service import DEFAULT_TTS_VOICE
 from xiaohuang.vad_recording_service import record_until_silence
-from xiaohuang.wake_loop_service import STT_MODE_WAKE_CHECK, WakeLoopOptions, run_wake_loop_once
+from xiaohuang.wake_loop_service import STT_MODE_COMMAND, STT_MODE_WAKE_CHECK, WakeLoopOptions, run_wake_loop_once
 from xiaohuang.wake_word_service import DEFAULT_WAKE_ALIASES, WakeMatchResult, parse_wake_phrases
 
 
@@ -587,10 +587,12 @@ def _record_command_transcribe(
     stt_mode: str,
     debug: bool,
     logger,
+    record_func=record_until_silence,
+    transcribe_func=request_transcription,
 ) -> str:
     try:
         cmd_path = build_recording_path(options.recording_dir)
-        cmd_result = record_until_silence(
+        cmd_result = record_func(
             cmd_path,
             device_id=options.device_id,
             sample_rate=options.sample_rate,
@@ -598,7 +600,7 @@ def _record_command_transcribe(
             max_seconds=max_seconds,
             silence_seconds=options.silence_seconds,
         )
-        cmd_response = request_transcription(cmd_result.path, options.server_url)
+        cmd_response = transcribe_func(cmd_result.path, options.server_url)
         return str(cmd_response.get("text", ""))
     except (SttServerUnavailable, SttServerError) as exc:
         if debug:
