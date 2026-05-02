@@ -3,7 +3,8 @@
     Start the XiaoHuang voice overlay in background.
 .DESCRIPTION
     Launches voice_overlay.py with the project Python environment.
-    Supports -Device, -EnableLlm, -EnableTts, -Debug switches.
+    Only passes explicitly-provided flags. All other params come from
+    config.json or Python defaults. Use -ConfigPath to specify a config file.
     Loads DEEPSEEK_API_KEY from $env:USERPROFILE\.xiaohuang\secrets.ps1
     if not already set in the current shell.
 #>
@@ -14,11 +15,7 @@ param(
     [switch]$Debug,
     [switch]$ResidentHidden,
     [switch]$ConversationSession,
-    [double]$SessionTimeout = 30,
-    [int]$MaxSessionTurns = 12,
-    [double]$FollowupTimeout = 12,
-    [double]$MaxSessionSeconds = 300,
-    [int]$MaxNoSpeechRetries = 2
+    [string]$ConfigPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,11 +78,7 @@ if ($EnableTts)   { $ArgParts += "--enable-tts" }
 if ($Debug)          { $ArgParts += "--debug" }
 if ($ResidentHidden)       { $ArgParts += "--resident-hidden" }
 if ($ConversationSession)  { $ArgParts += "--conversation-session" }
-$ArgParts += @("--session-timeout", $SessionTimeout)
-$ArgParts += @("--max-session-turns", $MaxSessionTurns)
-$ArgParts += @("--followup-timeout", $FollowupTimeout)
-$ArgParts += @("--max-session-seconds", $MaxSessionSeconds)
-$ArgParts += @("--max-no-speech-retries", $MaxNoSpeechRetries)
+if ($ConfigPath)    { $ArgParts += @("--config", $ConfigPath) }
 
 $ArgList = $ArgParts -join " "
 
