@@ -2336,5 +2336,67 @@ class V113WakeConfigOverrideTests(unittest.TestCase):
         self.assertEqual(cfg.wake.phrases, ["小黄"])
 
 
+class V113AssistantConfigTests(unittest.TestCase):
+    def test_default_assistant_name_is_xiaohuang(self):
+        from xiaohuang.app_config_service import get_default_config
+        cfg = get_default_config()
+        self.assertEqual(cfg.assistant.name, "小黄")
+        self.assertEqual(cfg.assistant.display_name, "小黄")
+
+    def test_config_assistant_name_can_be_jarvis(self):
+        import tempfile, json
+        from xiaohuang.app_config_service import load_config
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "config.json"
+            fp.write_text(json.dumps({"assistant": {"name": "贾维斯", "display_name": "贾维斯"}}), encoding="utf-8")
+            cfg = load_config(fp)
+            self.assertEqual(cfg.assistant.name, "贾维斯")
+            self.assertEqual(cfg.assistant.display_name, "贾维斯")
+
+    def test_config_assistant_persona_can_override_default(self):
+        import tempfile, json
+        from xiaohuang.app_config_service import load_config
+        persona_text = "你是贾维斯，一个简洁可靠的 Windows 桌面语音助手。"
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "config.json"
+            fp.write_text(json.dumps({"assistant": {"persona": persona_text}}), encoding="utf-8")
+            cfg = load_config(fp)
+            self.assertEqual(cfg.assistant.persona, persona_text)
+
+    def test_invalid_assistant_name_falls_back_default(self):
+        import tempfile, json
+        from xiaohuang.app_config_service import load_config
+        warns: list[str] = []
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "config.json"
+            fp.write_text(json.dumps({"assistant": {"name": "", "display_name": ""}}), encoding="utf-8")
+            cfg = load_config(fp, warn=warns.append)
+            self.assertEqual(cfg.assistant.name, "小黄")
+            self.assertEqual(cfg.assistant.display_name, "小黄")
+
+    def test_reply_prompt_uses_assistant_persona(self):
+        from xiaohuang.llm_reply_service import build_deepseek_request
+        persona = "你是贾维斯，一个简洁可靠的 Windows 桌面语音助手。"
+        req = build_deepseek_request("你是谁", model="test-model", persona=persona)
+        sys_msg = req["messages"][0]
+        self.assertEqual(sys_msg["role"], "system")
+        self.assertEqual(sys_msg["content"], persona)
+        self.assertNotIn("小黄", sys_msg["content"])
+
+    def test_wake_phrase_and_assistant_name_are_independent(self):
+        import tempfile, json
+        from xiaohuang.app_config_service import load_config
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "config.json"
+            fp.write_text(json.dumps({
+                "wake": {"phrases": ["贾维斯"]},
+                "assistant": {"name": "小黄", "display_name": "小黄"},
+            }), encoding="utf-8")
+            cfg = load_config(fp)
+            self.assertEqual(cfg.wake.phrases, ["贾维斯"])
+            self.assertEqual(cfg.assistant.name, "小黄")
+            self.assertNotIn("小黄", cfg.wake.phrases)
+
+
 if __name__ == "__main__":
     unittest.main()

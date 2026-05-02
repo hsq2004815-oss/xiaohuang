@@ -125,7 +125,7 @@ def parse_args() -> argparse.Namespace:
 
 
 class VoiceOverlayApp:
-    def __init__(self, root, *, stop_event: threading.Event, debug: bool = False, start_hidden: bool = False) -> None:
+    def __init__(self, root, *, stop_event: threading.Event, debug: bool = False, start_hidden: bool = False, title: str = "小黄") -> None:
         self.root = root
         self.stop_event = stop_event
         self.debug = debug
@@ -133,7 +133,7 @@ class VoiceOverlayApp:
         self.phase = 0.0
         self.closed = False
         self._after_ids: set[str] = set()
-        self._build_ui()
+        self._build_ui(title)
         self.set_state(STATE_IDLE)
         self._animate()
         if start_hidden:
@@ -142,8 +142,8 @@ class VoiceOverlayApp:
             except Exception:
                 pass
 
-    def _build_ui(self) -> None:
-        self.root.title("小黄")
+    def _build_ui(self, title: str = "小黄") -> None:
+        self.root.title(title)
         self.root.geometry("360x120+80+80")
         self.root.attributes("-topmost", True)
         self.root.resizable(False, False)
@@ -358,7 +358,7 @@ def main() -> int:
 
     stop_event = threading.Event()
     root = tk.Tk()
-    app = VoiceOverlayApp(root, stop_event=stop_event, debug=debug, start_hidden=resident_hidden)
+    app = VoiceOverlayApp(root, stop_event=stop_event, debug=debug, start_hidden=resident_hidden, title=app_config.assistant.display_name)
 
     try:
         health = check_server_health(args.server_url)
@@ -451,6 +451,7 @@ def main() -> int:
             llm_config,
             resident_hidden,
             session_config,
+            app_config.assistant.persona,
         ),
         daemon=True,
     )
@@ -475,6 +476,7 @@ def _run_overlay_loop(
     llm_config,
     resident_hidden: bool = False,
     session_config: ConversationSessionConfig = ConversationSessionConfig(),
+    persona: str | None = None,
 ) -> None:
     def _overlay_stt(path, server_url, *, mode: str):
         try:
@@ -520,6 +522,7 @@ def _run_overlay_loop(
                 llm_config=llm_config,
                 tts_voice=tts_voice,
                 tts_output_dir=tts_output_dir,
+                persona=persona,
             )
             pipeline_result = generate_reply_pipeline_result(
                 result.command_text,

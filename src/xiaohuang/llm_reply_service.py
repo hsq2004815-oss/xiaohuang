@@ -66,17 +66,22 @@ def load_deepseek_config(
     )
 
 
-def build_deepseek_request(user_text: str, *, model: str, max_tokens: int = 256) -> dict[str, Any]:
+def build_deepseek_request(
+    user_text: str,
+    *,
+    model: str,
+    max_tokens: int = 256,
+    persona: str | None = None,
+) -> dict[str, Any]:
+    system_content = (
+        persona
+        if persona
+        else "你是小黄，一个友好、简洁、可靠的 Windows 桌面语音助手。回答要自然、简短，适合语音播报。"
+    )
     return {
         "model": model,
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "你是 Windows 桌面语音助手小黄。只做单句自然回复，30 个汉字以内。"
-                    "不要编造已经执行了任务；如果用户要求实际操作，只说明当前版本不能执行工具。"
-                ),
-            },
+            {"role": "system", "content": system_content},
             {"role": "user", "content": str(user_text or "").strip()},
         ],
         "temperature": 0.4,
@@ -93,6 +98,7 @@ def generate_llm_reply(
     fallback_func: Callable[[str], str] = generate_reply,
     post_json_func: PostJsonFunc | None = None,
     on_debug: Callable[[str], None] | None = None,
+    persona: str | None = None,
 ) -> str:
     return generate_llm_reply_result(
         user_text,
@@ -100,6 +106,7 @@ def generate_llm_reply(
         fallback_func=fallback_func,
         post_json_func=post_json_func,
         on_debug=on_debug,
+        persona=persona,
     ).text
 
 
@@ -110,6 +117,7 @@ def generate_llm_reply_result(
     fallback_func: Callable[[str], str] = generate_reply,
     post_json_func: PostJsonFunc | None = None,
     on_debug: Callable[[str], None] | None = None,
+    persona: str | None = None,
 ) -> ReplyGenerationResult:
     if _looks_like_tool_request(user_text):
         return ReplyGenerationResult(TOOL_UNAVAILABLE_REPLY, "tool_unavailable")
@@ -121,7 +129,7 @@ def generate_llm_reply_result(
     try:
         response = (post_json_func or _post_json)(
             _chat_completions_url(resolved_config.base_url),
-            build_deepseek_request(user_text, model=resolved_config.model, max_tokens=resolved_config.max_tokens),
+            build_deepseek_request(user_text, model=resolved_config.model, max_tokens=resolved_config.max_tokens, persona=persona),
             {
                 "Authorization": f"Bearer {resolved_config.api_key}",
                 "Content-Type": "application/json",

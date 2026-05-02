@@ -60,6 +60,19 @@ class RuntimeConfig:
     debug: bool = False
 
 
+_DEFAULT_PERSONA = (
+    "你是小黄，一个友好、简洁、可靠的 Windows 桌面语音助手。"
+    "回答要自然、简短，适合语音播报。"
+)
+
+
+@dataclass(frozen=True)
+class AssistantConfig:
+    name: str = "小黄"
+    display_name: str = "小黄"
+    persona: str = _DEFAULT_PERSONA
+
+
 @dataclass(frozen=True)
 class XiaoHuangConfig:
     wake: WakeConfig = field(default_factory=WakeConfig)
@@ -69,6 +82,7 @@ class XiaoHuangConfig:
     conversation: ConversationConfig = field(default_factory=ConversationConfig)
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    assistant: AssistantConfig = field(default_factory=AssistantConfig)
 
 
 def get_default_config() -> XiaoHuangConfig:
@@ -124,6 +138,7 @@ def merge_config_dict(
         conversation=_merge_conversation(base.conversation, sections.get("conversation", {}), warn=warn),
         overlay=_merge_overlay(base.overlay, sections.get("overlay", {}), warn=warn),
         runtime=_merge_runtime(base.runtime, sections.get("runtime", {}), warn=warn),
+        assistant=_merge_assistant(base.assistant, sections.get("assistant", {}), warn=warn),
     )
 
 
@@ -172,6 +187,7 @@ def apply_cli_overrides(
         runtime=RuntimeConfig(
             debug=_or_config(args.debug, config.runtime.debug),
         ),
+        assistant=config.assistant,
     )
 
 
@@ -241,6 +257,17 @@ def _merge_overlay(base: OverlayConfig, data: dict[str, Any], *, warn=None) -> O
 def _merge_runtime(base: RuntimeConfig, data: dict[str, Any], *, warn=None) -> RuntimeConfig:
     return RuntimeConfig(
         debug=_coerce_bool(data.get("debug"), base.debug, warn),
+    )
+
+
+def _merge_assistant(base: AssistantConfig, data: dict[str, Any], *, warn=None) -> AssistantConfig:
+    name = data.get("name")
+    display_name = data.get("display_name")
+    persona = data.get("persona")
+    return AssistantConfig(
+        name=str(name).strip() if isinstance(name, str) and name.strip() else base.name,
+        display_name=str(display_name).strip() if isinstance(display_name, str) and display_name.strip() else base.display_name,
+        persona=str(persona).strip() if isinstance(persona, str) and persona.strip() else base.persona,
     )
 
 

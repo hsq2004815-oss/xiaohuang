@@ -21,6 +21,7 @@ class ReplyPipelineConfig:
     llm_config: Any = None
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
     tts_output_dir: Path = Path("data/tts")
+    persona: str | None = None
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,7 @@ def generate_reply_pipeline_result(
     if config.enable_llm and config.llm_config is not None and config.llm_config.is_configured:
         _track("llm_ms", start=True)
         reply_result = llm_reply_func(
-            command_text, config=config.llm_config, on_debug=on_debug,
+            command_text, config=config.llm_config, on_debug=on_debug, persona=config.persona,
         )
         _track("llm_ms", start=False)
         reply_text = reply_result.text

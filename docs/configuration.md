@@ -65,6 +65,11 @@ notepad "$env:USERPROFILE\.xiaohuang\config.json"
   },
   "runtime": {
     "debug": false
+  },
+  "assistant": {
+    "name": "小黄",
+    "display_name": "小黄",
+    "persona": "你是小黄，一个友好、简洁、可靠的 Windows 桌面语音助手。回答要自然、简短，适合语音播报。"
   }
 }
 ```
@@ -129,6 +134,18 @@ notepad "$env:USERPROFILE\.xiaohuang\config.json"
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | debug | bool | false | Print debug output |
+
+### assistant
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| name | string | `"小黄"` | Assistant identity name (used in LLM system prompt) |
+| display_name | string | `"小黄"` | Name shown in overlay window title |
+| persona | string | `"你是小黄..."` | System prompt sent to LLM to define assistant behavior |
+
+Note: `assistant.name` controls who the assistant thinks it is (LLM persona).
+`wake.phrases` controls what words wake it up. These are independent — you can
+wake with "贾维斯" but keep the assistant named "小黄", or vice versa.
 
 ## API Key
 
