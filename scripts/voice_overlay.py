@@ -400,7 +400,7 @@ def _run_overlay_loop(
         except (SttServerUnavailable, SttServerError) as exc:
             if mode == STT_MODE_WAKE_CHECK:
                 if debug:
-                    print(f"Wake check STT failed, skipped this window: {exc}")
+                    _safe_print(f"Wake check STT failed, skipped this window: {exc}")
                 logger.warning("Wake check STT failed, skipped this window: %s", exc)
                 return {"text": ""}
             raise
@@ -417,9 +417,9 @@ def _run_overlay_loop(
             result = run_wake_loop_once(
                 options,
                 on_state_change=lambda state, payload=None: _handle_wake_state(app, state, payload),
-                on_wake_text=(lambda text: print(f"Wake check transcription: {text}")) if debug else None,
+                on_wake_text=(lambda text: _safe_print(f"Wake check transcription: {text}")) if debug else None,
                 on_wake_match=(lambda match: _print_wake_match(match)) if debug else None,
-                on_command_text=(lambda text: print(f"Command transcription: {text}")) if debug else None,
+                on_command_text=(lambda text: _safe_print(f"Command transcription: {text}")) if debug else None,
                 on_wake_detected=on_wake_shown,
                 request_transcription_func=_overlay_stt,
             )
@@ -444,8 +444,8 @@ def _run_overlay_loop(
             )
 
             if debug:
-                print(f"XiaoHuang reply: {pipeline_result.reply_text}")
-                print(f"Reply source: {pipeline_result.reply_source}")
+                _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
+                _safe_print(f"Reply source: {pipeline_result.reply_source}")
             logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
             app.thread_safe_set_state(
                 STATE_RESULT,
@@ -482,6 +482,14 @@ def _run_overlay_loop(
                 break
 
 
+def _safe_print(message: str) -> None:
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", "utf-8") or "utf-8"
+        print(message.encode(encoding, errors="replace").decode(encoding, errors="replace"))
+
+
 def _handle_wake_state(app: VoiceOverlayApp, state: str, payload: str | None = None) -> None:
     if state == STATE_RESULT:
         return
@@ -489,12 +497,12 @@ def _handle_wake_state(app: VoiceOverlayApp, state: str, payload: str | None = N
 
 
 def _warn(logger, message: str) -> None:
-    print(f"Warning: {message}")
+    _safe_print(f"Warning: {message}")
     logger.warning(message)
 
 
 def _playback_warning(logger, message: str) -> None:
-    print(message)
+    _safe_print(message)
     logger.warning(message)
 
 
@@ -507,7 +515,11 @@ def _make_llm_debug_handler(logger, debug_enabled: bool):
     if not debug_enabled:
         return None
     def _log(msg: str) -> None:
-        print(f"DeepSeek debug: {msg}")
+        try:
+            print(f"DeepSeek debug: {msg}")
+        except UnicodeEncodeError:
+            encoding = getattr(sys.stdout, "encoding", "utf-8") or "utf-8"
+            print(f"DeepSeek debug: {msg}".encode(encoding, errors="replace").decode(encoding, errors="replace"))
         logger.info("DeepSeek debug: %s", msg)
     return _log
 

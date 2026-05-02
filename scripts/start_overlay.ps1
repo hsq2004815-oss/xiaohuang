@@ -22,6 +22,8 @@ $LogDir = Join-Path $ProjectRoot "logs"
 
 # load env
 . "$ProjectRoot\scripts\run_env.ps1"
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 
 # auto-load local secrets if key not already set
 if (-not $env:DEEPSEEK_API_KEY) {

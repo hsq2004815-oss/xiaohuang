@@ -128,8 +128,14 @@ def generate_llm_reply_result(
             },
             resolved_config.timeout_seconds,
         )
-    except Exception:
-        _emit_debug(on_debug, "DeepSeek request raised exception (network/timeout/http error)")
+    except json.JSONDecodeError:
+        _emit_debug(on_debug, "DeepSeek JSONDecodeError: response body is not valid JSON")
+        return ReplyGenerationResult(fallback_func(user_text), "rule_fallback_error")
+    except UnicodeError:
+        _emit_debug(on_debug, "DeepSeek UnicodeError: response encoding issue")
+        return ReplyGenerationResult(fallback_func(user_text), "rule_fallback_error")
+    except Exception as exc:
+        _emit_debug(on_debug, _format_request_exception(exc, on_debug))
         return ReplyGenerationResult(fallback_func(user_text), "rule_fallback_error")
 
     if isinstance(response.get("error"), dict):
@@ -257,6 +263,30 @@ def _get_finish_reason(response: Mapping[str, Any]) -> str | None:
     if finish_reason is None:
         return None
     return str(finish_reason)
+
+
+def _format_request_exception(exc: Exception, on_debug: object) -> str:
+    exc_type = type(exc).__name__
+    from urllib.error import HTTPError, URLError
+    if isinstance(exc, HTTPError):
+        body = ""
+        try:
+            body = exc.read(500).decode("utf-8", errors="replace")
+        except Exception:
+            pass
+        return f"DeepSeek HTTPError status={exc.code} url={_redact_url(str(exc.url))} body_truncated={body}"
+    if isinstance(exc, URLError):
+        return f"DeepSeek URLError reason={exc.reason}"
+    if isinstance(exc, TimeoutError):
+        return f"DeepSeek TimeoutError: request timed out"
+    if isinstance(exc, OSError):
+        return f"DeepSeek OSError: {exc}"
+    return f"DeepSeek {exc_type}: {exc}"
+
+
+def _redact_url(url: str) -> str:
+    import re
+    return re.sub(r'(api[-_]?key|token|secret)=[^&]+', r'\1=REDACTED', url)
 
 
 def _empty_to_none(value: str | None) -> str | None:

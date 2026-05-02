@@ -6,6 +6,8 @@ Set-Location -LiteralPath $ProjectRoot
 $env:PYTHONPATH = "E:\Projects\xiaohuang\src"
 $env:MODELSCOPE_CACHE = "F:\for_xiaohuang\models\modelscope"
 $env:HF_HOME = "F:\for_xiaohuang\models\huggingface"
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 
 $latestRecording = "data\recordings\test_时间戳.wav"
 $existingRecording = Get-ChildItem -LiteralPath "data\recordings" -Filter "*.wav" -File -ErrorAction SilentlyContinue |

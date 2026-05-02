@@ -1900,5 +1900,58 @@ class V111ResidentHiddenTests(unittest.TestCase):
         self.assertIn("--resident-hidden", result.stdout)
 
 
+class V111SafePrintTests(unittest.TestCase):
+    def test_safe_print_does_not_crash_on_emoji(self):
+        from voice_overlay import _safe_print
+        try:
+            _safe_print("test \U0001f614 emoji")
+        except UnicodeEncodeError:
+            self.fail("_safe_print raised UnicodeEncodeError on emoji")
+
+
+class V111DeepSeekDiagnosticsTests(unittest.TestCase):
+    def test_http_error_debug_includes_status(self):
+        import io
+        from urllib.error import HTTPError
+        from xiaohuang.llm_reply_service import _format_request_exception
+        exc = HTTPError("https://api.deepseek.com/v1/chat", 502, "Bad Gateway", {}, io.BytesIO(b'{"error":"upstream"}'))
+        msg = _format_request_exception(exc, None)
+        self.assertIn("502", msg)
+
+    def test_url_error_debug_includes_reason(self):
+        from urllib.error import URLError
+        from xiaohuang.llm_reply_service import _format_request_exception
+        exc = URLError("connection refused")
+        msg = _format_request_exception(exc, None)
+        self.assertIn("connection refused", msg)
+
+    def test_timeout_debug_includes_timeout(self):
+        from xiaohuang.llm_reply_service import _format_request_exception
+        exc = TimeoutError("timed out")
+        msg = _format_request_exception(exc, None)
+        self.assertIn("Timeout", msg)
+
+    def test_format_exception_does_not_leak_key(self):
+        import io
+        from urllib.error import HTTPError
+        from xiaohuang.llm_reply_service import _format_request_exception
+        exc = HTTPError("https://api.example.com?api_key=sk-secret123", 502, "Err", {}, io.BytesIO(b"{}"))
+        msg = _format_request_exception(exc, None)
+        self.assertNotIn("sk-secret123", msg)
+        self.assertIn("REDACTED", msg)
+
+    def test_json_decode_error_debug_clear(self):
+        from xiaohuang.llm_reply_service import generate_llm_reply_result, LlmReplyConfig
+        calls: list[str] = []
+        config = LlmReplyConfig(api_key="secret", base_url="https://x", model="m", timeout_seconds=15)
+        def bad_json(_url, _payload, _headers, _timeout):
+            import json
+            raise json.JSONDecodeError("msg", "doc", 0)
+        result = generate_llm_reply_result("测试", config=config, post_json_func=bad_json, on_debug=calls.append)
+        self.assertEqual(result.source, "rule_fallback_error")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("JSONDecodeError", calls[0])
+
+
 if __name__ == "__main__":
     unittest.main()
