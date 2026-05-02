@@ -2261,5 +2261,49 @@ class V112SessionDefaultsTests(unittest.TestCase):
         self.assertEqual(get_session_end_reason(turn_count=1, config=config, elapsed_seconds=0, no_speech_retries=3), "no_speech")
 
 
+class V113AppConfigTests(unittest.TestCase):
+    def test_load_config_no_file_returns_default(self):
+        from xiaohuang.app_config_service import load_config
+        cfg = load_config(Path("/nonexistent/config.json"))
+        self.assertEqual(cfg.wake.phrases, ["小黄"])
+
+    def test_load_config_valid_json_overrides_wake_phrase(self):
+        import tempfile, json
+        from xiaohuang.app_config_service import load_config
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "config.json"
+            fp.write_text(json.dumps({"wake": {"phrases": ["贾维斯"]}}), encoding="utf-8")
+            cfg = load_config(fp)
+            self.assertEqual(cfg.wake.phrases, ["贾维斯"])
+
+    def test_load_config_invalid_json_warns_and_returns_default(self):
+        import tempfile
+        from xiaohuang.app_config_service import load_config
+        warns: list[str] = []
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "config.json"
+            fp.write_text("{invalid", encoding="utf-8")
+            cfg = load_config(fp, warn=warns.append)
+            self.assertEqual(cfg.wake.phrases, ["小黄"])
+            self.assertTrue(len(warns) > 0)
+
+    def test_phrase_string_converted_to_list(self):
+        from xiaohuang.app_config_service import _coerce_phrases
+        self.assertEqual(_coerce_phrases("贾维斯"), ["贾维斯"])
+
+    def test_phrase_empty_list_fallback(self):
+        from xiaohuang.app_config_service import _coerce_phrases
+        self.assertIsNone(_coerce_phrases([]))
+
+    def test_tts_voice_overridden(self):
+        import tempfile, json
+        from xiaohuang.app_config_service import load_config
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "config.json"
+            fp.write_text(json.dumps({"tts": {"voice": "zh-CN-YunxiNeural"}}), encoding="utf-8")
+            cfg = load_config(fp)
+            self.assertEqual(cfg.tts.voice, "zh-CN-YunxiNeural")
+
+
 if __name__ == "__main__":
     unittest.main()

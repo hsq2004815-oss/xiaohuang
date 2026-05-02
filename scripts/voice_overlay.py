@@ -47,6 +47,7 @@ from xiaohuang.reply_pipeline_service import (
     ReplyPipelineResult,
     generate_reply_pipeline_result,
 )
+from xiaohuang.app_config_service import apply_cli_overrides, load_config
 from xiaohuang.audio_capture_service import build_recording_path
 from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
 from xiaohuang.tts_service import DEFAULT_TTS_VOICE
@@ -119,6 +120,7 @@ def parse_args() -> argparse.Namespace:
         default=2,
         help="Exit session after this many no-speech follow-up attempts.",
     )
+    parser.add_argument("--config", default=None, help="Path to config.json. Defaults to %%USERPROFILE%%\\.xiaohuang\\config.json")
     return parser.parse_args()
 
 
@@ -336,6 +338,8 @@ class VoiceOverlayApp:
 def main() -> int:
     args = parse_args()
     config = load_config()
+    app_config = load_config(args.config, warn=lambda msg: print(f"Config warning: {msg}"))
+    app_config = apply_cli_overrides(app_config, args)
     logger = configure_logging(
         PROJECT_ROOT / config["logging"]["directory"],
         "voice_overlay",
@@ -350,7 +354,7 @@ def main() -> int:
 
     stop_event = threading.Event()
     root = tk.Tk()
-    app = VoiceOverlayApp(root, stop_event=stop_event, debug=args.debug, start_hidden=args.resident_hidden)
+    app = VoiceOverlayApp(root, stop_event=stop_event, debug=debug, start_hidden=resident_hidden)
 
     try:
         health = check_server_health(args.server_url)
@@ -366,7 +370,7 @@ def main() -> int:
         stop_event.set()
         return 6
 
-    if args.debug:
+    if debug:
         print(f"STT server ready: {args.server_url} ({health.get('status', 'ok')})")
 
     audio_config = config.get("audio", {})
@@ -376,14 +380,16 @@ def main() -> int:
         config_device = audio_config.get("device_id")
         device_id = int(config_device) if config_device is not None else 0
     recording_dir = PROJECT_ROOT / recording_config.get("output_dir", "data/recordings")
+    wake_phrases = parse_wake_phrases(args.wake_phrases) or app_config.wake.phrases
+    wake_aliases = parse_wake_phrases(args.wake_aliases) or app_config.wake.aliases
     options = WakeLoopOptions(
         device_id=device_id,
         server_url=args.server_url,
-        wake_window_seconds=args.wake_window_seconds,
-        wake_phrases=parse_wake_phrases(args.wake_phrases),
-        wake_aliases=parse_wake_phrases(args.wake_aliases),
-        max_seconds=args.max_seconds,
-        silence_seconds=args.silence_seconds,
+        wake_window_seconds=app_config.wake.wake_window_seconds,
+        wake_phrases=wake_phrases,
+        wake_aliases=wake_aliases,
+        max_seconds=app_config.audio.max_seconds,
+        silence_seconds=app_config.audio.silence_seconds,
         sample_rate=int(audio_config.get("sample_rate", 16000)),
         channels=int(audio_config.get("channels", 1)),
         recording_dir=recording_dir,
@@ -391,31 +397,35 @@ def main() -> int:
     )
 
     tts_output_dir = PROJECT_ROOT / args.tts_output_dir
-    post_response_cooldown = resolve_post_response_cooldown(args.enable_tts, args.post_response_cooldown)
+    post_response_cooldown = resolve_post_response_cooldown(enable_tts, app_config.overlay.post_response_cooldown)
     llm_config = load_deepseek_config(
-        timeout_seconds=args.llm_timeout,
-        model_override=args.llm_model,
-        base_url_override=args.llm_base_url,
-        max_tokens_override=args.llm_max_tokens,
+        timeout_seconds=app_config.llm.timeout_seconds,
+        model_override=app_config.llm.model,
+        base_url_override=app_config.llm.base_url,
+        max_tokens_override=app_config.llm.max_tokens,
     )
-    if args.enable_llm:
+    enable_llm = app_config.llm.enabled
+    enable_tts = app_config.tts.enabled
+    debug = app_config.runtime.debug
+    resident_hidden = app_config.overlay.resident_hidden
+    if enable_llm:
         if not llm_config.is_configured:
-            if args.debug:
+            if debug:
                 print("DeepSeek API key 未配置，已使用本地规则回复")
             logger.info("--enable-llm specified but DEEPSEEK_API_KEY is not set; using local rule replies")
-        elif args.debug:
+        elif debug:
             print(f"LLM enabled: model={llm_config.model} max_tokens={llm_config.max_tokens} timeout={llm_config.timeout_seconds}s")
-    if args.debug:
-        print(f"TTS enabled: {args.enable_tts}")
+    if debug:
+        print(f"TTS enabled: {enable_tts}")
     session_config = ConversationSessionConfig(
-        enabled=args.conversation_session,
-        timeout_seconds=args.session_timeout,
-        max_turns=args.max_session_turns,
-        followup_timeout_seconds=args.followup_timeout,
-        max_session_seconds=args.max_session_seconds,
-        max_no_speech_retries=args.max_no_speech_retries,
+        enabled=app_config.conversation.enabled,
+        timeout_seconds=app_config.conversation.session_timeout,
+        max_turns=app_config.conversation.max_turns,
+        followup_timeout_seconds=app_config.conversation.followup_timeout,
+        max_session_seconds=app_config.conversation.max_session_seconds,
+        max_no_speech_retries=app_config.conversation.max_no_speech_retries,
     )
-    if args.debug and session_config.enabled:
+    if debug and session_config.enabled:
         _safe_print(
             f"Conversation session config: "
             f"followup_timeout={session_config.followup_timeout_seconds} "
@@ -429,15 +439,15 @@ def main() -> int:
             app,
             options,
             logger,
-            args.debug,
+            debug,
             stop_event,
-            args.enable_tts,
-            args.tts_voice,
+            enable_tts,
+            app_config.tts.voice,
             tts_output_dir,
             post_response_cooldown,
-            args.enable_llm,
+            enable_llm,
             llm_config,
-            args.resident_hidden,
+            resident_hidden,
             session_config,
         ),
         daemon=True,
