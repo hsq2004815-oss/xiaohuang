@@ -64,7 +64,7 @@ config.json / secrets.ps1 → STT server 常驻 → voice_overlay 悬浮窗 → 
 
 - **还不执行工具**：LLM 回复不接浏览器/QQ/微信/opencode/opencli/爬虫/文件系统
 - **还不做复杂 Settings UI**：配置通过文本编辑 `config.json`
-- **还不做 HUD / 托盘 / 安装器**：当前只有 Tkinter 悬浮窗
+- **还不做高级 HUD / 安装器**：当前已有 V1.1.4B 最小托盘入口，但不负责启动/停止/重启
 - **当前 wake 仍是 STT 文本匹配**：不是真正 KWS 模型（openWakeWord / fsmn-kws）
 - **LLM 仍是单句回复**：不做多轮上下文记忆
 - **不做离线 TTS**：edge-tts 依赖网络
@@ -146,7 +146,7 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 - 不执行工具
 - 不接 openWakeWord / FunASR KWS 真实模型
 - 不做多轮对话记忆
-- 不做桌面托盘或安装器
+- 不做安装器；V1.1.4B 托盘仅提供打开设置、打开日志目录和退出托盘
 
 </details>
 
@@ -160,7 +160,7 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 | V1.1.3A | 用户配置中控层：config.json、app_config_service、wake/audio/llm/tts/conversation/overlay/runtime/assistant 配置段、assistant identity |
 | V1.1.3B | LLM Provider Router：deepseek/qwen/doubao/openai_compatible 多 provider 切换 |
 | V1.1.3C | Settings UI Prototype：Tkinter 配置编辑器（settings_ui.py） |
-| V1.1.4 | Resident / Tray / Launch Control：托盘常驻、启动/停止/重启、打开设置和日志目录（设计完成，待实现） |
+| V1.1.4 | Resident / Tray / Launch Control：V1.1.4B 最小托盘入口已实现并真人验证通过；启动/停止/重启留到 V1.1.4C |
 
 </details>
 
@@ -183,6 +183,7 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 - [V1.1.3A_CONFIG_AUDIT.md](docs/V1.1.3A_CONFIG_AUDIT.md) — 中控层收口审计
 - [V1.1.3C_SETTINGS_UI_VALIDATION.md](docs/V1.1.3C_SETTINGS_UI_VALIDATION.md) — Settings UI 最终真人验证记录
 - [V1.1.4_TRAY_LAUNCH_CONTROL_DESIGN.md](docs/V1.1.4_TRAY_LAUNCH_CONTROL_DESIGN.md) — 托盘常驻与启动控制设计
+- [V1.1.4B_TRAY_VALIDATION.md](docs/V1.1.4B_TRAY_VALIDATION.md) — 最小托盘程序真人验证记录
 
 ## Settings UI
 
@@ -204,3 +205,5 @@ V1.1.4B 提供最小托盘入口，只支持打开设置、打开日志目录和
 ```powershell
 & "F:\for_xiaohuang\conda310\python.exe" scripts\tray_app.py --config "$env:USERPROFILE\.xiaohuang\config.json"
 ```
+
+真人验证结果：托盘图标、右键菜单、打开 Settings UI、读取 `config_settings_ui_test.json`、打开 `logs/`、关于/状态、退出托盘均正常。退出托盘不会停止 STT server 或 `voice_overlay.py`，也未影响 wake / session / TTS / LLM router 主链路。

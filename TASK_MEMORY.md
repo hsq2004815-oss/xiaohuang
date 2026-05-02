@@ -2,13 +2,13 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.4B — 最小托盘入口实现
-- **最新功能 commit**：`dd87fb3` Stabilize Settings UI verification before publishing
-- **最新文档 commit**：`cb8522d` docs: record V1.1.3C final validation
+- **阶段**：V1.1.4B — 最小托盘入口真人验证通过
+- **最新功能 commit**：`2eb2c5e` feat: add minimal tray app
+- **最新文档 commit**：待提交 `docs: record V1.1.4B tray validation`
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
-- **分支**：`main...origin/main`（提交文档前）
-- **工作区**：V1.1.4B tray_app.py 最小托盘入口待验证/提交；运行产物均 ignored
-- **测试**：262 tests OK，compileall OK，settings_ui/voice_overlay help OK，settings_ui --check PASS；最终本机真人验证通过
+- **分支**：`main...origin/main`（提交 V1.1.4B 验证文档前）
+- **工作区**：docs-only 记录 V1.1.4B 真人验证结果；运行产物均 ignored
+- **测试**：V1.1.4B 实现阶段已通过 267 tests OK、compileall OK、tray/settings/overlay help OK；本轮为文档收口
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
 
@@ -40,7 +40,10 @@
 - `退出托盘` 只停止托盘图标，不调用 `stop_xiaohuang.ps1`，不停止 STT/overlay。
 - 新增依赖：`pystray>=0.19.5`、`Pillow>=10.0`。
 - 自动验证：267 tests OK、compileall OK、tray/settings/overlay help OK。
-- 启动 smoke：`tray_app.py --config config_settings_ui_test.json` 可启动为常驻进程；未完成右键菜单人工点击验证。
+- 启动 smoke：`tray_app.py --config config_settings_ui_test.json` 可启动为常驻进程。
+- 最终真人验证已通过：托盘图标出现、右键菜单打开、打开 Settings UI、读取 `config_settings_ui_test.json`、打开 `logs/`、关于/状态、退出托盘均正常。
+- 边界验证通过：V1.1.4B 没有启动/停止/重启小黄；退出托盘不会停止 STT server / voice_overlay；未影响 voice_overlay / wake / session / TTS / LLM router 主链路。
+- 详细记录见 `docs/V1.1.4B_TRAY_VALIDATION.md`。
 
 ### V1.1.3B 真实验证结果（2026-05-02）
 
@@ -94,7 +97,8 @@
 |------|------|
 | V1.1.3B | LLM Provider Router ✅ 已完成 |
 | V1.1.3C | Settings UI Prototype ✅ 最终真人验证通过，阶段性收口 |
-| V1.1.4 | Resident / Tray / Launch Control 设计完成，待分阶段实现 |
+| V1.1.4B | 最小托盘入口 ✅ 已实现并真人验证通过 |
+| V1.1.4C | 托盘启动 / 停止 / 重启控制，待实现 |
 | V1.2 | Wake Engine Abstraction |
 
 ---
