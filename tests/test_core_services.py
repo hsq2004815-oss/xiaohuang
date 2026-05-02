@@ -1818,28 +1818,41 @@ class V111WakeDetectedCallbackTests(unittest.TestCase):
 
     def test_on_wake_detected_not_called_on_no_match(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            recording_dir = Path(temp_dir) / "data" / "recordings"
-            called = {"n": 0}
+            tmp_dir = Path(temp_dir)
+            recording_dir = tmp_dir / "recordings"
+            called = {"on_wake_detected": 0}
+            record_calls = []
+            wake_path = tmp_dir / "wake.wav"
+            wake_path.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+
             options = WakeLoopOptions(
                 device_id=0, server_url="http://127.0.0.1:8766",
-                wake_window_seconds=2.0, wake_phrases=["小黄"],
-                max_seconds=10.0, silence_seconds=0.8,
+                wake_window_seconds=0.1, wake_phrases=["小黄"],
+                max_seconds=0.1, silence_seconds=0.1,
                 sample_rate=16000, channels=1, recording_dir=recording_dir,
             )
-            def fake_path(d):
-                return Path(d) / f"{Path(d).name}.wav"
-            def write_wav(o, **_kw):
-                Path(o).parent.mkdir(parents=True, exist_ok=True); Path(o).write_bytes(b"RIFF\x00\x00\x00\x00WAVE"); return Path(o)
-            def fake_vad(o, **_kw):
-                write_wav(o); return SimpleNamespace(path=Path(o), duration_seconds=1.0, stop_reason="silence_after_speech")
+
+            def fake_write_wav(*_args, **_kw):
+                record_calls.append("wake_check")
+                if len(record_calls) > 1:
+                    raise AssertionError("command recording should not be called for no-match")
+                return wake_path
+
             def no_wake_stt(_p, _s, *, mode=None):
-                return {"text": "哦"}
-            run_wake_loop_once(
-                options, record_wav_func=write_wav, record_until_silence_func=fake_vad,
-                request_transcription_func=no_wake_stt, build_recording_path_func=fake_path,
-                on_wake_detected=lambda: called.update(n=called["n"]+1),
-            )
-            self.assertEqual(called["n"], 0)
+                return {"text": "今天天气不错"}
+
+            try:
+                run_wake_loop_once(
+                    options,
+                    record_wav_func=fake_write_wav,
+                    request_transcription_func=no_wake_stt,
+                    on_wake_detected=lambda: called.update(on_wake_detected=called["on_wake_detected"] + 1),
+                )
+                self.fail("run_wake_loop_once should loop forever on no-match and be stopped")
+            except AssertionError:
+                pass
+
+            self.assertEqual(called["on_wake_detected"], 0)
 
     def test_on_wake_detected_exception_does_not_block(self):
         with tempfile.TemporaryDirectory() as temp_dir:
