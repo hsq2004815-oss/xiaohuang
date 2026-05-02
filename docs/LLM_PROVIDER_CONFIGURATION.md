@@ -234,11 +234,21 @@ notepad "$env:USERPROFILE\.xiaohuang\config_test.json"
 Get-Content .\logs\voice_overlay.err.log -Tail 500 | Select-String "LLM enabled|provider=|Overlay command|Overlay reply|Session ended|Traceback|ERROR|HTTPError|TypeError|UnboundLocalError"
 ```
 
-### 正常日志示例（DeepSeek 真实验证通过）
+### 正常日志示例（2026-05-02 真实验证通过）
 
 ```
 Overlay command: 你是谁？
 Overlay reply: 我是贾维斯，你的桌面语音助手。 (source=llm)
+Overlay command: 好了
+Overlay reply: 好的，我先待命。 (source=session_exit)
+Session ended: reason=exit_phrase completed_turns=2 max_turns=12 elapsed_seconds=12.3 ...
+```
+
+### Latency 日志示例
+
+```
+turn=1 source=llm command_record_ms=2145 command_stt_ms=380 llm_ms=1520 ...
+turn=2 source=session_exit command_record_ms=1890 command_stt_ms=310 tts_synthesis_ms=2450 tts_playback_ms=3200 ...
 ```
 
 如果出现以下行则说明有问题：
@@ -252,25 +262,69 @@ UnboundLocalError
 Authentication
 ```
 
-## 11. 当前已验证状态
+## 11. 真实验证结果（2026-05-02）
 
-| Provider | 单元测试 | 真实 API 验证 | 备注 |
-|----------|---------|-------------|------|
-| `deepseek` | 11 tests PASS | ✅ 已通过（source=llm） | 用户真实验证：问"你是谁" → "我是贾维斯" |
-| `qwen` | 11 tests PASS | ⏳ 待用户配置真实 key | 需阿里云 DashScope API key |
-| `doubao` | 11 tests PASS | ⏳ 待用户配置真实 key | 需火山引擎 Ark API key + 推理接入点 |
-| `openai_compatible` | 11 tests PASS | ⏳ 待用户配置对应服务 | 需本地或远程 OpenAI-compatible 服务 |
+以下为用户实际运行验证结果，使用 `config_test.json`（`provider=deepseek`，`assistant.name="贾维斯"`）。
 
-### 单元测试覆盖（`V113BLlmProviderRouterTests`）
+### 验证配置
 
-- provider=deepseek/qwen/doubao/openai_compatible 配置加载
-- api_key_env 缺失时 graceful fallback（不崩溃）
-- temperature/max_tokens/timeout 从 config 传入请求
-- DeepSeek 请求包含 `thinking: disabled`，其他 provider 不包含
-- `build_deepseek_request` 向后兼容
-- persona 流入 system prompt
-- API key 不进入 request payload
-- CLI 未传参时 config 值不被覆盖
+```json
+{
+  "wake": {"phrases": ["贾维斯"]},
+  "assistant": {"name": "贾维斯", "persona": "你是贾维斯，一个简洁可靠的 Windows 桌面语音助手。回答要自然、简短，适合语音播报。"},
+  "llm": {"enabled": true, "provider": "deepseek", "model": "deepseek-v4-flash", "api_key_env": "DEEPSEEK_API_KEY"},
+  "tts": {"enabled": true, "voice": "zh-CN-YunxiNeural"},
+  "runtime": {"debug": true}
+}
+```
+
+### 验证结果
+
+| 验证项 | 结果 | 日志证据 |
+|--------|------|---------|
+| Provider Router 链路 | ✅ 通过 | `Overlay reply: 我是贾维斯，你的桌面语音助手。 (source=llm)` |
+| llm_ms 延迟追踪 | ✅ 通过 | `llm_ms` 出现在 latency summary 中 |
+| TTS 合成 | ✅ 通过 | `tts_synthesis_ms` 出现 |
+| TTS 播放 | ✅ 通过 | `tts_playback_ms` 出现，有语音播放 |
+| llm.enabled=false | ✅ 通过 | `source=rule`，不调用 LLM |
+| missing key fallback | ✅ 通过 | `source=rule_fallback_no_key`，不崩溃，不泄露 key |
+| Session 正常结束 | ✅ 通过 | `Session ended: reason=exit_phrase` |
+| 无异常 | ✅ 通过 | 无 Traceback / ERROR / HTTPError / TypeError / UnboundLocalError |
+
+### 已验证场景清单
+
+- [x] 唤醒词"贾维斯" → 悬浮窗弹出
+- [x] "你是谁？" → LLM 回复自称"贾维斯"（不是"小黄"）
+- [x] "好了" → 正常退出会话
+- [x] LLM reply source=llm
+- [x] TTS 语音播放正常
+- [x] Session end reason 正确记录
+- [x] 日志无异常
+
+### 待用户后续验证
+
+| Provider | 单元测试 | 真实 API | 备注 |
+|----------|---------|---------|------|
+| `deepseek` | 11 tests PASS | ✅ 已验证 | Provider Router + TTS + Session 全链路通过 |
+| `qwen` | 11 tests PASS | ⏳ 待配 key | 需阿里云 DashScope API key |
+| `doubao` | 11 tests PASS | ⏳ 待配 key | 需火山引擎 Ark API key + 推理接入点 |
+| `openai_compatible` | 11 tests PASS | ⏳ 待配服务 | 需本地或远程 OpenAI-compatible 服务 |
+
+## 12. 单元测试覆盖
+
+**测试类**：`V113BLlmProviderRouterTests`（11 个测试）
+
+- `test_provider_deepseek_loads_api_key_from_env` — deepseek provider 从 env 读取 key
+- `test_provider_qwen_uses_qwen_defaults` — qwen 默认值
+- `test_provider_doubao_uses_doubao_defaults` — doubao 默认值
+- `test_provider_openai_compatible_works` — openai_compatible 配置
+- `test_missing_api_key_env_falls_back_gracefully` — 缺 key 不崩溃
+- `test_config_temperature_flows_to_llm_request` — temperature 传入
+- `test_deepseek_request_includes_thinking_disabled` — DeepSeek thinking 字段
+- `test_build_deepseek_request_backward_compat` — 向后兼容
+- `test_persona_flows_to_openai_compatible_request` — persona 流入
+- `test_api_key_not_leaked_in_config` — API key 不泄露
+- `test_cli_args_dont_override_config_when_not_passed` — CLI 不覆盖
 
 ## 架构参考
 

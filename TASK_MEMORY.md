@@ -2,13 +2,27 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.3B — LLM Provider Router（已完成）
+- **阶段**：V1.1.3B — LLM Provider Router（已完成并真实验证）
 - **最新功能 commit**：`ab4d058` feat: add LLM provider router
-- **最新文档 commit**：`c982fbb` docs: add V1.1.3A config audit
+- **最新文档 commit**：`fb63070` docs: add LLM provider configuration guide
 - **分支**：`main`，与 `origin/main` 同步
 - **工作区**：clean
 - **测试**：245 tests OK，compileall OK，help OK
-- **真实验证**：DeepSeek source=llm 通过
+
+### V1.1.3B 真实验证结果（2026-05-02）
+
+| 验证项 | 结果 | 证据 |
+|--------|------|------|
+| Provider Router 链路 | ✅ | `Overlay reply: 我是贾维斯，你的桌面语音助手。 (source=llm)` |
+| llm_ms 延迟追踪 | ✅ | latency summary 含 llm_ms |
+| TTS 合成 + 播放 | ✅ | tts_synthesis_ms + tts_playback_ms 出现 |
+| llm.enabled=false 边界 | ✅ | source=rule |
+| missing key fallback | ✅ | source=rule_fallback_no_key，不崩溃，不泄露 key |
+| Session 正常结束 | ✅ | Session ended: reason=exit_phrase |
+| 无异常 | ✅ | 无 Traceback/ERROR/HTTPError/TypeError/UnboundLocalError |
+| 贾维斯 identity | ✅ | 问"你是谁" → 自称"贾维斯"（非"小黄"） |
+
+其他 provider（qwen/doubao/openai_compatible）已通过 11 个单元测试覆盖，真实 API 验证待用户配置对应 key。
 
 ### V1.1.3A 已完成
 
