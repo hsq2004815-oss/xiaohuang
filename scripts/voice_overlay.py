@@ -621,14 +621,9 @@ def _run_overlay_loop(
                 st.end("turn_total_ms")
                 logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
                 logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
-                app.thread_safe_set_state(
-                    STATE_RESULT,
-                    build_reply_result_text(next_text, pipeline_result.reply_text, pipeline_result.source_note),
-                )
                 if pipeline_result.tts_error:
                     _warn(logger, pipeline_result.tts_error)
-                    app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
-                if stop_event.wait(post_response_cooldown):
+                if stop_event.wait(0.3):
                     break
                 turn_count += 1
 
