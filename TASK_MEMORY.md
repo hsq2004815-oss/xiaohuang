@@ -2,13 +2,24 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.4C — 托盘 operation release blocker 修复
+- **阶段**：V1.1.4D — 基础状态 UI / 控制面板设计（docs-only）
 - **最新功能 commit**：待提交 `feat: add tray launch controls`
 - **最新文档 commit**：`65927ea` docs: record V1.1.4B tray validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`（V1.1.4C 开发前）
 - **工作区**：V1.1.4C tray launch operation lock release；运行产物均 ignored
 - **测试**：295 tests OK、compileall OK、tray/settings/overlay help OK；真人托盘菜单点击需用户本机确认
+
+### V1.1.4D 设计记录（2026-05-03）
+
+- 新增 docs-only 设计：`docs/V1.1.4D_STATUS_CONTROL_PANEL_DESIGN.md`。
+- 目标：解决托盘启动后用户看不见 readiness 的问题，明确显示 STT server、health/model_loaded、voice_overlay、config 摘要和 `can_wake_now`。
+- 推荐后续实现：`scripts/control_panel.py` + `src/xiaohuang/status_control_service.py`，可选 `status_types.py`。
+- 控制面板应复用 `launch_control_service.py` 的进程检测、health check、readiness、启停命令，不复制 PowerShell 解析逻辑。
+- 技术方案推荐 Tkinter，暂不引入 PySide6 / Qt / WebView / Tauri。
+- 数据库参考：code-assets-global-index、code-asset-reuse-rules、launch-control-readiness-pattern、operation-lock snippet、desktop assistant adapter、settings-ui-config-validation、backend-healthcheck-error-envelope。
+- 明确 V1.1.5 后续再规划后台常驻、STT server 常驻、暂停/恢复监听、完全退出和开机自启。
+- 本阶段未修改 `.py` / `.ps1` / `.json` / `.yaml` / `src` / `scripts` / `tests`，未写 `E:\DataBase`。
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
 
