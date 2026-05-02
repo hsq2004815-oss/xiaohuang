@@ -143,7 +143,7 @@ def apply_cli_overrides(
             silence_seconds=_coalesce(args.silence_seconds, config.audio.silence_seconds),
         ),
         llm=LlmConfig(
-            enabled=_coalesce(args.enable_llm, config.llm.enabled),
+            enabled=_or_config(args.enable_llm, config.llm.enabled),
             provider=config.llm.provider,
             model=_coalesce(args.llm_model, config.llm.model),
             base_url=_coalesce(args.llm_base_url, config.llm.base_url),
@@ -153,12 +153,12 @@ def apply_cli_overrides(
             api_key_env=config.llm.api_key_env,
         ),
         tts=TtsConfig(
-            enabled=args.enable_tts if args.enable_tts else config.tts.enabled,
+            enabled=_or_config(args.enable_tts, config.tts.enabled),
             voice=_coalesce(args.tts_voice, config.tts.voice),
             output_dir=_coalesce(args.tts_output_dir, config.tts.output_dir),
         ),
         conversation=ConversationConfig(
-            enabled=_coalesce(args.conversation_session, config.conversation.enabled),
+            enabled=_or_config(args.conversation_session, config.conversation.enabled),
             followup_timeout=_coalesce(args.followup_timeout, config.conversation.followup_timeout),
             max_turns=_coalesce(args.max_session_turns, config.conversation.max_turns),
             max_session_seconds=_coalesce(args.max_session_seconds, config.conversation.max_session_seconds),
@@ -166,11 +166,11 @@ def apply_cli_overrides(
             session_timeout=_coalesce(args.session_timeout, config.conversation.session_timeout),
         ),
         overlay=OverlayConfig(
-            resident_hidden=_coalesce(args.resident_hidden, config.overlay.resident_hidden),
+            resident_hidden=_or_config(args.resident_hidden, config.overlay.resident_hidden),
             post_response_cooldown=_coalesce(args.post_response_cooldown, config.overlay.post_response_cooldown),
         ),
         runtime=RuntimeConfig(
-            debug=_coalesce(args.debug, config.runtime.debug),
+            debug=_or_config(args.debug, config.runtime.debug),
         ),
     )
 
@@ -301,6 +301,13 @@ def _coerce_bool(value: Any, default: bool, warn=None) -> bool:
     if warn and value is not None:
         warn(f"Expected boolean, using default {default}")
     return default
+
+
+def _or_config(cli_value: Any, config_value: bool) -> bool:
+    """For store_true args: only True from CLI overrides config; False means 'not passed'."""
+    if cli_value is True:
+        return True
+    return config_value
 
 
 def _coalesce(*values: Any) -> Any:

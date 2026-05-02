@@ -47,7 +47,7 @@ from xiaohuang.reply_pipeline_service import (
     ReplyPipelineResult,
     generate_reply_pipeline_result,
 )
-from xiaohuang.app_config_service import apply_cli_overrides, load_config
+from xiaohuang.app_config_service import apply_cli_overrides, load_config as load_user_config
 from xiaohuang.audio_capture_service import build_recording_path
 from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
 from xiaohuang.tts_service import DEFAULT_TTS_VOICE
@@ -338,7 +338,7 @@ class VoiceOverlayApp:
 def main() -> int:
     args = parse_args()
     config = load_config()
-    app_config = load_config(args.config, warn=lambda msg: print(f"Config warning: {msg}"))
+    app_config = load_user_config(args.config, warn=lambda msg: print(f"Config warning: {msg}"))
     app_config = apply_cli_overrides(app_config, args)
     logger = configure_logging(
         PROJECT_ROOT / config["logging"]["directory"],
