@@ -27,6 +27,14 @@ class ProcessStatus:
     def all_running(self) -> bool:
         return self.stt_server_running and self.voice_overlay_running
 
+    @property
+    def is_fully_running(self) -> bool:
+        return self.all_running
+
+    @property
+    def is_partial(self) -> bool:
+        return self.any_running and not self.all_running
+
 
 def get_project_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -62,6 +70,18 @@ def build_restart_commands(project_root: Path, config_path: Path) -> list[list[s
         build_stop_command(project_root),
         build_start_command(project_root, config_path),
     ]
+
+
+def build_start_sequence_for_status(
+    status: ProcessStatus,
+    project_root: Path,
+    config_path: Path,
+) -> list[list[str]]:
+    if status.is_fully_running:
+        return []
+    if status.is_partial:
+        return build_restart_commands(project_root, config_path)
+    return [build_start_command(project_root, config_path)]
 
 
 def ensure_log_dir(project_root: Path) -> Path:

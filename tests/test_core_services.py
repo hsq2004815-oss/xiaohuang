@@ -181,6 +181,48 @@ class V114CLaunchControlTests(unittest.TestCase):
         self.assertFalse(status.any_running)
         self.assertEqual(status.process_count, 0)
 
+    def test_fully_running_requires_stt_and_overlay(self):
+        from xiaohuang.launch_control_service import ProcessStatus
+
+        status = ProcessStatus(stt_server_running=True, voice_overlay_running=True, process_count=2)
+
+        self.assertTrue(status.is_fully_running)
+        self.assertFalse(status.is_partial)
+
+    def test_voice_overlay_only_is_partial_not_fully_running(self):
+        from xiaohuang.launch_control_service import ProcessStatus
+
+        status = ProcessStatus(stt_server_running=False, voice_overlay_running=True, process_count=1)
+
+        self.assertFalse(status.is_fully_running)
+        self.assertTrue(status.is_partial)
+
+    def test_partial_state_start_sequence_stops_then_starts(self):
+        from xiaohuang.launch_control_service import ProcessStatus, build_start_sequence_for_status
+
+        commands = build_start_sequence_for_status(
+            ProcessStatus(stt_server_running=False, voice_overlay_running=True, process_count=1),
+            Path(r"E:\Projects\xiaohuang"),
+            Path(r"C:\Users\tester\.xiaohuang\config_settings_ui_test.json"),
+        )
+
+        self.assertEqual(len(commands), 2)
+        self.assertIn("stop_xiaohuang.ps1", " ".join(commands[0]))
+        self.assertIn("-StopSttServer", commands[0])
+        self.assertIn("start_xiaohuang.ps1", " ".join(commands[1]))
+        self.assertIn("-ConfigPath", commands[1])
+
+    def test_fully_running_start_sequence_skips_start(self):
+        from xiaohuang.launch_control_service import ProcessStatus, build_start_sequence_for_status
+
+        commands = build_start_sequence_for_status(
+            ProcessStatus(stt_server_running=True, voice_overlay_running=True, process_count=2),
+            Path(r"E:\Projects\xiaohuang"),
+            Path(r"C:\Users\tester\.xiaohuang\config.json"),
+        )
+
+        self.assertEqual(commands, [])
+
     def test_process_row_parser_detects_stt_and_overlay(self):
         from xiaohuang.launch_control_service import parse_process_rows, summarize_process_status
 

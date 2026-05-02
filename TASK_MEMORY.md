@@ -2,13 +2,13 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.4C — 托盘启动 / 停止 / 重启控制实现中
+- **阶段**：V1.1.4C — 托盘启动链路 blocker 修复
 - **最新功能 commit**：待提交 `feat: add tray launch controls`
 - **最新文档 commit**：`65927ea` docs: record V1.1.4B tray validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`（V1.1.4C 开发前）
-- **工作区**：V1.1.4C tray launch controls；运行产物均 ignored
-- **测试**：274 tests OK、compileall OK、tray/settings/overlay help OK；tray_app 受控启动 smoke OK；真人托盘菜单点击需用户本机确认
+- **工作区**：V1.1.4C tray launch controls partial-state 修复；运行产物均 ignored
+- **测试**：278 tests OK、compileall OK、tray/settings/overlay help OK；真人托盘菜单点击需用户本机确认
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
 
@@ -49,11 +49,13 @@
 
 - 新增 `src/xiaohuang/launch_control_service.py`，封装 PowerShell 启停命令构造、重启顺序、日志目录、进程检测和状态摘要。
 - `scripts/tray_app.py` 菜单新增：启动小黄、停止小黄、重启小黄。
-- 启动小黄会先检测 STT server / voice_overlay；任一已运行时提示“已在运行”，避免重复启动。
+- 启动小黄会先检测 STT server / voice_overlay；只有二者都存在才提示“已在运行”，避免重复启动。
 - 启动命令会传递当前托盘 `--config` 到 `start_xiaohuang.ps1 -ConfigPath <config_path>`，避免丢失 `config_settings_ui_test.json`。
 - 停止命令调用 `stop_xiaohuang.ps1 -StopSttServer`；退出托盘仍只退出托盘程序，不停止小黄。
 - 本阶段未修改 PowerShell、voice_overlay、wake、session、TTS、LLM router，也未新增依赖。
 - 自动验证：274 tests OK、compileall OK、tray_app/settings_ui/voice_overlay help OK；托盘进程受控启动 5 秒 smoke 后按 PID 停止，未触发小黄启动/停止菜单。
+- Blocker 修复：用户发现托盘启动后只有 `voice_overlay.py`、没有 `stt_server.py`，`/health` 连接拒绝；根因是启动防重复逻辑用 `any_running`，overlay-only partial 状态被误判为已运行并跳过完整启动。
+- 修复策略：新增 `ProcessStatus.is_fully_running` / `is_partial` 和 `build_start_sequence_for_status()`；partial/broken 状态下“启动小黄”先调用 `stop_xiaohuang.ps1 -StopSttServer` 清理，再调用 `start_xiaohuang.ps1 -ConfigPath <config_path>` 完整拉起链路。
 
 ### V1.1.3B 真实验证结果（2026-05-02）
 

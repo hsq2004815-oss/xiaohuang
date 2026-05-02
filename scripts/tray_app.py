@@ -21,6 +21,7 @@ if str(SRC_DIR) not in sys.path:
 from xiaohuang.launch_control_service import (
     build_restart_commands,
     build_start_command,
+    build_start_sequence_for_status,
     build_stop_command,
     detect_xiaohuang_processes,
     ensure_log_dir as ensure_launch_log_dir,
@@ -181,12 +182,30 @@ def get_process_status(*, project_root: Path = PROJECT_ROOT):
 
 def start_xiaohuang(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> None:
     status = get_process_status(project_root=project_root)
-    if status.any_running:
-        write_tray_log("start_xiaohuang skipped: already running", project_root=project_root)
+    if status.is_fully_running:
+        write_tray_log("start_xiaohuang skipped: fully running", project_root=project_root)
         show_message("启动小黄", "小黄已在运行。")
         return
-    command = build_start_command(project_root, config_path)
-    if _run_command(command, "启动小黄", project_root=project_root):
+
+    commands = build_start_sequence_for_status(status, project_root, config_path)
+    if status.is_partial:
+        write_tray_log(
+            "start_xiaohuang detected partial state; stopping before full start",
+            project_root=project_root,
+        )
+        show_message("启动小黄", "检测到小黄处于不完整状态，正在重新启动完整链路。")
+
+    for index, command in enumerate(commands):
+        label = "启动小黄"
+        if len(commands) > 1:
+            label = "启动小黄：清理残留" if index == 0 else "启动小黄：完整启动"
+        timeout = 60 if index == 0 and len(commands) > 1 else 120
+        if not _run_command(command, label, project_root=project_root, timeout=timeout):
+            return
+        if index == 0 and len(commands) > 1:
+            time.sleep(2)
+
+    if commands:
         show_message("启动小黄", "启动命令已完成。")
 
 
