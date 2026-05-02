@@ -616,6 +616,7 @@ def _run_overlay_loop(
                         build_reply_result_text(next_text, pipeline_result.reply_text, pipeline_result.source_note),
                     )
                     exit_phrase_detected = True
+                    turn_count += 1
                     if stop_event.wait(post_response_cooldown):
                         break
                     break
@@ -648,7 +649,7 @@ def _run_overlay_loop(
             )
             if reason:
                 logger.info(
-                    "Session ended: reason=%s turn_count=%s max_turns=%s elapsed_seconds=%.1f "
+                    "Session ended: reason=%s completed_turns=%s max_turns=%s elapsed_seconds=%.1f "
                     "max_session_seconds=%.1f no_speech_retries=%s max_no_speech_retries=%s",
                     reason, turn_count, session_config.max_turns,
                     time.perf_counter() - session_started, session_config.max_session_seconds,

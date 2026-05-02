@@ -2194,8 +2194,11 @@ class V112AdaptiveFollowupTests(unittest.TestCase):
     def test_should_exit_for_no_speech(self):
         from xiaohuang.conversation_session_service import ConversationSessionConfig, should_exit_for_no_speech
         config = ConversationSessionConfig(max_no_speech_retries=1)
-        self.assertTrue(should_exit_for_no_speech(2, config))
-        self.assertFalse(should_exit_for_no_speech(1, config))
+        self.assertTrue(should_exit_for_no_speech(1, config))
+        self.assertFalse(should_exit_for_no_speech(0, config))
+        config2 = ConversationSessionConfig(max_no_speech_retries=2)
+        self.assertFalse(should_exit_for_no_speech(1, config2))
+        self.assertTrue(should_exit_for_no_speech(2, config2))
 
     def test_old_should_continue_signature_still_works(self):
         from xiaohuang.conversation_session_service import ConversationSessionConfig, should_continue_session

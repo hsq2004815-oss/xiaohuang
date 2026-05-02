@@ -63,13 +63,15 @@ def should_continue_session(
         return False
     if elapsed_seconds is not None and elapsed_seconds >= config.max_session_seconds:
         return False
-    if no_speech_retries > config.max_no_speech_retries:
+    if no_speech_retries >= config.max_no_speech_retries:
         return False
     return True
 
 
 def should_exit_for_no_speech(no_speech_retries: int, config: ConversationSessionConfig) -> bool:
-    return no_speech_retries > config.max_no_speech_retries
+    if config.max_no_speech_retries <= 0:
+        return True
+    return no_speech_retries >= config.max_no_speech_retries
 
 
 def get_session_end_reason(
@@ -89,6 +91,6 @@ def get_session_end_reason(
         return "max_turns"
     if elapsed_seconds >= config.max_session_seconds:
         return "max_session_seconds"
-    if no_speech_retries > config.max_no_speech_retries:
+    if no_speech_retries >= config.max_no_speech_retries:
         return "no_speech"
     return None
