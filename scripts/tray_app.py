@@ -151,6 +151,7 @@ def _write_command_output(label: str, stdout: str, stderr: str, *, project_root:
 def _run_command(command: list[str], label: str, *, project_root: Path = PROJECT_ROOT, timeout: int = 120) -> bool:
     try:
         write_tray_log(f"{label} started", project_root=project_root)
+        write_tray_log(f"{label} argv={_sanitize_process_output(repr(command))}", project_root=project_root)
         result = subprocess.run(
             command,
             cwd=str(project_root),
@@ -158,6 +159,7 @@ def _run_command(command: list[str], label: str, *, project_root: Path = PROJECT
             text=True,
             timeout=timeout,
             env=_build_child_env(),
+            shell=False,
         )
     except subprocess.TimeoutExpired:
         write_tray_log(f"{label} timeout", project_root=project_root)

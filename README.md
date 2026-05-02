@@ -212,6 +212,7 @@ V1.1.4C 边界：
 - “停止小黄”调用 `scripts/stop_xiaohuang.ps1 -StopSttServer`。
 - “重启小黄”先停止再启动。
 - “已在运行”必须同时检测到 STT server 和 `voice_overlay.py`；如果只检测到其中一个，托盘会先清理残留再完整启动。
+- 托盘调用 PowerShell 使用 argv list + `-File` + `shell=False`，优先 `pwsh.exe`，找不到再回退 `powershell.exe`。
 - “退出托盘”只退出托盘程序，不停止 STT server 或 `voice_overlay.py`。
 - 托盘程序不读取、不显示、不保存真实 API key。
 

@@ -143,20 +143,29 @@ class V114CLaunchControlTests(unittest.TestCase):
         command = build_start_command(
             Path(r"E:\Projects\xiaohuang"),
             Path(r"C:\Users\tester\.xiaohuang\config_settings_ui_test.json"),
+            powershell_executable="pwsh.exe",
         )
 
         joined = " ".join(command)
+        self.assertIsInstance(command, list)
+        self.assertEqual(command[0], "pwsh.exe")
         self.assertIn("start_xiaohuang.ps1", joined)
+        self.assertIn("-File", command)
         self.assertIn("-ConfigPath", command)
         self.assertIn(r"C:\Users\tester\.xiaohuang\config_settings_ui_test.json", command)
+        self.assertNotIn("sk-", joined)
+        self.assertNotIn("DEEPSEEK_API_KEY=", joined)
 
     def test_build_stop_command_uses_stop_script_and_stops_stt(self):
         from xiaohuang.launch_control_service import build_stop_command
 
-        command = build_stop_command(Path(r"E:\Projects\xiaohuang"))
+        command = build_stop_command(Path(r"E:\Projects\xiaohuang"), powershell_executable="pwsh.exe")
 
         joined = " ".join(command)
+        self.assertIsInstance(command, list)
+        self.assertEqual(command[0], "pwsh.exe")
         self.assertIn("stop_xiaohuang.ps1", joined)
+        self.assertIn("-File", command)
         self.assertIn("-StopSttServer", command)
 
     def test_build_restart_commands_stop_before_start(self):
@@ -165,6 +174,7 @@ class V114CLaunchControlTests(unittest.TestCase):
         commands = build_restart_commands(
             Path(r"E:\Projects\xiaohuang"),
             Path(r"C:\Users\tester\.xiaohuang\config.json"),
+            powershell_executable="pwsh.exe",
         )
 
         self.assertEqual(len(commands), 2)
@@ -204,6 +214,7 @@ class V114CLaunchControlTests(unittest.TestCase):
             ProcessStatus(stt_server_running=False, voice_overlay_running=True, process_count=1),
             Path(r"E:\Projects\xiaohuang"),
             Path(r"C:\Users\tester\.xiaohuang\config_settings_ui_test.json"),
+            powershell_executable="pwsh.exe",
         )
 
         self.assertEqual(len(commands), 2)
@@ -219,9 +230,38 @@ class V114CLaunchControlTests(unittest.TestCase):
             ProcessStatus(stt_server_running=True, voice_overlay_running=True, process_count=2),
             Path(r"E:\Projects\xiaohuang"),
             Path(r"C:\Users\tester\.xiaohuang\config.json"),
+            powershell_executable="pwsh.exe",
         )
 
         self.assertEqual(commands, [])
+
+    def test_run_command_uses_shell_false(self):
+        import tray_app
+
+        calls = []
+
+        class FakeResult:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        def fake_run(command, **kwargs):
+            calls.append((command, kwargs))
+            return FakeResult()
+
+        original_run = tray_app.subprocess.run
+        original_show_message = tray_app.show_message
+        try:
+            tray_app.subprocess.run = fake_run
+            tray_app.show_message = lambda *args, **kwargs: None
+            ok = tray_app._run_command(["pwsh.exe", "-File", "x.ps1"], "test", project_root=PROJECT_ROOT)
+        finally:
+            tray_app.subprocess.run = original_run
+            tray_app.show_message = original_show_message
+
+        self.assertTrue(ok)
+        self.assertEqual(calls[0][1]["shell"], False)
+        self.assertEqual(calls[0][1]["cwd"], str(PROJECT_ROOT))
 
     def test_process_row_parser_detects_stt_and_overlay(self):
         from xiaohuang.launch_control_service import parse_process_rows, summarize_process_status

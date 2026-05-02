@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,9 +41,18 @@ def get_project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def build_start_command(project_root: Path, config_path: Path) -> list[str]:
+def resolve_powershell_executable() -> str:
+    return shutil.which("pwsh.exe") or shutil.which("powershell.exe") or "powershell.exe"
+
+
+def build_start_command(
+    project_root: Path,
+    config_path: Path,
+    *,
+    powershell_executable: str | None = None,
+) -> list[str]:
     return [
-        "powershell.exe",
+        powershell_executable or resolve_powershell_executable(),
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -53,9 +63,13 @@ def build_start_command(project_root: Path, config_path: Path) -> list[str]:
     ]
 
 
-def build_stop_command(project_root: Path) -> list[str]:
+def build_stop_command(
+    project_root: Path,
+    *,
+    powershell_executable: str | None = None,
+) -> list[str]:
     return [
-        "powershell.exe",
+        powershell_executable or resolve_powershell_executable(),
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -65,10 +79,15 @@ def build_stop_command(project_root: Path) -> list[str]:
     ]
 
 
-def build_restart_commands(project_root: Path, config_path: Path) -> list[list[str]]:
+def build_restart_commands(
+    project_root: Path,
+    config_path: Path,
+    *,
+    powershell_executable: str | None = None,
+) -> list[list[str]]:
     return [
-        build_stop_command(project_root),
-        build_start_command(project_root, config_path),
+        build_stop_command(project_root, powershell_executable=powershell_executable),
+        build_start_command(project_root, config_path, powershell_executable=powershell_executable),
     ]
 
 
@@ -76,12 +95,14 @@ def build_start_sequence_for_status(
     status: ProcessStatus,
     project_root: Path,
     config_path: Path,
+    *,
+    powershell_executable: str | None = None,
 ) -> list[list[str]]:
     if status.is_fully_running:
         return []
     if status.is_partial:
-        return build_restart_commands(project_root, config_path)
-    return [build_start_command(project_root, config_path)]
+        return build_restart_commands(project_root, config_path, powershell_executable=powershell_executable)
+    return [build_start_command(project_root, config_path, powershell_executable=powershell_executable)]
 
 
 def ensure_log_dir(project_root: Path) -> Path:
