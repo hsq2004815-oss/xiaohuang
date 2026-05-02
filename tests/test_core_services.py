@@ -2043,5 +2043,57 @@ class V111ReplyPipelineResultImportTests(unittest.TestCase):
         self.assertEqual(result.reply_source, "session_exit")
 
 
+class V111NoSpeechTests(unittest.TestCase):
+    def test_transcribe_returns_empty_string_for_no_speech(self):
+        import tempfile
+        from pathlib import Path
+        from xiaohuang.stt_service import SenseVoiceTranscriber
+
+        class FakeModel:
+            def generate(self, **kwargs):
+                return [{"key": "test", "text": "", "timestamp": []}]
+
+        class FakeFunASR:
+            class AutoModel:
+                def __new__(cls, **kwargs):
+                    return FakeModel()
+
+        with tempfile.TemporaryDirectory() as d:
+            wav = Path(d) / "s.wav"
+            wav.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+            t = SenseVoiceTranscriber(funasr_module=FakeFunASR, postprocess_func=lambda x: x)
+            result = t.transcribe(wav)
+            self.assertEqual(result, "")
+
+    def test_transcribe_raises_on_model_error(self):
+        import tempfile
+        from pathlib import Path
+        from xiaohuang.stt_service import SenseVoiceTranscriber, TranscriptionError
+
+        class CrashModel:
+            def generate(self, **kwargs):
+                raise RuntimeError("model crash")
+
+        class FakeFunASR:
+            class AutoModel:
+                def __new__(cls, **kwargs):
+                    return CrashModel()
+
+        with tempfile.TemporaryDirectory() as d:
+            wav = Path(d) / "s.wav"
+            wav.write_bytes(b"RIFF\x00\x00\x00\x00WAVE")
+            t = SenseVoiceTranscriber(funasr_module=FakeFunASR, postprocess_func=lambda x: x)
+            with self.assertRaises(TranscriptionError):
+                t.transcribe(wav)
+
+    def test_no_speech_does_not_affect_stt_client(self):
+        from xiaohuang.stt_client_service import _parse_response_body
+        body = '{"ok": true, "request_id": "r", "type": "command", "text": "", "error": null, "meta": {"no_speech": true, "empty_text": true}}'
+        data = _parse_response_body(body)
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["text"], "")
+        self.assertTrue(data["meta"]["no_speech"])
+
+
 if __name__ == "__main__":
     unittest.main()

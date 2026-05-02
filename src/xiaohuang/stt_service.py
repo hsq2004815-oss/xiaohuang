@@ -60,7 +60,7 @@ class SenseVoiceTranscriber:
         text = _extract_text(result)
         text = self._postprocess(text)
         if not text:
-            raise TranscriptionError(f"FunASR returned no text. Raw result: {result!r}")
+            return ""
         return text
 
     def ensure_model_loaded(self) -> float:

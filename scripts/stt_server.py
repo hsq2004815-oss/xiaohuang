@@ -137,6 +137,10 @@ def make_handler(state: SttServerState):
                 response["server_model_init_seconds"] = round(state.model_init_seconds, 2)
                 response["transcribe_seconds"] = round(transcribe_seconds, 2)
                 response["total_seconds"] = round(total_seconds, 2)
+                if not text:
+                    response.setdefault("meta", {})
+                    response["meta"]["no_speech"] = True
+                    response["meta"]["empty_text"] = True
                 self._write_json(200, response)
             except Exception:
                 logger.exception("STT transcription failed request_id=%s", request_id)
