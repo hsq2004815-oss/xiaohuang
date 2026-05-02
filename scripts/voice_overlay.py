@@ -445,6 +445,7 @@ def _run_overlay_loop(
     while not stop_event.is_set():
         try:
             turn_tracker = LatencyTracker()
+            turn_tracker.start("turn_total_ms")
 
             on_wake_shown: Callable[[], None] | None = None
             if resident_hidden:
@@ -487,9 +488,11 @@ def _run_overlay_loop(
             if debug:
                 _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
                 _safe_print(f"Reply source: {pipeline_result.reply_source}")
+                turn_tracker.end("turn_total_ms")
                 summary = turn_tracker.summary_ms()
                 if summary:
                     _safe_print(format_latency_summary(summary, turn=1, source=pipeline_result.reply_source))
+            turn_tracker.end("turn_total_ms")
             logger.info(format_latency_summary(turn_tracker.summary_ms(), turn=1, source=pipeline_result.reply_source))
             logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
             app.thread_safe_set_state(
@@ -508,6 +511,7 @@ def _run_overlay_loop(
             turn_count = 1
             while should_continue_session(turn_count, session_config) and not stop_event.is_set():
                 st = LatencyTracker()
+                st.start("turn_total_ms")
                 if debug:
                     _safe_print(f"Session turn {turn_count + 1}/{session_config.max_turns}")
                 app.thread_safe_set_state(STATE_LISTENING, "你还可以继续说")
@@ -518,6 +522,7 @@ def _run_overlay_loop(
                     stt_mode=STT_MODE_COMMAND,
                     debug=debug,
                     logger=logger,
+                    latency_tracker=st,
                 )
                 if stop_event.is_set():
                     break
@@ -542,6 +547,7 @@ def _run_overlay_loop(
                         )
                     _safe_print(f"XiaoHuang: {pipeline_result.reply_text}")
                     logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
+                    st.end("turn_total_ms")
                     logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
                     app.thread_safe_set_state(
                         STATE_RESULT,
@@ -560,6 +566,7 @@ def _run_overlay_loop(
                 )
                 _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
                 _safe_print(f"Reply source: {pipeline_result.reply_source}")
+                st.end("turn_total_ms")
                 logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
                 logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
                 app.thread_safe_set_state(
@@ -607,9 +614,12 @@ def _record_command_transcribe(
     logger,
     record_func=record_until_silence,
     transcribe_func=request_transcription,
+    latency_tracker=None,
 ) -> str:
+    _track = _make_latency_track(latency_tracker)
     try:
         cmd_path = build_recording_path(options.recording_dir)
+        _track("command_record_ms", start=True)
         cmd_result = record_func(
             cmd_path,
             device_id=options.device_id,
@@ -618,7 +628,10 @@ def _record_command_transcribe(
             max_seconds=max_seconds,
             silence_seconds=options.silence_seconds,
         )
+        _track("command_record_ms", start=False)
+        _track("command_stt_ms", start=True)
         cmd_response = transcribe_func(cmd_result.path, options.server_url)
+        _track("command_stt_ms", start=False)
         return str(cmd_response.get("text", ""))
     except (SttServerUnavailable, SttServerError) as exc:
         if debug:
@@ -628,6 +641,17 @@ def _record_command_transcribe(
     except Exception as exc:
         logger.warning("Session command recording failed: %s", exc)
         return ""
+
+
+def _make_latency_track(tracker):
+    if tracker is None:
+        return lambda name, **kw: None
+    def _t(name, *, start=False):
+        if start:
+            tracker.start(name)
+        else:
+            tracker.end(name)
+    return _t
 
 
 def _safe_print(message: str) -> None:
