@@ -94,6 +94,8 @@ notepad "$env:USERPROFILE\.xiaohuang\config.json"
 
 ### llm
 
+详细的 multi-provider 配置说明见 [LLM Provider Configuration](LLM_PROVIDER_CONFIGURATION.md)。
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | enabled | bool | true | Enable LLM replies |

@@ -2,12 +2,13 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.3A — User Config Foundation / 用户配置中控层
-- **最新代码 commit**：`67583d8` feat: add assistant identity configuration
+- **阶段**：V1.1.3B — LLM Provider Router（已完成）
+- **最新功能 commit**：`ab4d058` feat: add LLM provider router
 - **最新文档 commit**：`c982fbb` docs: add V1.1.3A config audit
 - **分支**：`main`，与 `origin/main` 同步
 - **工作区**：clean
-- **测试**：234 tests OK，compileall OK，help OK
+- **测试**：245 tests OK，compileall OK，help OK
+- **真实验证**：DeepSeek source=llm 通过
 
 ### V1.1.3A 已完成
 
@@ -44,7 +45,7 @@
 
 | 版本 | 内容 |
 |------|------|
-| V1.1.3B | LLM Provider Router |
+| V1.1.3B | LLM Provider Router ✅ 已完成 |
 | V1.1.3C | Settings UI Prototype |
 | V1.1.4 | HUD / 托盘 / 高级悬浮窗 |
 | V1.2 | Wake Engine Abstraction |
