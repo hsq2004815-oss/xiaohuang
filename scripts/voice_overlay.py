@@ -526,10 +526,7 @@ def _run_overlay_loop(
                     app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
 
             if session_config.enabled:
-                cooldown = min(post_response_cooldown, 1.0) if post_response_cooldown > 0 else 0
-                if debug and cooldown > 0:
-                    _safe_print(f"Post-response cooldown: {cooldown:.1f}s")
-                if stop_event.wait(cooldown):
+                if stop_event.wait(0.3):
                     break
             else:
                 app.thread_safe_set_state(
