@@ -340,6 +340,10 @@ def main() -> int:
     config = load_config()
     app_config = load_user_config(args.config, warn=lambda msg: print(f"Config warning: {msg}"))
     app_config = apply_cli_overrides(app_config, args)
+    debug = bool(app_config.runtime.debug)
+    enable_llm = bool(app_config.llm.enabled)
+    enable_tts = bool(app_config.tts.enabled)
+    resident_hidden = bool(app_config.overlay.resident_hidden)
     logger = configure_logging(
         PROJECT_ROOT / config["logging"]["directory"],
         "voice_overlay",
@@ -404,10 +408,6 @@ def main() -> int:
         base_url_override=app_config.llm.base_url,
         max_tokens_override=app_config.llm.max_tokens,
     )
-    enable_llm = app_config.llm.enabled
-    enable_tts = app_config.tts.enabled
-    debug = app_config.runtime.debug
-    resident_hidden = app_config.overlay.resident_hidden
     if enable_llm:
         if not llm_config.is_configured:
             if debug:
