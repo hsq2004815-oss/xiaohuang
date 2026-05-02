@@ -254,6 +254,17 @@ def _normalize_field(section: str, key: str, value: Any) -> tuple[Any, str | Non
             return value.strip().lower() in ("true", "1", "yes")
         return bool(value), None
 
+    # Optional numeric fields: blank means "automatic/default".
+    if section == "overlay" and key == "post_response_cooldown":
+        if value is None:
+            return None, None
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped or stripped.lower() in ("none", "null"):
+                return None, None
+            value = stripped
+        return _validate_number(value, "float", 0.0, 3600.0)
+
     # provider validation
     if section == "llm" and key == "provider":
         if isinstance(value, str) and value.strip():

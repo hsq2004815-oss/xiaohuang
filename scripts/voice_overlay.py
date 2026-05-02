@@ -125,10 +125,21 @@ def parse_args() -> argparse.Namespace:
 
 
 class VoiceOverlayApp:
-    def __init__(self, root, *, stop_event: threading.Event, debug: bool = False, start_hidden: bool = False, title: str = "小黄") -> None:
+    def __init__(
+        self,
+        root,
+        *,
+        stop_event: threading.Event,
+        debug: bool = False,
+        start_hidden: bool = False,
+        title: str = "小黄",
+        wake_phrase: str = "小黄",
+    ) -> None:
         self.root = root
         self.stop_event = stop_event
         self.debug = debug
+        self.assistant_name = title or "小黄"
+        self.wake_phrase = wake_phrase or "小黄"
         self.state = STATE_IDLE
         self.phase = 0.0
         self.closed = False
@@ -203,7 +214,12 @@ class VoiceOverlayApp:
     def set_state(self, state: str, detail: str | None = None) -> None:
         if self.closed:
             return
-        status = get_overlay_status_text(state, detail)
+        status = get_overlay_status_text(
+            state,
+            detail,
+            assistant_name=self.assistant_name,
+            wake_phrase=self.wake_phrase,
+        )
         self.state = status.state
         try:
             self.title_label.configure(text=status.title)
@@ -358,7 +374,14 @@ def main() -> int:
 
     stop_event = threading.Event()
     root = tk.Tk()
-    app = VoiceOverlayApp(root, stop_event=stop_event, debug=debug, start_hidden=resident_hidden, title=app_config.assistant.display_name)
+    app = VoiceOverlayApp(
+        root,
+        stop_event=stop_event,
+        debug=debug,
+        start_hidden=resident_hidden,
+        title=app_config.assistant.display_name,
+        wake_phrase=app_config.wake.phrases[0] if app_config.wake.phrases else "小黄",
+    )
 
     try:
         health = check_server_health(args.server_url)
@@ -550,7 +573,12 @@ def _run_overlay_loop(
             else:
                 app.thread_safe_set_state(
                     STATE_RESULT,
-                    build_reply_result_text(result.command_text, pipeline_result.reply_text, pipeline_result.source_note),
+                    build_reply_result_text(
+                        result.command_text,
+                        pipeline_result.reply_text,
+                        pipeline_result.source_note,
+                        assistant_name=app.assistant_name,
+                    ),
                 )
                 if pipeline_result.tts_error:
                     _warn(logger, pipeline_result.tts_error)
@@ -623,7 +651,12 @@ def _run_overlay_loop(
                     logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
                     app.thread_safe_set_state(
                         STATE_RESULT,
-                        build_reply_result_text(next_text, pipeline_result.reply_text, pipeline_result.source_note),
+                        build_reply_result_text(
+                            next_text,
+                            pipeline_result.reply_text,
+                            pipeline_result.source_note,
+                            assistant_name=app.assistant_name,
+                        ),
                     )
                     exit_phrase_detected = True
                     turn_count += 1

@@ -69,7 +69,7 @@ def _make_entry(parent, row: int, label: str, default: str, section: str, field:
     import tkinter as tk
     from tkinter import ttk
     ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=10, pady=2)
-    var = tk.StringVar(value=str(default))
+    var = tk.StringVar(value="" if default is None else str(default))
     e = ttk.Entry(parent, textvariable=var, width=40)
     e.grid(row=row, column=1, sticky="ew", padx=10, pady=2)
     e._var = var

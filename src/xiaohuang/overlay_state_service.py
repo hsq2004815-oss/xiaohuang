@@ -21,11 +21,17 @@ class OverlayStatus:
     subtitle: str
 
 
-def get_overlay_status_text(state: str, detail: str | None = None) -> OverlayStatus:
+def get_overlay_status_text(
+    state: str,
+    detail: str | None = None,
+    *,
+    assistant_name: str = "小黄",
+    wake_phrase: str = "小黄",
+) -> OverlayStatus:
     if state == STATE_IDLE:
-        return OverlayStatus(state=state, title="小黄待机中", subtitle="说“小黄”唤醒我")
+        return OverlayStatus(state=state, title=f"{assistant_name}待机中", subtitle=f"说“{wake_phrase}”唤醒我")
     if state == STATE_WAKE_CHECKING:
-        return OverlayStatus(state=state, title="正在等待唤醒词", subtitle="等待唤醒词：小黄")
+        return OverlayStatus(state=state, title="正在等待唤醒词", subtitle=f"等待唤醒词：{wake_phrase}")
     if state == STATE_WAKE_DETECTED:
         return OverlayStatus(state=state, title="我在", subtitle="请说你的命令")
     if state == STATE_LISTENING:
@@ -35,7 +41,7 @@ def get_overlay_status_text(state: str, detail: str | None = None) -> OverlaySta
     if state == STATE_REPLYING:
         return OverlayStatus(state=state, title="正在想怎么回复...", subtitle="生成一条简短回复")
     if state == STATE_SPEAKING:
-        return OverlayStatus(state=state, title="小黄正在说话", subtitle=detail or "正在播放语音回复")
+        return OverlayStatus(state=state, title=f"{assistant_name}正在说话", subtitle=detail or "正在播放语音回复")
     if state == STATE_RESULT:
         return OverlayStatus(state=state, title="你说：", subtitle=detail or "")
     if state == STATE_ERROR:
@@ -51,8 +57,14 @@ def build_server_unavailable_status(server_url: str) -> OverlayStatus:
     )
 
 
-def build_reply_result_text(user_text: str, reply_text: str, source_note: str | None = None) -> str:
-    base = f"你说：{user_text}\n小黄：{reply_text}"
+def build_reply_result_text(
+    user_text: str,
+    reply_text: str,
+    source_note: str | None = None,
+    *,
+    assistant_name: str = "小黄",
+) -> str:
+    base = f"你说：{user_text}\n{assistant_name}：{reply_text}"
     if source_note:
         base = f"{base}\n({source_note})"
     return base

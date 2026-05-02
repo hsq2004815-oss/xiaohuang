@@ -1,14 +1,18 @@
 # XiaoHuang Memory
 
 - Project: `E:\Projects\xiaohuang`
-- Current version: V0.9.1 DeepSeek single-turn reply prototype with error-handling and reply-cleaning stabilization over V0.9.
-- Current goal: after wake and one command transcription, optionally call DeepSeek-V4-Flash for one short reply, show `你说 / 小黄` in the overlay, and optionally synthesize/play TTS with `--enable-tts`.
+- Current version: V1.1.3C Settings UI Prototype over the configurable desktop voice assistant.
+- Current goal: verify Settings UI safely edits `%USERPROFILE%\.xiaohuang\config*.json`, preserves API-key boundaries, and saved config can launch the real XiaoHuang PowerShell/STT/overlay chain.
+- Latest committed feature: `9f6b0ea feat: add settings UI prototype`; local branch is `main...origin/main [ahead 1]` before final verification/push.
+- Latest local fix: Settings UI no longer saves `overlay.post_response_cooldown=None` as the string `"None"`; empty/`None`/`null` normalize to JSON `null`.
+- Latest local fix: overlay status text now uses configured `assistant.display_name` and first `wake.phrases` instead of hardcoded XiaoHuang labels.
 - Main scripts:
   - `scripts/check_audio_devices.py`
   - `scripts/record_test.py`
   - `scripts/listen_once.py`
   - `scripts/wake_loop.py`
   - `scripts/voice_overlay.py`
+  - `scripts/settings_ui.py`
   - `scripts/transcribe_test.py`
 - Main services:
   - `src/xiaohuang/audio_capture_service.py`
@@ -25,6 +29,10 @@
   - `src/xiaohuang/llm_reply_service.py`
   - `src/xiaohuang/config_service.py`
   - `src/xiaohuang/logging_service.py`
+  - `src/xiaohuang/app_config_service.py`
+  - `src/xiaohuang/settings_config_file_service.py`
+- Current V1.1.x config chain: `config.json / secrets.ps1 -> app_config_service -> start_xiaohuang.ps1 -> STT server -> voice_overlay -> wake/VAD/STT -> reply_pipeline_service -> optional LLM/TTS -> conversation session`.
+- Settings UI verification config: `%USERPROFILE%\.xiaohuang\config_settings_ui_test.json`; do not put a real API key in this file.
 - Validated local runtime: `F:\for_xiaohuang\conda310\python.exe`, microphone `device 0`, ModelScope cache `F:\for_xiaohuang\models\modelscope`, ffmpeg installed through `winget`.
 - Validated V0.3 path: `device 0` recording -> WAV file -> FunASR / SenseVoiceSmall Chinese transcription, with one-shot timing diagnostics.
 - V0.9 boundary: optional DeepSeek single-turn reply + rule fallback + optional edge-tts playback only; no multi-turn memory, no PersonaPlex/Moshi, and no task execution.

@@ -2,13 +2,24 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.3C — Settings UI Prototype（开发中）
-- **最新功能 commit**：`ab4d058` feat: add LLM provider router
+- **阶段**：V1.1.3C — Settings UI Prototype（开发完成，正在验证/收尾）
+- **最新功能 commit**：`9f6b0ea` feat: add settings UI prototype
 - **最新文档 commit**：`5883177` docs: record V1.1.3B verification results
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
-- **分支**：`main`，与 `origin/main` 同步
-- **工作区**：clean
-- **测试**：245 tests OK，compileall OK，help OK
+- **分支**：`main...origin/main [ahead 1]`
+- **工作区**：Settings UI `post_response_cooldown` 空值修复待提交；运行产物均 ignored
+- **测试**：260 tests OK，compileall OK，settings_ui/voice_overlay help OK，settings_ui --check PASS
+
+### V1.1.3C 验证收尾记录（2026-05-02）
+
+- Settings UI 可打开，6 个 tab 齐全：Wake / Assistant / LLM / TTS / Conversation / Advanced。
+- 人工保存 `assistant.display_name = 贾维斯测试` 后发现 blocker：Advanced 页 `post_response_cooldown=None` 被保存成字符串 `"None"`。
+- 根因：Tkinter Entry 初始化时 `str(None)` 显示为 `"None"`，保存层未把 `"None"` / 空字符串规范成 JSON `null`。
+- 修复：`scripts/settings_ui.py` 将 None 显示为空；`settings_config_file_service.normalize_ui_inputs()` 将 `overlay.post_response_cooldown` 的空值/`None`/`null` 规范为 `None`，数字字符串转 float。
+- 已修复测试配置：`%USERPROFILE%\.xiaohuang\config_settings_ui_test.json` 中 `overlay.post_response_cooldown` 已恢复为 JSON `null`。
+- 真实启动验证显示 `wake.phrases=贾维斯`、LLM persona、TTS、session exit 都生效；日志有 `source=llm`、`Session ended: reason=exit_phrase`，无 Traceback/ERROR/TypeError。
+- 追加小修：浮窗内部状态文案不再硬编码“小黄”，会使用 `assistant.display_name` 和第一个 `wake.phrases`；默认仍保持“小黄”。
+- 仍需用户真实启动验证：用 `config_settings_ui_test.json` 启动后说“贾维斯”，确认显示名/身份/TTS/session/logs。
 
 ### V1.1.3B 真实验证结果（2026-05-02）
 

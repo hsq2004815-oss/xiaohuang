@@ -916,6 +916,14 @@ class OverlayStateServiceTests(unittest.TestCase):
         self.assertEqual(replying.title, "正在想怎么回复...")
         self.assertEqual(speaking.title, "小黄正在说话")
 
+    def test_get_overlay_status_text_uses_configured_assistant_and_wake_phrase(self):
+        idle = get_overlay_status_text("idle", assistant_name="贾维斯测试", wake_phrase="贾维斯")
+        speaking = get_overlay_status_text("speaking", assistant_name="贾维斯测试")
+
+        self.assertEqual(idle.title, "贾维斯测试待机中")
+        self.assertEqual(idle.subtitle, "说“贾维斯”唤醒我")
+        self.assertEqual(speaking.title, "贾维斯测试正在说话")
+
     def test_build_reply_result_text_without_source_note(self):
         text = build_reply_result_text("你好", "我在。")
 
@@ -929,6 +937,12 @@ class OverlayStateServiceTests(unittest.TestCase):
         self.assertIn("你说：你好", text)
         self.assertIn("小黄：我在。", text)
         self.assertIn("(DeepSeek 不可用，已使用本地回复)", text)
+
+    def test_build_reply_result_text_uses_configured_assistant_name(self):
+        text = build_reply_result_text("你好", "我在。", assistant_name="贾维斯测试")
+
+        self.assertIn("你说：你好", text)
+        self.assertIn("贾维斯测试：我在。", text)
 
 
 class OverlayRuntimeServiceTests(unittest.TestCase):
@@ -2595,6 +2609,27 @@ class V113CSettingsConfigFileServiceTests(unittest.TestCase):
         result, errs = normalize_ui_inputs(data)
         self.assertEqual(result["llm"]["enabled"], False)
         self.assertEqual(result["tts"]["enabled"], True)
+
+    def test_overlay_post_response_cooldown_none_string_normalized(self):
+        from xiaohuang.settings_config_file_service import normalize_ui_inputs
+        data = {"overlay": {"post_response_cooldown": "None"}}
+        result, errs = normalize_ui_inputs(data)
+        self.assertEqual(errs, [])
+        self.assertIsNone(result["overlay"]["post_response_cooldown"])
+
+    def test_overlay_post_response_cooldown_blank_normalized(self):
+        from xiaohuang.settings_config_file_service import normalize_ui_inputs
+        data = {"overlay": {"post_response_cooldown": ""}}
+        result, errs = normalize_ui_inputs(data)
+        self.assertEqual(errs, [])
+        self.assertIsNone(result["overlay"]["post_response_cooldown"])
+
+    def test_overlay_post_response_cooldown_number_normalized(self):
+        from xiaohuang.settings_config_file_service import normalize_ui_inputs
+        data = {"overlay": {"post_response_cooldown": "8.5"}}
+        result, errs = normalize_ui_inputs(data)
+        self.assertEqual(errs, [])
+        self.assertEqual(result["overlay"]["post_response_cooldown"], 8.5)
 
     def test_save_creates_parent_dir(self):
         import tempfile
