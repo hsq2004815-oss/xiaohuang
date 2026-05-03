@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import threading
+import time
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +38,112 @@ READINESS_TIMEOUT_ERRORS = (
     "timeout_health_not_ready",
     "timeout",
 )
+
+
+@dataclass(frozen=True)
+class StatusRefreshResult:
+    generation: int
+    status: ControlPanelStatus | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class OperationUiResult:
+    operation_name: str
+    result: ControlOperationResult
+    final_status: ControlPanelStatus | None = None
+    error: str | None = None
+
+
+class StatusRefreshController:
+    def __init__(
+        self,
+        *,
+        state: dict,
+        collect_status: Callable[..., ControlPanelStatus],
+        render: Callable[[ControlPanelStatus], None],
+        schedule_ui: Callable[[Callable[[], None]], None],
+        start_worker: Callable[[Callable[[], None], str], None],
+        thread_name: str = "xiaohuang-control-panel-refresh",
+    ) -> None:
+        self.state = state
+        self.collect_status = collect_status
+        self.render = render
+        self.schedule_ui = schedule_ui
+        self.start_worker = start_worker
+        self.thread_name = thread_name
+
+    def request(self) -> bool:
+        if self.state["closed"]:
+            return False
+        if self.state["refresh_in_progress"]:
+            self.state["pending_refresh"] = True
+            return False
+
+        self.state["refresh_in_progress"] = True
+        self.state["pending_refresh"] = False
+        generation = int(self.state["refresh_generation"])
+        snapshot = {
+            "active_operation": self.state["active_operation"],
+            "last_operation": self.state["last_operation"],
+            "last_operation_elapsed_seconds": self.state["last_elapsed"],
+            "last_error": self.state["last_error"],
+        }
+        self.start_worker(lambda: self._worker(generation, snapshot), self.thread_name)
+        return True
+
+    def _worker(self, generation: int, snapshot: dict) -> None:
+        try:
+            status = self.collect_status(**snapshot)
+            result = StatusRefreshResult(generation=generation, status=status)
+        except Exception as exc:
+            result = StatusRefreshResult(generation=generation, error=summarize_exception(exc))
+        try:
+            self.schedule_ui(lambda: self.apply_result(result))
+        except Exception:
+            return
+
+    def apply_result(self, result: StatusRefreshResult) -> None:
+        self.state["refresh_in_progress"] = False
+        if self.state["closed"]:
+            return
+
+        is_current = result.generation == self.state["refresh_generation"]
+        if is_current:
+            if result.error:
+                self._apply_error(result.error)
+            elif result.status is not None:
+                self._apply_status(result.status)
+
+        if self.state["pending_refresh"]:
+            self.request()
+
+    def _apply_error(self, error: str) -> None:
+        self.state["last_error"] = error
+        last_status = self.state.get("last_status")
+        if last_status is None:
+            return
+        status = status_with_ui_metadata(
+            last_status,
+            last_operation=self.state["last_operation"],
+            last_operation_elapsed_seconds=self.state["last_elapsed"],
+            last_error=error,
+        )
+        self.state["last_status"] = status
+        self.render(status)
+
+    def _apply_status(self, status: ControlPanelStatus) -> None:
+        cleared_error = clear_ready_state_error(self.state["last_error"], status)
+        if cleared_error != self.state["last_error"]:
+            self.state["last_error"] = cleared_error
+        status = status_with_ui_metadata(
+            status,
+            last_operation=self.state["last_operation"],
+            last_operation_elapsed_seconds=self.state["last_elapsed"],
+            last_error=self.state["last_error"],
+        )
+        self.state["last_status"] = status
+        self.render(status)
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -132,6 +241,81 @@ def show_operation_result(messagebox_module, result: ControlOperationResult) -> 
         messagebox_module.showerror(result.title, result.message)
 
 
+def status_with_ui_metadata(
+    status: ControlPanelStatus,
+    *,
+    last_operation: str | None,
+    last_operation_elapsed_seconds: float | None,
+    last_error: str | None,
+) -> ControlPanelStatus:
+    return replace(
+        status,
+        last_operation=last_operation,
+        last_operation_elapsed_seconds=last_operation_elapsed_seconds,
+        last_error=last_error,
+    )
+
+
+def summarize_exception(exc: Exception) -> str:
+    text = f"{type(exc).__name__}: {exc}"
+    text = re.sub(r"sk-[A-Za-z0-9_\-]{8,}", "sk-***", text)
+    text = re.sub(r"(?i)(token|password|api[_-]?key|secret)\s*=\s*[^,\s;]+", r"\1=***", text)
+    text = re.sub(r"(?i)secrets\.ps1[^\s,;]*", "secrets.ps1", text)
+    return text[:240]
+
+
+def apply_operation_ui_result(
+    state: dict,
+    ui_result: OperationUiResult,
+    *,
+    render: Callable[[ControlPanelStatus], None],
+    set_buttons_enabled: Callable[[bool], None],
+    show_result: Callable[[ControlOperationResult], None],
+    request_status_refresh: Callable[[], bool],
+) -> None:
+    if state["closed"]:
+        return
+
+    state["refresh_generation"] += 1
+    state["active_operation"] = None
+    result = ui_result.result
+    if ui_result.final_status is not None:
+        result = resolve_operation_result_after_statuses(
+            ui_result.operation_name,
+            result,
+            [ui_result.final_status],
+        )
+    elif ui_result.error and not result.error:
+        result = replace(result, error=ui_result.error)
+
+    state["last_operation"] = ui_result.operation_name
+    state["last_elapsed"] = result.elapsed_seconds
+    state["last_error"] = result.error
+    set_buttons_enabled(True)
+
+    if ui_result.final_status is not None:
+        final_status = status_with_ui_metadata(
+            ui_result.final_status,
+            last_operation=ui_result.operation_name,
+            last_operation_elapsed_seconds=result.elapsed_seconds,
+            last_error=result.error,
+        )
+        cleared_error = clear_ready_state_error(result.error, final_status)
+        if cleared_error != result.error:
+            state["last_error"] = cleared_error
+            final_status = status_with_ui_metadata(
+                final_status,
+                last_operation=ui_result.operation_name,
+                last_operation_elapsed_seconds=result.elapsed_seconds,
+                last_error=cleared_error,
+            )
+        state["last_status"] = final_status
+        render(final_status)
+
+    request_status_refresh()
+    show_result(result)
+
+
 def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int:
     try:
         import tkinter as tk
@@ -151,6 +335,10 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         "last_operation": None,
         "last_elapsed": None,
         "last_error": None,
+        "last_status": None,
+        "refresh_in_progress": False,
+        "pending_refresh": False,
+        "refresh_generation": 0,
     }
     operation_buttons: list[ttk.Button] = []
 
@@ -247,52 +435,76 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
             last_error=last_error,
         )
 
-    def refresh_status() -> ControlPanelStatus | None:
+    def start_worker(target, name: str) -> None:
+        threading.Thread(target=target, name=name, daemon=True).start()
+
+    def schedule_ui(callback) -> None:
         if state["closed"]:
-            return None
-        status = collect_status(
-            active_operation=state["active_operation"],
-            last_operation=state["last_operation"],
-            last_operation_elapsed_seconds=state["last_elapsed"],
-            last_error=state["last_error"],
-        )
-        cleared_error = clear_ready_state_error(state["last_error"], status)
-        if cleared_error != state["last_error"]:
-            state["last_error"] = cleared_error
-            status = collect_status(
-                active_operation=state["active_operation"],
-                last_operation=state["last_operation"],
-                last_operation_elapsed_seconds=state["last_elapsed"],
-                last_error=state["last_error"],
-            )
-        render(status)
-        return status
+            return
+        try:
+            root.after(0, callback)
+        except Exception:
+            state["closed"] = True
+
+    refresh_controller = StatusRefreshController(
+        state=state,
+        collect_status=collect_status,
+        render=render,
+        schedule_ui=schedule_ui,
+        start_worker=start_worker,
+    )
+
+    def request_status_refresh() -> bool:
+        return refresh_controller.request()
 
     def schedule_refresh() -> None:
         if state["closed"]:
             return
-        refresh_status()
+        request_status_refresh()
         root.after(max(500, int(refresh_interval_seconds * 1000)), schedule_refresh)
 
-    def finish_operation(operation_name: str, result: ControlOperationResult) -> None:
-        state["active_operation"] = None
-        final_status = collect_status(
-            last_operation=operation_name,
-            last_operation_elapsed_seconds=result.elapsed_seconds,
-            last_error=None,
+    def finish_operation(ui_result: OperationUiResult) -> None:
+        apply_operation_ui_result(
+            state,
+            ui_result,
+            render=render,
+            set_buttons_enabled=set_buttons_enabled,
+            show_result=lambda result: show_operation_result(messagebox, result),
+            request_status_refresh=request_status_refresh,
         )
-        result = resolve_operation_result_after_statuses(operation_name, result, [final_status])
-        state["last_operation"] = operation_name
-        state["last_elapsed"] = result.elapsed_seconds
-        state["last_error"] = result.error
-        set_buttons_enabled(True)
-        rendered_status = refresh_status()
-        result = resolve_operation_result_after_statuses(operation_name, result, [rendered_status])
-        if result.error != state["last_error"]:
-            state["last_error"] = result.error
-            rendered_status = refresh_status()
-            result = resolve_operation_result_after_statuses(operation_name, result, [rendered_status])
-        show_operation_result(messagebox, result)
+
+    def collect_operation_ui_result(operation_name: str, target) -> OperationUiResult:
+        started_at = time.monotonic()
+        try:
+            result = target()
+        except Exception as exc:
+            error = summarize_exception(exc)
+            result = ControlOperationResult(
+                False,
+                "操作异常",
+                "操作异常，请查看 logs。",
+                round(time.monotonic() - started_at, 2),
+                error,
+            )
+
+        final_status = None
+        final_error = None
+        try:
+            final_status = collect_status(
+                active_operation=None,
+                last_operation=operation_name,
+                last_operation_elapsed_seconds=result.elapsed_seconds,
+                last_error=result.error,
+            )
+        except Exception as exc:
+            final_error = summarize_exception(exc)
+
+        return OperationUiResult(
+            operation_name=operation_name,
+            result=result,
+            final_status=final_status,
+            error=final_error,
+        )
 
     def run_operation(operation_name: str, target) -> None:
         if state["active_operation"]:
@@ -300,13 +512,14 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
             return
         state["active_operation"] = operation_name
         state["last_error"] = None
+        state["refresh_generation"] += 1
         set_buttons_enabled(False)
-        refresh_status()
+        request_status_refresh()
 
         def worker() -> None:
-            result = target()
+            ui_result = collect_operation_ui_result(operation_name, target)
             if not state["closed"]:
-                root.after(0, lambda: finish_operation(operation_name, result))
+                schedule_ui(lambda: finish_operation(ui_result))
 
         threading.Thread(target=worker, name=f"xiaohuang-control-panel-{operation_name}", daemon=True).start()
 
@@ -326,7 +539,7 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
     ])
     for col, button in enumerate(operation_buttons):
         button.grid(row=0, column=col, padx=6, pady=8, sticky="ew")
-    ttk.Button(actions, text="刷新状态", command=refresh_status).grid(row=0, column=3, padx=6, pady=8, sticky="ew")
+    ttk.Button(actions, text="刷新状态", command=request_status_refresh).grid(row=0, column=3, padx=6, pady=8, sticky="ew")
     ttk.Button(actions, text="打开设置", command=lambda: open_settings(config_path)).grid(row=0, column=4, padx=6, pady=8, sticky="ew")
     ttk.Button(actions, text="打开日志目录", command=open_log_dir).grid(row=0, column=5, padx=6, pady=8, sticky="ew")
     for col in range(6):
@@ -337,10 +550,11 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
 
     def on_close() -> None:
         state["closed"] = True
+        state["refresh_generation"] += 1
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
-    refresh_status()
+    request_status_refresh()
     root.after(max(500, int(refresh_interval_seconds * 1000)), schedule_refresh)
     root.mainloop()
     return 0

@@ -232,4 +232,6 @@ V1.1.4D-A 已新增最小可用 Tkinter 控制面板，用于显示 STT server r
 
 V1.1.4D-A readiness 修复：控制面板和启动/重启等待现在统一复用 `launch_control_service.detect_xiaohuang_processes()` 的命令行分类；`voice_overlay.py` / `stt_server.py` 支持绝对路径、相对 `scripts\...`、正斜杠路径、带引号路径和 `pythonw.exe` 启动形式。启动/重启等待超时后会再读取一次控制面板状态，若最终已 `READY` / `can_wake_now=True`，不再返回 `timeout_voice_overlay_missing` 的未就绪弹窗。
 
+V1.1.4D-B 流畅性修复：控制面板周期刷新和手动刷新不再在 Tkinter 主线程直接执行进程检测、PowerShell `Get-CimInstance` 或 STT `/health` 网络请求；刷新由后台线程采集状态，再通过 `root.after(0, ...)` 回到主线程渲染。刷新带 `refresh_in_progress` / `pending_refresh` / `refresh_generation`，避免检测线程堆叠，也避免旧刷新结果覆盖较新的 READY 状态。启动/停止/重启仍在后台线程执行，操作结束后由同一 worker 采集最终状态，READY 时不会弹出陈旧的 `timeout_voice_overlay_missing`。
+
 V1.1.4B 真人验证结果：托盘图标、右键菜单、打开 Settings UI、读取 `config_settings_ui_test.json`、打开 `logs/`、关于/状态、退出托盘均正常。退出托盘不会停止 STT server 或 `voice_overlay.py`，也未影响 wake / session / TTS / LLM router 主链路。

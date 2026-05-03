@@ -796,6 +796,41 @@ class V114CLaunchControlTests(unittest.TestCase):
 
 
 class V114DAStatusControlTests(unittest.TestCase):
+    def _control_panel_state(self):
+        return {
+            "closed": False,
+            "active_operation": None,
+            "last_operation": None,
+            "last_elapsed": None,
+            "last_error": None,
+            "last_status": None,
+            "refresh_in_progress": False,
+            "pending_refresh": False,
+            "refresh_generation": 0,
+        }
+
+    def _ready_panel_status(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, compute_status
+
+        return compute_status(
+            ProcessStatus(True, True, 2),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
+    def _not_running_panel_status(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, compute_status
+
+        return compute_status(
+            ProcessStatus(False, False, 0),
+            HealthCheckResult(False, "health_unavailable:URLError"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
     def test_control_panel_help_runs(self):
         import subprocess
         result = subprocess.run(
@@ -991,6 +1026,147 @@ class V114DAStatusControlTests(unittest.TestCase):
         error = control_panel.clear_ready_state_error("timeout_voice_overlay_missing", final_status)
 
         self.assertIsNone(error)
+
+    def test_control_panel_request_refresh_does_not_start_second_worker_when_busy(self):
+        import control_panel
+
+        state = self._control_panel_state()
+        state["refresh_in_progress"] = True
+        workers = []
+        controller = control_panel.StatusRefreshController(
+            state=state,
+            collect_status=lambda **kwargs: self._not_running_panel_status(),
+            render=lambda status: None,
+            schedule_ui=lambda callback: callback(),
+            start_worker=lambda target, name: workers.append((target, name)),
+        )
+
+        started = controller.request()
+
+        self.assertFalse(started)
+        self.assertEqual(workers, [])
+        self.assertTrue(state["pending_refresh"])
+
+    def test_control_panel_refresh_completion_releases_in_progress(self):
+        import control_panel
+
+        state = self._control_panel_state()
+        state["refresh_in_progress"] = True
+        rendered = []
+        controller = control_panel.StatusRefreshController(
+            state=state,
+            collect_status=lambda **kwargs: self._not_running_panel_status(),
+            render=rendered.append,
+            schedule_ui=lambda callback: callback(),
+            start_worker=lambda target, name: target(),
+        )
+
+        controller.apply_result(control_panel.StatusRefreshResult(0, self._not_running_panel_status()))
+
+        self.assertFalse(state["refresh_in_progress"])
+        self.assertEqual(len(rendered), 1)
+
+    def test_control_panel_closed_refresh_result_does_not_render(self):
+        import control_panel
+
+        state = self._control_panel_state()
+        state["closed"] = True
+        state["refresh_in_progress"] = True
+        rendered = []
+        controller = control_panel.StatusRefreshController(
+            state=state,
+            collect_status=lambda **kwargs: self._not_running_panel_status(),
+            render=rendered.append,
+            schedule_ui=lambda callback: callback(),
+            start_worker=lambda target, name: target(),
+        )
+
+        controller.apply_result(control_panel.StatusRefreshResult(0, self._not_running_panel_status()))
+
+        self.assertFalse(state["refresh_in_progress"])
+        self.assertEqual(rendered, [])
+
+    def test_control_panel_refresh_exception_becomes_redacted_last_error(self):
+        import control_panel
+
+        state = self._control_panel_state()
+
+        def collect_status(**kwargs):
+            raise RuntimeError("DEEPSEEK_API_KEY=sk-secret123456 token=abc123")
+
+        controller = control_panel.StatusRefreshController(
+            state=state,
+            collect_status=collect_status,
+            render=lambda status: None,
+            schedule_ui=lambda callback: callback(),
+            start_worker=lambda target, name: target(),
+        )
+
+        self.assertTrue(controller.request())
+
+        self.assertFalse(state["refresh_in_progress"])
+        self.assertIn("RuntimeError", state["last_error"])
+        self.assertNotIn("sk-secret123456", state["last_error"])
+        self.assertNotIn("token=abc123", state["last_error"])
+
+    def test_control_panel_stale_refresh_result_does_not_overwrite_ready_status(self):
+        import control_panel
+
+        ready = self._ready_panel_status()
+        state = self._control_panel_state()
+        state["last_status"] = ready
+        state["refresh_in_progress"] = True
+        state["refresh_generation"] = 2
+        rendered = []
+        controller = control_panel.StatusRefreshController(
+            state=state,
+            collect_status=lambda **kwargs: self._not_running_panel_status(),
+            render=rendered.append,
+            schedule_ui=lambda callback: callback(),
+            start_worker=lambda target, name: target(),
+        )
+
+        controller.apply_result(control_panel.StatusRefreshResult(1, self._not_running_panel_status()))
+
+        self.assertFalse(state["refresh_in_progress"])
+        self.assertEqual(state["last_status"], ready)
+        self.assertEqual(rendered, [])
+
+    def test_control_panel_operation_finish_uses_ready_final_status_without_timeout_popup(self):
+        import control_panel
+        from xiaohuang.status_control_service import ControlOperationResult
+
+        state = self._control_panel_state()
+        state["active_operation"] = "重启"
+        rendered = []
+        buttons_enabled = []
+        refresh_requests = []
+        shown = []
+        timeout = ControlOperationResult(
+            False,
+            "重启未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+
+        control_panel.apply_operation_ui_result(
+            state,
+            control_panel.OperationUiResult("重启", timeout, self._ready_panel_status()),
+            render=rendered.append,
+            set_buttons_enabled=buttons_enabled.append,
+            show_result=shown.append,
+            request_status_refresh=lambda: refresh_requests.append(True) or True,
+        )
+
+        self.assertIsNone(state["active_operation"])
+        self.assertIsNone(state["last_error"])
+        self.assertEqual(buttons_enabled, [True])
+        self.assertEqual(refresh_requests, [True])
+        self.assertEqual(len(rendered), 1)
+        self.assertTrue(shown[0].ok)
+        self.assertIsNone(shown[0].error)
+        self.assertNotIn("timeout_voice_overlay_missing", shown[0].message)
 
     def test_not_running_status(self):
         from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus

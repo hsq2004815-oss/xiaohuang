@@ -2,7 +2,7 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.4D — 基础状态 UI / 控制面板设计（docs-only）
+- **阶段**：V1.1.4D-B — 控制面板状态刷新非阻塞化
 - **最新功能 commit**：待提交 `feat: add tray launch controls`
 - **最新文档 commit**：`65927ea` docs: record V1.1.4B tray validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
@@ -40,6 +40,17 @@
 - READY 条件统一为 STT 进程 + overlay 进程 + `/health` ready（`status=ready` 或 `model_loaded=True`）。
 - 未修改 PowerShell、`voice_overlay.py`、wake/session/TTS/LLM router，未新增依赖，未写 `E:\DataBase`。
 - 自动验证：315 tests OK、compileall OK、control_panel/tray_app/settings_ui/voice_overlay help OK。
+
+### V1.1.4D-B 控制面板流畅性修复记录（2026-05-03）
+
+- 根因确认：`scripts/control_panel.py` 的周期刷新原先在 Tkinter 主线程调用 `build_status()`，会触发 PowerShell 进程检测和 STT `/health` 网络请求，导致拖动/点击卡顿。
+- 修复：新增 `StatusRefreshController`，周期刷新、手动刷新和操作后刷新都改为后台线程采集状态，再用 `root.after(0, ...)` 回主线程渲染。
+- 防堆叠：状态中新增 `refresh_in_progress`、`pending_refresh`、`refresh_generation`、`last_status`；旧 generation 的刷新结果不会覆盖较新的操作/READY 状态。
+- 启动/停止/重启仍在后台执行；操作 worker 结束后顺便采集 `final_status`，READY 时继续消除陈旧 `timeout_voice_overlay_missing` 弹窗。
+- 关闭窗口安全：`closed=True` 后刷新结果不再更新 Tk 控件，关闭时递增 generation 丢弃旧结果。
+- 未修改 PowerShell、`voice_overlay.py`、wake/session/TTS/LLM router，未新增依赖，未写 `E:\DataBase`。
+- 数据库参考：读取 code assets global index、reuse rules、`launch-control-readiness-pattern.asset.json`、operation-lock snippet、desktop assistant adapter；本机数据库 API `127.0.0.1:8765` 未运行，改为按要求只读文件。
+- 自动验证：`F:\for_xiaohuang\conda310\python.exe`（Python 3.10.20）下 328 tests OK、compileall OK、control_panel/tray_app/settings_ui/voice_overlay help OK；此前 `.venv` fallback 也通过同一组命令。
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
 
