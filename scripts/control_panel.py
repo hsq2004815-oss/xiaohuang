@@ -19,11 +19,21 @@ from xiaohuang.launch_control_service import ensure_log_dir
 from xiaohuang.status_control_service import (
     ControlOperationResult,
     ControlPanelStatus,
+    READY,
     build_status,
     run_restart_operation,
     run_start_operation,
     run_stop_operation,
     stage_markers,
+)
+
+
+READINESS_OPERATION_NAMES = {"启动", "重启"}
+READINESS_TIMEOUT_ERRORS = (
+    "timeout_voice_overlay_missing",
+    "timeout_stt_server_missing",
+    "timeout_health_not_ready",
+    "timeout",
 )
 
 
@@ -75,6 +85,32 @@ def open_log_dir() -> bool:
 
 def _status_line(value: bool, true_text: str = "running", false_text: str = "stopped") -> str:
     return true_text if value else false_text
+
+
+def is_final_ready_status(status: ControlPanelStatus) -> bool:
+    return bool(status.can_wake_now or status.overall_status == READY)
+
+
+def is_readiness_timeout_error(error: str | None) -> bool:
+    return bool(error and any(marker in error for marker in READINESS_TIMEOUT_ERRORS))
+
+
+def clear_ready_state_error(last_error: str | None, status: ControlPanelStatus) -> str | None:
+    if is_final_ready_status(status) and is_readiness_timeout_error(last_error):
+        return None
+    return last_error
+
+
+def resolve_operation_result_after_final_status(
+    operation_name: str,
+    result: ControlOperationResult,
+    final_status: ControlPanelStatus,
+) -> ControlOperationResult:
+    if operation_name not in READINESS_OPERATION_NAMES or not is_final_ready_status(final_status):
+        return result
+    if operation_name == "重启":
+        return ControlOperationResult(True, "重启完成", "小黄已重启并就绪。", result.elapsed_seconds)
+    return ControlOperationResult(True, "小黄已就绪", "小黄已启动并就绪。", result.elapsed_seconds)
 
 
 def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int:
@@ -187,6 +223,17 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
             last_operation_elapsed_seconds=state["last_elapsed"],
             last_error=state["last_error"],
         )
+        cleared_error = clear_ready_state_error(state["last_error"], status)
+        if cleared_error != state["last_error"]:
+            state["last_error"] = cleared_error
+            status = build_status(
+                PROJECT_ROOT,
+                config_path,
+                active_operation=state["active_operation"],
+                last_operation=state["last_operation"],
+                last_operation_elapsed_seconds=state["last_elapsed"],
+                last_error=state["last_error"],
+            )
         render(status)
 
     def schedule_refresh() -> None:
@@ -197,6 +244,14 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
 
     def finish_operation(operation_name: str, result: ControlOperationResult) -> None:
         state["active_operation"] = None
+        final_status = build_status(
+            PROJECT_ROOT,
+            config_path,
+            last_operation=operation_name,
+            last_operation_elapsed_seconds=result.elapsed_seconds,
+            last_error=None,
+        )
+        result = resolve_operation_result_after_final_status(operation_name, result, final_status)
         state["last_operation"] = operation_name
         state["last_elapsed"] = result.elapsed_seconds
         state["last_error"] = result.error

@@ -150,6 +150,17 @@ class V114BTrayAppTests(unittest.TestCase):
 
 
 class V114CLaunchControlTests(unittest.TestCase):
+    def setUp(self):
+        import tray_app
+
+        self._tray_app_write_log = tray_app.write_tray_log
+        tray_app.write_tray_log = lambda *args, **kwargs: None
+
+    def tearDown(self):
+        import tray_app
+
+        tray_app.write_tray_log = self._tray_app_write_log
+
     def test_build_start_command_uses_start_script_and_config_path(self):
         from xiaohuang.launch_control_service import build_start_command
 
@@ -796,6 +807,124 @@ class V114DAStatusControlTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("--config", result.stdout)
         self.assertIn("--refresh-interval", result.stdout)
+
+    def test_control_panel_start_timeout_uses_ready_final_status_as_success(self):
+        import control_panel
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, ControlOperationResult, compute_status
+
+        final_status = compute_status(
+            ProcessStatus(True, True, 2),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+        timeout = ControlOperationResult(
+            False,
+            "启动未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+
+        result = control_panel.resolve_operation_result_after_final_status("启动", timeout, final_status)
+
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.error)
+        self.assertEqual(result.title, "小黄已就绪")
+        self.assertNotIn("timeout_voice_overlay_missing", result.message)
+
+    def test_control_panel_restart_timeout_uses_ready_final_status_as_success(self):
+        import control_panel
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, ControlOperationResult, compute_status
+
+        final_status = compute_status(
+            ProcessStatus(True, True, 2),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+        timeout = ControlOperationResult(
+            False,
+            "重启未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+
+        result = control_panel.resolve_operation_result_after_final_status("重启", timeout, final_status)
+
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.error)
+        self.assertEqual(result.title, "重启完成")
+        self.assertNotIn("timeout_voice_overlay_missing", result.message)
+
+    def test_control_panel_start_timeout_stays_error_when_final_status_partial(self):
+        import control_panel
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, ControlOperationResult, compute_status
+
+        final_status = compute_status(
+            ProcessStatus(True, False, 1),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+        timeout = ControlOperationResult(
+            False,
+            "启动未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+
+        result = control_panel.resolve_operation_result_after_final_status("启动", timeout, final_status)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "timeout_voice_overlay_missing")
+        self.assertIn("timeout_voice_overlay_missing", result.message)
+
+    def test_control_panel_restart_timeout_stays_error_when_final_status_not_running(self):
+        import control_panel
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, ControlOperationResult, compute_status
+
+        final_status = compute_status(
+            ProcessStatus(False, False, 0),
+            HealthCheckResult(False, "health_unavailable:URLError"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+        timeout = ControlOperationResult(
+            False,
+            "重启未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+
+        result = control_panel.resolve_operation_result_after_final_status("重启", timeout, final_status)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "timeout_voice_overlay_missing")
+        self.assertIn("timeout_voice_overlay_missing", result.message)
+
+    def test_control_panel_ready_status_clears_stale_timeout_last_error(self):
+        import control_panel
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, compute_status
+
+        final_status = compute_status(
+            ProcessStatus(True, True, 2),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
+        error = control_panel.clear_ready_state_error("timeout_voice_overlay_missing", final_status)
+
+        self.assertIsNone(error)
 
     def test_not_running_status(self):
         from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
