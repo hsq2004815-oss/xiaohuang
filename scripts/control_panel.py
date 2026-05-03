@@ -113,6 +113,25 @@ def resolve_operation_result_after_final_status(
     return ControlOperationResult(True, "小黄已就绪", "小黄已启动并就绪。", result.elapsed_seconds)
 
 
+def resolve_operation_result_after_statuses(
+    operation_name: str,
+    result: ControlOperationResult,
+    statuses: Sequence[ControlPanelStatus | None],
+) -> ControlOperationResult:
+    resolved = result
+    for status in statuses:
+        if status is not None:
+            resolved = resolve_operation_result_after_final_status(operation_name, resolved, status)
+    return resolved
+
+
+def show_operation_result(messagebox_module, result: ControlOperationResult) -> None:
+    if result.ok:
+        messagebox_module.showinfo(result.title, result.message)
+    else:
+        messagebox_module.showerror(result.title, result.message)
+
+
 def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int:
     try:
         import tkinter as tk
@@ -212,12 +231,26 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
             "提示：关闭此窗口不会停止小黄。"
         )
 
-    def refresh_status() -> None:
-        if state["closed"]:
-            return
-        status = build_status(
+    def collect_status(
+        *,
+        active_operation: str | None = None,
+        last_operation: str | None = None,
+        last_operation_elapsed_seconds: float | None = None,
+        last_error: str | None = None,
+    ) -> ControlPanelStatus:
+        return build_status(
             PROJECT_ROOT,
             config_path,
+            active_operation=active_operation,
+            last_operation=last_operation,
+            last_operation_elapsed_seconds=last_operation_elapsed_seconds,
+            last_error=last_error,
+        )
+
+    def refresh_status() -> ControlPanelStatus | None:
+        if state["closed"]:
+            return None
+        status = collect_status(
             active_operation=state["active_operation"],
             last_operation=state["last_operation"],
             last_operation_elapsed_seconds=state["last_elapsed"],
@@ -226,15 +259,14 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         cleared_error = clear_ready_state_error(state["last_error"], status)
         if cleared_error != state["last_error"]:
             state["last_error"] = cleared_error
-            status = build_status(
-                PROJECT_ROOT,
-                config_path,
+            status = collect_status(
                 active_operation=state["active_operation"],
                 last_operation=state["last_operation"],
                 last_operation_elapsed_seconds=state["last_elapsed"],
                 last_error=state["last_error"],
             )
         render(status)
+        return status
 
     def schedule_refresh() -> None:
         if state["closed"]:
@@ -244,23 +276,23 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
 
     def finish_operation(operation_name: str, result: ControlOperationResult) -> None:
         state["active_operation"] = None
-        final_status = build_status(
-            PROJECT_ROOT,
-            config_path,
+        final_status = collect_status(
             last_operation=operation_name,
             last_operation_elapsed_seconds=result.elapsed_seconds,
             last_error=None,
         )
-        result = resolve_operation_result_after_final_status(operation_name, result, final_status)
+        result = resolve_operation_result_after_statuses(operation_name, result, [final_status])
         state["last_operation"] = operation_name
         state["last_elapsed"] = result.elapsed_seconds
         state["last_error"] = result.error
         set_buttons_enabled(True)
-        refresh_status()
-        if result.ok:
-            messagebox.showinfo(result.title, result.message)
-        else:
-            messagebox.showerror(result.title, result.message)
+        rendered_status = refresh_status()
+        result = resolve_operation_result_after_statuses(operation_name, result, [rendered_status])
+        if result.error != state["last_error"]:
+            state["last_error"] = result.error
+            rendered_status = refresh_status()
+            result = resolve_operation_result_after_statuses(operation_name, result, [rendered_status])
+        show_operation_result(messagebox, result)
 
     def run_operation(operation_name: str, target) -> None:
         if state["active_operation"]:
