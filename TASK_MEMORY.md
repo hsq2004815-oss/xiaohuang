@@ -2,13 +2,23 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2A — Wake Engine / 唤醒增强设计
-- **最新功能 commit**：`7a9d43a` fix: resolve async control panel readiness race
+- **阶段**：V1.2B — openWakeWord 独立 Demo / 本机可行性验证
+- **最新功能 commit**：待提交 `feat: add openWakeWord demo harness`
 - **最新文档 commit**：`65927ea` docs: record V1.1.4B tray validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`（V1.1.4C 开发前）
 - **工作区**：V1.1.4C tray launch operation lock release；运行产物均 ignored
 - **测试**：295 tests OK、compileall OK、tray/settings/overlay help OK；真人托盘菜单点击需用户本机确认
+
+### V1.2B openWakeWord 独立 Demo 记录（2026-05-03）
+
+- 新增 `scripts/wake_engine_demo.py`：独立 openWakeWord demo harness，支持 `--help`、`--check-install`、`--dry-run`、`--list-devices`、短时监听参数、score/event 输出路径。
+- 新增 `docs/V1.2B_OPENWAKEWORD_DEMO_VALIDATION.md`：记录本机依赖、设备、限制和下一步真人体验方法。
+- 当前 `F:\for_xiaohuang\conda310\python.exe` 环境：`openwakeword` 未通过 pip 安装；`D:\github-project\openWakeWord` 是本机源码 checkout，加入 `PYTHONPATH` 后能找到包，但导入继续缺 `onnxruntime`；`numpy` 和 `sounddevice` 已安装；`pyaudio` / `pyaudiowpatch` 未安装。
+- `--check-install` 设计为 exit code 0 + `openwakeword_installed=false`，缺依赖时不阻断自动验证。
+- `--list-devices` 已能通过 `sounddevice` 列出 12 个 input device；stdout/stderr 设置 errors=replace，避免 Windows 设备名特殊字符导致 GBK 编码崩溃。
+- 本阶段未修改 `voice_overlay.py`、`wake_loop_service.py`、`wake_word_service.py`、控制面板、托盘、PowerShell、配置主链路，未新增依赖，未下载模型，未训练中文“贾维斯”模型，未写 `E:\DataBase`。
+- 后续 V1.2C 前建议：用户确认安装 `openwakeword` / `onnxruntime` 后，先用 `wake_engine_demo.py --check-install`、`--list-devices`、短时 `--duration-seconds 30 --debug` 记录 score/CPU/设备占用，再抽象 WakeEngine service。
 
 ### V1.2A Wake Engine 设计记录（2026-05-03）
 

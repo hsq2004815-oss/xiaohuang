@@ -186,6 +186,7 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 - [V1.1.4B_TRAY_VALIDATION.md](docs/V1.1.4B_TRAY_VALIDATION.md) — 最小托盘程序真人验证记录
 - [V1.1.4D_STATUS_CONTROL_PANEL_DESIGN.md](docs/V1.1.4D_STATUS_CONTROL_PANEL_DESIGN.md) — 基础状态 UI / 控制面板设计
 - [V1.2_WAKE_ENGINE_DESIGN.md](docs/V1.2_WAKE_ENGINE_DESIGN.md) — Wake Engine / 专用唤醒增强设计
+- [V1.2B_OPENWAKEWORD_DEMO_VALIDATION.md](docs/V1.2B_OPENWAKEWORD_DEMO_VALIDATION.md) — openWakeWord 独立 demo 验证记录
 
 ## Settings UI
 
@@ -242,3 +243,5 @@ V1.1.4B 真人验证结果：托盘图标、右键菜单、打开 Settings UI、
 ## V1.2 Wake Engine Design
 
 V1.2A 已新增 docs-only 设计，用于规划从当前 STT 文本匹配唤醒演进到专用 Wake Word / KWS 引擎。推荐路线是先以 openWakeWord 做独立 demo 和 adapter 抽象，保留当前 STT 文本匹配作为 fallback；Porcupine 作为体验标杆/可选方案，wyoming-openwakeword 作为 server 架构参考，sherpa-onnx / FunASR KWS 作为中长期对比研究。V1.2A 不修改 `voice_overlay.py`、控制面板、托盘、PowerShell 或运行配置。
+
+V1.2B 已新增独立 demo harness：`scripts/wake_engine_demo.py`。该脚本支持 `--help`、`--check-install`、`--dry-run` 和 `--list-devices`，未安装 openWakeWord 时会输出清晰的 optional dependency 状态并保持自动验证可继续。当前环境尚未通过 pip 安装 `openwakeword`；`D:\github-project\openWakeWord` 是本机源码 checkout，加入 `PYTHONPATH` 后可被定位，但还缺 `onnxruntime`，因此尚未验证模型加载、wake score 或真人唤醒效果。

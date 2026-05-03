@@ -149,6 +149,84 @@ class V114BTrayAppTests(unittest.TestCase):
         self.assertIn("***", text)
 
 
+class V12BWakeEngineDemoTests(unittest.TestCase):
+    def test_wake_engine_demo_help_runs(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "scripts/wake_engine_demo.py", "--help"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--check-install", result.stdout)
+        self.assertIn("--dry-run", result.stdout)
+
+    def test_wake_engine_demo_check_install_does_not_fail_when_optional_dependency_missing(self):
+        import wake_engine_demo
+
+        def fake_import(name):
+            if name == "openwakeword":
+                raise ImportError("not installed")
+            return SimpleNamespace(__version__="1.0")
+
+        statuses = wake_engine_demo.collect_install_statuses(import_module=fake_import)
+
+        openwakeword_status = [status for status in statuses if status.name == "openwakeword"][0]
+        self.assertFalse(openwakeword_status.installed)
+        self.assertIn("Missing optional dependency: openwakeword", openwakeword_status.error)
+
+    def test_wake_engine_demo_dry_run_does_not_require_openwakeword(self):
+        import subprocess
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/wake_engine_demo.py",
+                "--dry-run",
+                "--engine",
+                "openwakeword",
+                "--wake-phrase",
+                "贾维斯",
+            ],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("dry_run=true", result.stdout)
+        self.assertIn("will_load_model=false", result.stdout)
+        self.assertIn("will_open_microphone=false", result.stdout)
+        self.assertIn("wake_phrase=贾维斯", result.stdout)
+
+    def test_wake_engine_demo_parse_args(self):
+        import wake_engine_demo
+
+        args = wake_engine_demo.parse_args(
+            [
+                "--engine",
+                "openwakeword",
+                "--model-name",
+                "hey jarvis",
+                "--device",
+                "0",
+                "--duration-seconds",
+                "3",
+                "--chunk-ms",
+                "80",
+                "--sensitivity",
+                "0.6",
+            ]
+        )
+        config = wake_engine_demo.build_demo_config(args)
+
+        self.assertEqual(config.engine, "openwakeword")
+        self.assertEqual(config.model_name, "hey jarvis")
+        self.assertEqual(config.device, 0)
+        self.assertEqual(config.duration_seconds, 3.0)
+        self.assertEqual(config.chunk_samples, 1280)
+        self.assertEqual(config.sensitivity, 0.6)
+
+
 class V114CLaunchControlTests(unittest.TestCase):
     def setUp(self):
         import tray_app
