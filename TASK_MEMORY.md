@@ -48,9 +48,10 @@
 - 防堆叠：状态中新增 `refresh_in_progress`、`pending_refresh`、`refresh_generation`、`last_status`；旧 generation 的刷新结果不会覆盖较新的操作/READY 状态。
 - 启动/停止/重启仍在后台执行；操作 worker 结束后顺便采集 `final_status`，READY 时继续消除陈旧 `timeout_voice_overlay_missing` 弹窗。
 - 关闭窗口安全：`closed=True` 后刷新结果不再更新 Tk 控件，关闭时递增 generation 丢弃旧结果。
+- 真人复测发现 D-B 仍有 READY 界面 + `timeout_voice_overlay_missing` 错误弹窗竞态；后续修复为 operation completion result 优先：worker 用短暂 grace window 采集 READY `final_status`，主线程只按该 final_status 决定启动/重启弹窗，operation completion pending 时普通 refresh apply 会被跳过。
 - 未修改 PowerShell、`voice_overlay.py`、wake/session/TTS/LLM router，未新增依赖，未写 `E:\DataBase`。
 - 数据库参考：读取 code assets global index、reuse rules、`launch-control-readiness-pattern.asset.json`、operation-lock snippet、desktop assistant adapter；本机数据库 API `127.0.0.1:8765` 未运行，改为按要求只读文件。
-- 自动验证：`F:\for_xiaohuang\conda310\python.exe`（Python 3.10.20）下 328 tests OK、compileall OK、control_panel/tray_app/settings_ui/voice_overlay help OK；此前 `.venv` fallback 也通过同一组命令。
+- 自动验证：`F:\for_xiaohuang\conda310\python.exe`（Python 3.10.20）下 334 tests OK、compileall OK、control_panel/tray_app/settings_ui/voice_overlay help OK；此前 `.venv` fallback 也通过基础 D-B 命令。
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
 

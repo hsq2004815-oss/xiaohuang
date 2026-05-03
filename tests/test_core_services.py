@@ -807,6 +807,7 @@ class V114DAStatusControlTests(unittest.TestCase):
             "refresh_in_progress": False,
             "pending_refresh": False,
             "refresh_generation": 0,
+            "operation_completion_pending": False,
         }
 
     def _ready_panel_status(self):
@@ -827,6 +828,17 @@ class V114DAStatusControlTests(unittest.TestCase):
         return compute_status(
             ProcessStatus(False, False, 0),
             HealthCheckResult(False, "health_unavailable:URLError"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
+    def _partial_panel_status(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, compute_status
+
+        return compute_status(
+            ProcessStatus(True, False, 1),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
             Path("config.json"),
             ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
         )
@@ -1167,6 +1179,202 @@ class V114DAStatusControlTests(unittest.TestCase):
         self.assertTrue(shown[0].ok)
         self.assertIsNone(shown[0].error)
         self.assertNotIn("timeout_voice_overlay_missing", shown[0].message)
+
+    def test_control_panel_start_worker_timeout_ready_final_status_does_not_show_error(self):
+        import control_panel
+        from xiaohuang.status_control_service import ControlOperationResult
+
+        state = self._control_panel_state()
+        state["active_operation"] = "启动"
+        shown = []
+        timeout = ControlOperationResult(
+            False,
+            "启动未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+
+        control_panel.apply_operation_ui_result(
+            state,
+            control_panel.OperationUiResult("启动", timeout, self._ready_panel_status()),
+            render=lambda status: None,
+            set_buttons_enabled=lambda enabled: None,
+            show_result=shown.append,
+            request_status_refresh=lambda: True,
+        )
+
+        self.assertTrue(shown[0].ok)
+        self.assertIsNone(shown[0].error)
+        self.assertIsNone(state["last_error"])
+
+    def test_control_panel_start_timeout_partial_final_status_shows_error(self):
+        import control_panel
+        from xiaohuang.status_control_service import ControlOperationResult
+
+        state = self._control_panel_state()
+        state["active_operation"] = "启动"
+        shown = []
+        timeout = ControlOperationResult(
+            False,
+            "启动未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+
+        control_panel.apply_operation_ui_result(
+            state,
+            control_panel.OperationUiResult("启动", timeout, self._partial_panel_status()),
+            render=lambda status: None,
+            set_buttons_enabled=lambda enabled: None,
+            show_result=shown.append,
+            request_status_refresh=lambda: True,
+        )
+
+        self.assertFalse(shown[0].ok)
+        self.assertEqual(shown[0].error, "timeout_voice_overlay_missing")
+        self.assertEqual(state["last_error"], "timeout_voice_overlay_missing")
+
+    def test_control_panel_periodic_ready_and_operation_timeout_ready_final_status_no_error(self):
+        import control_panel
+        from xiaohuang.status_control_service import ControlOperationResult
+
+        state = self._control_panel_state()
+        state["active_operation"] = "启动"
+        state["refresh_generation"] = 1
+        rendered = []
+        controller = control_panel.StatusRefreshController(
+            state=state,
+            collect_status=lambda **kwargs: self._ready_panel_status(),
+            render=rendered.append,
+            schedule_ui=lambda callback: callback(),
+            start_worker=lambda target, name: target(),
+        )
+        controller.apply_result(control_panel.StatusRefreshResult(1, self._ready_panel_status()))
+        self.assertEqual(len(rendered), 1)
+
+        shown = []
+        timeout = ControlOperationResult(
+            False,
+            "启动未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+        control_panel.apply_operation_ui_result(
+            state,
+            control_panel.OperationUiResult("启动", timeout, self._ready_panel_status()),
+            render=rendered.append,
+            set_buttons_enabled=lambda enabled: None,
+            show_result=shown.append,
+            request_status_refresh=lambda: True,
+        )
+
+        self.assertTrue(shown[0].ok)
+        self.assertIsNone(shown[0].error)
+        self.assertIsNone(state["last_error"])
+
+    def test_control_panel_operation_completion_priority_skips_periodic_refresh_result(self):
+        import control_panel
+        from xiaohuang.status_control_service import ControlOperationResult
+
+        state = self._control_panel_state()
+        state["active_operation"] = "启动"
+        state["operation_completion_pending"] = True
+        rendered = []
+        controller = control_panel.StatusRefreshController(
+            state=state,
+            collect_status=lambda **kwargs: self._not_running_panel_status(),
+            render=rendered.append,
+            schedule_ui=lambda callback: callback(),
+            start_worker=lambda target, name: target(),
+        )
+
+        controller.apply_result(control_panel.StatusRefreshResult(0, self._not_running_panel_status()))
+
+        self.assertEqual(rendered, [])
+        self.assertTrue(state["pending_refresh"])
+
+        shown = []
+        timeout = ControlOperationResult(
+            False,
+            "启动未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+        control_panel.apply_operation_ui_result(
+            state,
+            control_panel.OperationUiResult("启动", timeout, self._ready_panel_status()),
+            render=rendered.append,
+            set_buttons_enabled=lambda enabled: None,
+            show_result=shown.append,
+            request_status_refresh=lambda: True,
+        )
+
+        self.assertEqual(len(rendered), 1)
+        self.assertEqual(rendered[0].overall_status, "READY")
+        self.assertTrue(shown[0].ok)
+
+    def test_control_panel_closed_operation_result_does_not_update_ui(self):
+        import control_panel
+        from xiaohuang.status_control_service import ControlOperationResult
+
+        state = self._control_panel_state()
+        state["closed"] = True
+        state["active_operation"] = "启动"
+        calls = []
+        timeout = ControlOperationResult(
+            False,
+            "启动未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+
+        control_panel.apply_operation_ui_result(
+            state,
+            control_panel.OperationUiResult("启动", timeout, self._ready_panel_status()),
+            render=lambda status: calls.append("render"),
+            set_buttons_enabled=lambda enabled: calls.append("buttons"),
+            show_result=lambda result: calls.append("show"),
+            request_status_refresh=lambda: calls.append("refresh") or True,
+        )
+
+        self.assertEqual(calls, [])
+        self.assertEqual(state["active_operation"], "启动")
+
+    def test_control_panel_worker_collects_ready_final_status_after_timeout_retry(self):
+        import control_panel
+        from xiaohuang.status_control_service import ControlOperationResult
+
+        timeout = ControlOperationResult(
+            False,
+            "启动未就绪",
+            "启动命令已发出，但服务未就绪：timeout_voice_overlay_missing",
+            90.0,
+            "timeout_voice_overlay_missing",
+        )
+        statuses = [self._partial_panel_status(), self._ready_panel_status()]
+        now = [0.0]
+
+        def sleeper(seconds):
+            now[0] += seconds
+
+        ui_result = control_panel.collect_operation_ui_result(
+            "启动",
+            lambda: timeout,
+            lambda **kwargs: statuses.pop(0),
+            monotonic=lambda: now[0],
+            sleeper=sleeper,
+            final_status_grace_seconds=1.0,
+            final_status_poll_seconds=0.5,
+        )
+
+        self.assertEqual(ui_result.operation_name, "启动")
+        self.assertEqual(ui_result.result.error, "timeout_voice_overlay_missing")
+        self.assertTrue(ui_result.final_status.can_wake_now)
 
     def test_not_running_status(self):
         from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus

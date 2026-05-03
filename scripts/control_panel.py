@@ -38,6 +38,8 @@ READINESS_TIMEOUT_ERRORS = (
     "timeout_health_not_ready",
     "timeout",
 )
+OPERATION_FINAL_STATUS_GRACE_SECONDS = 5.0
+OPERATION_FINAL_STATUS_POLL_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,9 @@ class StatusRefreshController:
     def apply_result(self, result: StatusRefreshResult) -> None:
         self.state["refresh_in_progress"] = False
         if self.state["closed"]:
+            return
+        if self.state.get("operation_completion_pending"):
+            self.state["pending_refresh"] = True
             return
 
         is_current = result.generation == self.state["refresh_generation"]
@@ -277,6 +282,7 @@ def apply_operation_ui_result(
         return
 
     state["refresh_generation"] += 1
+    state["operation_completion_pending"] = False
     state["active_operation"] = None
     result = ui_result.result
     if ui_result.final_status is not None:
@@ -316,6 +322,96 @@ def apply_operation_ui_result(
     show_result(result)
 
 
+def collect_operation_ui_result(
+    operation_name: str,
+    target: Callable[[], ControlOperationResult],
+    collect_status: Callable[..., ControlPanelStatus],
+    *,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleeper: Callable[[float], None] = time.sleep,
+    final_status_grace_seconds: float = OPERATION_FINAL_STATUS_GRACE_SECONDS,
+    final_status_poll_seconds: float = OPERATION_FINAL_STATUS_POLL_SECONDS,
+) -> OperationUiResult:
+    started_at = monotonic()
+    try:
+        result = target()
+    except Exception as exc:
+        error = summarize_exception(exc)
+        result = ControlOperationResult(
+            False,
+            "操作异常",
+            "操作异常，请查看 logs。",
+            round(monotonic() - started_at, 2),
+            error,
+        )
+
+    final_status, final_error = collect_operation_final_status(
+        operation_name,
+        result,
+        collect_status,
+        monotonic=monotonic,
+        sleeper=sleeper,
+        grace_seconds=final_status_grace_seconds,
+        poll_seconds=final_status_poll_seconds,
+    )
+    return OperationUiResult(
+        operation_name=operation_name,
+        result=result,
+        final_status=final_status,
+        error=final_error,
+    )
+
+
+def collect_operation_final_status(
+    operation_name: str,
+    result: ControlOperationResult,
+    collect_status: Callable[..., ControlPanelStatus],
+    *,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleeper: Callable[[float], None] = time.sleep,
+    grace_seconds: float = OPERATION_FINAL_STATUS_GRACE_SECONDS,
+    poll_seconds: float = OPERATION_FINAL_STATUS_POLL_SECONDS,
+) -> tuple[ControlPanelStatus | None, str | None]:
+    deadline = monotonic() + max(0.0, grace_seconds)
+    final_status: ControlPanelStatus | None = None
+    final_error: str | None = None
+
+    while True:
+        try:
+            final_status = collect_status(
+                active_operation=None,
+                last_operation=operation_name,
+                last_operation_elapsed_seconds=result.elapsed_seconds,
+                last_error=result.error,
+            )
+            final_error = None
+        except Exception as exc:
+            final_status = None
+            final_error = summarize_exception(exc)
+
+        if not should_retry_operation_final_status(operation_name, result, final_status):
+            return final_status, final_error
+        now = monotonic()
+        if now >= deadline:
+            return final_status, final_error
+        sleep_seconds = min(max(0.01, poll_seconds), max(0.0, deadline - now))
+        if sleep_seconds <= 0:
+            return final_status, final_error
+        sleeper(sleep_seconds)
+
+
+def should_retry_operation_final_status(
+    operation_name: str,
+    result: ControlOperationResult,
+    final_status: ControlPanelStatus | None,
+) -> bool:
+    if operation_name not in READINESS_OPERATION_NAMES:
+        return False
+    if not is_readiness_timeout_error(result.error):
+        return False
+    return final_status is None or not is_final_ready_status(final_status)
+
+
 def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int:
     try:
         import tkinter as tk
@@ -339,6 +435,7 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         "refresh_in_progress": False,
         "pending_refresh": False,
         "refresh_generation": 0,
+        "operation_completion_pending": False,
     }
     operation_buttons: list[ttk.Button] = []
 
@@ -473,52 +570,21 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
             request_status_refresh=request_status_refresh,
         )
 
-    def collect_operation_ui_result(operation_name: str, target) -> OperationUiResult:
-        started_at = time.monotonic()
-        try:
-            result = target()
-        except Exception as exc:
-            error = summarize_exception(exc)
-            result = ControlOperationResult(
-                False,
-                "操作异常",
-                "操作异常，请查看 logs。",
-                round(time.monotonic() - started_at, 2),
-                error,
-            )
-
-        final_status = None
-        final_error = None
-        try:
-            final_status = collect_status(
-                active_operation=None,
-                last_operation=operation_name,
-                last_operation_elapsed_seconds=result.elapsed_seconds,
-                last_error=result.error,
-            )
-        except Exception as exc:
-            final_error = summarize_exception(exc)
-
-        return OperationUiResult(
-            operation_name=operation_name,
-            result=result,
-            final_status=final_status,
-            error=final_error,
-        )
-
     def run_operation(operation_name: str, target) -> None:
         if state["active_operation"]:
             messagebox.showinfo("操作进行中", f"正在执行{state['active_operation']}操作，请稍候。")
             return
         state["active_operation"] = operation_name
         state["last_error"] = None
+        state["operation_completion_pending"] = False
         state["refresh_generation"] += 1
         set_buttons_enabled(False)
         request_status_refresh()
 
         def worker() -> None:
-            ui_result = collect_operation_ui_result(operation_name, target)
+            ui_result = collect_operation_ui_result(operation_name, target, collect_status)
             if not state["closed"]:
+                state["operation_completion_pending"] = True
                 schedule_ui(lambda: finish_operation(ui_result))
 
         threading.Thread(target=worker, name=f"xiaohuang-control-panel-{operation_name}", daemon=True).start()
