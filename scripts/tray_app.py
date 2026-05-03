@@ -105,6 +105,20 @@ def build_settings_command(
     ]
 
 
+def build_control_panel_command(
+    config_path: Path,
+    *,
+    python_executable: str = sys.executable,
+    project_root: Path = PROJECT_ROOT,
+) -> list[str]:
+    return [
+        python_executable,
+        str(project_root / "scripts" / "control_panel.py"),
+        "--config",
+        str(config_path),
+    ]
+
+
 def write_tray_log(message: str, *, project_root: Path = PROJECT_ROOT) -> None:
     log_dir = ensure_log_dir(project_root)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -149,6 +163,18 @@ def open_settings(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> bo
     except Exception as exc:
         write_tray_log(f"open_settings failed: {exc}", project_root=project_root)
         show_message("打开设置失败", "无法打开 Settings UI，请查看 logs/tray_app.log", error=True)
+        return False
+
+
+def open_control_panel(config_path: Path, *, project_root: Path = PROJECT_ROOT) -> bool:
+    command = build_control_panel_command(config_path, project_root=project_root)
+    try:
+        write_tray_log(f"open_control_panel config={config_path}", project_root=project_root)
+        subprocess.Popen(command, cwd=str(project_root), env=_build_child_env())
+        return True
+    except Exception as exc:
+        write_tray_log(f"open_control_panel failed: {exc}", project_root=project_root)
+        show_message("打开控制面板失败", "无法打开控制面板，请查看 logs/tray_app.log", error=True)
         return False
 
 
@@ -450,6 +476,7 @@ def run_tray(config_path: Path) -> int:
             pystray.MenuItem("启动小黄", lambda _icon, _item: _run_guarded_background("启动", start_xiaohuang, config_path)),
             pystray.MenuItem("停止小黄", lambda _icon, _item: _run_guarded_background("停止", stop_xiaohuang)),
             pystray.MenuItem("重启小黄", lambda _icon, _item: _run_guarded_background("重启", restart_xiaohuang, config_path)),
+            pystray.MenuItem("打开控制面板", lambda _icon, _item: open_control_panel(config_path)),
             pystray.MenuItem("打开设置", lambda _icon, _item: open_settings(config_path)),
             pystray.MenuItem("打开日志目录", lambda _icon, _item: open_log_dir()),
             pystray.MenuItem("关于/状态", lambda _icon, _item: show_about(config_path)),

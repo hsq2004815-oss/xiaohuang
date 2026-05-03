@@ -21,6 +21,15 @@
 - 明确 V1.1.5 后续再规划后台常驻、STT server 常驻、暂停/恢复监听、完全退出和开机自启。
 - 本阶段未修改 `.py` / `.ps1` / `.json` / `.yaml` / `src` / `scripts` / `tests`，未写 `E:\DataBase`。
 
+### V1.1.4D-A 实现记录（2026-05-03）
+
+- 新增 `src/xiaohuang/status_control_service.py`：聚合 `launch_control_service` 的进程检测、STT health、配置摘要，返回 `ControlPanelStatus`。
+- 新增 `scripts/control_panel.py`：Tkinter 基础控制面板，支持 `--config` 和 `--refresh-interval`，显示总状态、STT/overlay/health、助手名、唤醒词、LLM provider、TTS 和 config path。
+- 控制面板支持启动/停止/重启、刷新状态、打开设置、打开日志目录；操作在后台线程执行，关闭窗口不停止小黄。
+- `scripts/tray_app.py` 菜单新增“打开控制面板”，原有启动/停止/重启/退出托盘语义不变。
+- 未修改 PowerShell、`voice_overlay.py`、wake/session/TTS/LLM 主链路，未新增依赖，未写 `E:\DataBase`。
+- 自动验证待本轮完成；人工验证仍需用户从托盘打开控制面板并真实启动/唤醒/重启/停止。
+
 ### V1.1.3C 验证收尾记录（2026-05-02）
 
 - Settings UI 可打开，6 个 tab 齐全：Wake / Assistant / LLM / TTS / Conversation / Advanced。

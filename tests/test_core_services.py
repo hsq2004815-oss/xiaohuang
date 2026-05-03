@@ -113,6 +113,19 @@ class V114BTrayAppTests(unittest.TestCase):
         self.assertNotIn("secrets.ps1", joined)
         self.assertNotIn("DEEPSEEK_API_KEY=", joined)
 
+    def test_build_control_panel_command_uses_current_config(self):
+        import tray_app
+        command = tray_app.build_control_panel_command(
+            Path(r"C:\Users\tester\.xiaohuang\config_settings_ui_test.json"),
+            python_executable="python.exe",
+            project_root=Path(r"E:\Projects\xiaohuang"),
+        )
+        joined = " ".join(str(part) for part in command)
+        self.assertIn("control_panel.py", joined)
+        self.assertIn("--config", command)
+        self.assertIn(r"C:\Users\tester\.xiaohuang\config_settings_ui_test.json", command)
+        self.assertNotIn("sk-", joined)
+
     def test_exit_tray_only_stops_tray_icon(self):
         import tray_app
 
@@ -625,6 +638,152 @@ class V114CLaunchControlTests(unittest.TestCase):
         self.assertIn("STT server: running", message)
         self.assertIn("Voice overlay: not detected", message)
         self.assertIn(r"C:\Users\tester\.xiaohuang\config.json", message)
+
+
+class V114DAStatusControlTests(unittest.TestCase):
+    def test_control_panel_help_runs(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "scripts/control_panel.py", "--help"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--config", result.stdout)
+        self.assertIn("--refresh-interval", result.stdout)
+
+    def test_not_running_status(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, NOT_RUNNING, compute_status
+
+        status = compute_status(
+            ProcessStatus(False, False, 0),
+            HealthCheckResult(False, "health_unavailable:URLError"),
+            Path(r"C:\Users\tester\.xiaohuang\config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
+        self.assertEqual(status.overall_status, NOT_RUNNING)
+        self.assertFalse(status.can_wake_now)
+
+    def test_ready_status_requires_stt_health_and_overlay(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, READY, compute_status
+
+        status = compute_status(
+            ProcessStatus(True, True, 2),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path(r"C:\Users\tester\.xiaohuang\config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
+        self.assertEqual(status.overall_status, READY)
+        self.assertTrue(status.stt_ready)
+        self.assertTrue(status.stt_model_loaded)
+        self.assertTrue(status.can_wake_now)
+
+    def test_stt_running_health_not_ready_is_loading_model(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, LOADING_MODEL, STARTING, compute_status
+
+        status = compute_status(
+            ProcessStatus(True, False, 1),
+            HealthCheckResult(False, "ok=True status=loading model_loaded=False"),
+            Path(r"C:\Users\tester\.xiaohuang\config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
+        self.assertIn(status.overall_status, (STARTING, LOADING_MODEL))
+        self.assertFalse(status.can_wake_now)
+
+    def test_stt_ready_overlay_missing_is_partial(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, PARTIAL, compute_status
+
+        status = compute_status(
+            ProcessStatus(True, False, 1),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path(r"C:\Users\tester\.xiaohuang\config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
+        self.assertEqual(status.overall_status, PARTIAL)
+        self.assertFalse(status.can_wake_now)
+
+    def test_stt_missing_overlay_running_is_partial(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, PARTIAL, compute_status
+
+        status = compute_status(
+            ProcessStatus(False, True, 1),
+            HealthCheckResult(False, "health_unavailable:URLError"),
+            Path(r"C:\Users\tester\.xiaohuang\config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
+        self.assertEqual(status.overall_status, PARTIAL)
+        self.assertFalse(status.can_wake_now)
+
+    def test_can_wake_now_only_ready(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, compute_status
+
+        summary = ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True)
+        ready = compute_status(
+            ProcessStatus(True, True, 2),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path("config.json"),
+            summary,
+        )
+        partial = compute_status(
+            ProcessStatus(True, False, 1),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path("config.json"),
+            summary,
+        )
+
+        self.assertTrue(ready.can_wake_now)
+        self.assertFalse(partial.can_wake_now)
+
+    def test_config_summary_reads_user_config(self):
+        from xiaohuang.status_control_service import load_config_summary
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(
+                """
+{
+  "assistant": {"display_name": "贾维斯测试"},
+  "wake": {"phrases": ["贾维斯"]},
+  "llm": {"provider": "qwen"},
+  "tts": {"enabled": false}
+}
+""".strip(),
+                encoding="utf-8",
+            )
+
+            summary = load_config_summary(config_path)
+
+        self.assertEqual(summary.assistant_display_name, "贾维斯测试")
+        self.assertEqual(summary.wake_phrases, ["贾维斯"])
+        self.assertEqual(summary.llm_provider, "qwen")
+        self.assertFalse(summary.tts_enabled)
+
+    def test_health_check_failure_does_not_crash_status_build(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, XiaoHuangProcess
+        from xiaohuang.status_control_service import build_status
+
+        status = build_status(
+            PROJECT_ROOT,
+            Path(r"C:\Users\tester\.xiaohuang\missing.json"),
+            process_detector=lambda root: [XiaoHuangProcess(1, "stt_server")],
+            health_checker=lambda url: HealthCheckResult(False, "health_unavailable:URLError"),
+        )
+
+        self.assertFalse(status.can_wake_now)
+        self.assertIn(status.overall_status, ("STARTING", "LOADING_MODEL", "ERROR"))
+        self.assertEqual(status.stt_health_status, "unavailable")
 
 
 class AudioCaptureServiceTests(unittest.TestCase):

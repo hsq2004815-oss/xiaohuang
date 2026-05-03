@@ -220,8 +220,14 @@ V1.1.4C 边界：
 - “退出托盘”只退出托盘程序，不停止 STT server 或 `voice_overlay.py`。
 - 托盘程序不读取、不显示、不保存真实 API key。
 
-## V1.1.4D Status Control Panel Design
+## V1.1.4D Status Control Panel
 
-V1.1.4D 已完成 docs-only 设计：后续建议新增 Tkinter 基础控制面板，用于显示 STT server readiness、`voice_overlay.py` 运行状态、health/model_loaded、当前 config 摘要和“是否可以说贾维斯”。设计要求控制面板复用 `launch_control_service.py`，不复制托盘启停逻辑，不修改 `voice_overlay.py` 主链路，不新增 PySide6/Qt/WebView 等重依赖。
+V1.1.4D-A 已新增最小可用 Tkinter 控制面板，用于显示 STT server readiness、`voice_overlay.py` 运行状态、health/model_loaded、当前 config 摘要和“是否可以说贾维斯”。控制面板复用 `launch_control_service.py` 和 `status_control_service.py`，不修改 `voice_overlay.py` 主链路，不新增 PySide6/Qt/WebView 等重依赖。
+
+```powershell
+& "F:\for_xiaohuang\conda310\python.exe" scripts\control_panel.py --config "$env:USERPROFILE\.xiaohuang\config_settings_ui_test.json"
+```
+
+托盘菜单已新增“打开控制面板”。关闭控制面板不会停止小黄。
 
 V1.1.4B 真人验证结果：托盘图标、右键菜单、打开 Settings UI、读取 `config_settings_ui_test.json`、打开 `logs/`、关于/状态、退出托盘均正常。退出托盘不会停止 STT server 或 `voice_overlay.py`，也未影响 wake / session / TTS / LLM router 主链路。
