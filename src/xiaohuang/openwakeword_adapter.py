@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -143,8 +144,8 @@ class OpenWakeWordAdapter:
         self._running = False
 
     def status(self) -> WakeEngineStatus:
-        model_loaded = self._model is not None and self._error is None
-        ready = self._running and model_loaded
+        model_loaded = self._model is not None
+        ready = self._running and model_loaded and self._error is None
         return WakeEngineStatus(
             engine_type=self.engine_type,
             running=self._running,
@@ -322,7 +323,16 @@ def _flatten_prediction(prediction: Any) -> dict[str, float]:
 
 def _summarize_exception(exc: Exception) -> str:
     text = str(exc).strip()
-    return text or exc.__class__.__name__
+    return _redact_sensitive_text(text or exc.__class__.__name__)
+
+
+def _redact_sensitive_text(text: str) -> str:
+    redacted = re.sub(r"sk-[A-Za-z0-9_-]+", "sk-***", text)
+    return re.sub(
+        r"(?i)(api[_-]?key|access[_-]?key|token|secret|password)(\s*[=:]\s*)(\S+)",
+        r"\1\2***",
+        redacted,
+    )
 
 
 def _bool_text(value: bool) -> str:

@@ -390,6 +390,9 @@ class V12DOpenWakeWordAdapterTests(unittest.TestCase):
             numpy_module=np,
         )
 
+        adapter.stop()
+        self.assertFalse(adapter.status().running)
+
         adapter.start()
         adapter.start()
         self.assertTrue(adapter.status().running)
@@ -437,6 +440,7 @@ class V12DOpenWakeWordAdapterTests(unittest.TestCase):
         self.assertEqual(stats.coalesced_events, 3)
         self.assertEqual(stats.suppressed_detections, 1)
         self.assertEqual([event.label for event in events], ["hey_jarvis", "hey_jarvis", "alexa"])
+        self.assertEqual(len(events), stats.coalesced_events)
         self.assertEqual(events[0].wake_phrase, "贾维斯")
         self.assertEqual(events[0].engine_type, "openwakeword")
         self.assertFalse(adapter.status().running)
@@ -471,6 +475,80 @@ class V12DOpenWakeWordAdapterTests(unittest.TestCase):
         self.assertEqual(stats.suppressed_detections, 0)
         self.assertEqual(len(events), 2)
 
+    def test_adapter_run_for_duration_exception_releases_stream(self):
+        import numpy as np
+        from xiaohuang.openwakeword_adapter import OpenWakeWordAdapter
+
+        FakeInputStream.instances.clear()
+        adapter = OpenWakeWordAdapter(
+            model_factory=lambda adapter: FakePredictionModel([{"hey_jarvis": 0.9}]),
+            input_stream_factory=lambda **kwargs: RaisingInputStream(RuntimeError("stream failed"), **kwargs),
+            numpy_module=np,
+        )
+
+        with self.assertRaises(RuntimeError):
+            adapter.run_for_duration(2.0)
+
+        status = adapter.status()
+        self.assertFalse(status.running)
+        self.assertTrue(status.model_loaded)
+        self.assertIn("stream failed", status.error)
+        self.assertTrue(FakeInputStream.instances[0].closed)
+
+    def test_adapter_run_for_duration_keyboard_interrupt_releases_stream(self):
+        import numpy as np
+        from xiaohuang.openwakeword_adapter import OpenWakeWordAdapter
+
+        FakeInputStream.instances.clear()
+        adapter = OpenWakeWordAdapter(
+            model_factory=lambda adapter: FakePredictionModel([{"hey_jarvis": 0.9}]),
+            input_stream_factory=lambda **kwargs: RaisingInputStream(KeyboardInterrupt(), **kwargs),
+            numpy_module=np,
+        )
+
+        with self.assertRaises(KeyboardInterrupt):
+            adapter.run_for_duration(2.0)
+
+        status = adapter.status()
+        self.assertFalse(status.running)
+        self.assertTrue(status.model_loaded)
+        self.assertIsNone(status.error)
+        self.assertTrue(FakeInputStream.instances[0].closed)
+
+    def test_adapter_two_fake_rounds_do_not_leave_running_true(self):
+        import numpy as np
+        from xiaohuang.openwakeword_adapter import OpenWakeWordAdapter
+
+        FakeInputStream.instances.clear()
+        fake_model = FakePredictionModel([{"hey_jarvis": 0.9}, {"hey_jarvis": 0.9}])
+        now = {"value": 0.0}
+
+        def time_fn():
+            now["value"] += 1.0
+            return now["value"]
+
+        adapter = OpenWakeWordAdapter(
+            model_factory=lambda adapter: fake_model,
+            input_stream_factory=FakeInputStream,
+            numpy_module=np,
+            time_fn=time_fn,
+        )
+
+        first_stats = adapter.run_for_duration(2.0)
+        first_status = adapter.status()
+        adapter.stop()
+        second_stats = adapter.run_for_duration(2.0)
+        second_status = adapter.status()
+        adapter.stop()
+
+        self.assertEqual(first_stats.raw_detections, 1)
+        self.assertEqual(second_stats.raw_detections, 1)
+        self.assertFalse(first_status.running)
+        self.assertFalse(second_status.running)
+        self.assertFalse(adapter.status().running)
+        self.assertEqual(len(FakeInputStream.instances), 2)
+        self.assertTrue(all(stream.closed for stream in FakeInputStream.instances))
+
 
 class FakePredictionModel:
     def __init__(self, predictions):
@@ -503,6 +581,53 @@ class FakeInputStream:
         return [[0] for _ in range(blocksize)], False
 
 
+class RaisingInputStream(FakeInputStream):
+    def __init__(self, exception, **kwargs):
+        self.exception = exception
+        super().__init__(**kwargs)
+
+    def read(self, blocksize):
+        self.read_count += 1
+        raise self.exception
+
+
+class FakeSafetyAdapter:
+    instances = []
+
+    def __init__(self, config):
+        self.config = config
+        self.frames_read = 0
+        self._running = False
+        self._error = None
+        FakeSafetyAdapter.instances.append(self)
+
+    def start(self):
+        self._running = True
+
+    def stop(self):
+        self._running = False
+
+    def status(self):
+        return SimpleNamespace(
+            running=self._running,
+            ready=self._running and self._error is None,
+            model_loaded=True,
+            error=self._error,
+        )
+
+    def run_for_duration(self, duration_seconds, on_event=None, debug=False):
+        from xiaohuang.wake_engine_service import WakeEventStats
+
+        self.frames_read = 3
+        self._running = False
+        return WakeEventStats(
+            raw_detections=2,
+            coalesced_events=1,
+            suppressed_detections=1,
+            cooldown_seconds=self.config.cooldown_seconds,
+        )
+
+
 class V12BWakeEngineDemoTests(unittest.TestCase):
     def test_wake_engine_demo_help_runs(self):
         import subprocess
@@ -517,6 +642,9 @@ class V12BWakeEngineDemoTests(unittest.TestCase):
         self.assertIn("--dry-run", result.stdout)
         self.assertIn("--cooldown-seconds", result.stdout)
         self.assertIn("--no-coalesce", result.stdout)
+        self.assertIn("--safety-check", result.stdout)
+        self.assertIn("--repeat", result.stdout)
+        self.assertIn("--gap-seconds", result.stdout)
 
     def test_wake_engine_demo_check_install_command_runs(self):
         import subprocess
@@ -602,6 +730,59 @@ class V12BWakeEngineDemoTests(unittest.TestCase):
         self.assertEqual(config.sensitivity, 0.6)
         self.assertEqual(config.cooldown_seconds, 1.5)
         self.assertFalse(config.coalesce_events)
+
+    def test_wake_engine_demo_parse_safety_check_args(self):
+        import wake_engine_demo
+
+        args = wake_engine_demo.parse_args(
+            [
+                "--safety-check",
+                "--repeat",
+                "3",
+                "--gap-seconds",
+                "0.25",
+            ]
+        )
+
+        self.assertTrue(args.safety_check)
+        self.assertEqual(args.repeat, 3)
+        self.assertEqual(args.gap_seconds, 0.25)
+
+    def test_wake_engine_demo_safety_check_fake_two_rounds(self):
+        from contextlib import redirect_stdout
+        import io
+        import wake_engine_demo
+
+        FakeSafetyAdapter.instances.clear()
+        config = wake_engine_demo.build_demo_config(
+            wake_engine_demo.parse_args(["--safety-check", "--duration-seconds", "0.1"])
+        )
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            result = wake_engine_demo.collect_safety_check_result(
+                config,
+                repeat=2,
+                gap_seconds=0,
+                adapter_factory=FakeSafetyAdapter,
+                sleep_func=lambda seconds: None,
+            )
+
+        text = output.getvalue()
+        self.assertTrue(result.all_rounds_completed)
+        self.assertTrue(result.microphone_released)
+        self.assertEqual(result.errors, 0)
+        self.assertEqual(len(FakeSafetyAdapter.instances), 2)
+        self.assertIn("safety_check=true", text)
+        self.assertIn("round=1 started=true", text)
+        self.assertIn("round=2 stopped=true", text)
+        self.assertIn("round=1 frames=3", text)
+        self.assertIn("round=2 raw_detections=2", text)
+        self.assertIn("round=2 suppressed_detections=1", text)
+        self.assertIn("status_after_stop running=false", text)
+        self.assertIn("all_rounds_completed=true", text)
+        self.assertIn("microphone_released=true", text)
+        self.assertIn("errors=0", text)
 
     def test_wake_event_coalescer_accepts_first_label_event(self):
         import wake_engine_demo

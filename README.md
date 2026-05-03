@@ -1,6 +1,6 @@
-# 小黄 Windows 桌面 AI 助手 V1.2D-A（OpenWakeWordAdapter 接入前验证）
+# 小黄 Windows 桌面 AI 助手 V1.2D-B（Wake Engine 安全验证）
 
-小黄是一个 Windows 桌面 AI 助手项目。当前已从 V0.9.1 单句原型演进到 V1.2D-A OpenWakeWordAdapter 接入前安全验证阶段。
+小黄是一个 Windows 桌面 AI 助手项目。当前已从 V0.9.1 单句原型演进到 V1.2D-B Wake Engine 接入前安全验证阶段。
 
 管道：唤醒后听一句话 → STT server 转写 → DeepSeek 单句回复（或规则 fallback） → 可选 edge-tts 播放 → 多轮会话（可选）。
 
@@ -189,6 +189,7 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 - [V1.2B_OPENWAKEWORD_DEMO_VALIDATION.md](docs/V1.2B_OPENWAKEWORD_DEMO_VALIDATION.md) — openWakeWord 独立 demo 验证记录
 - [V1.2C_WAKE_ENGINE_SERVICE_DESIGN.md](docs/V1.2C_WAKE_ENGINE_SERVICE_DESIGN.md) — WakeEngine service 抽象层设计
 - [V1.2D_OPENWAKEWORD_ADAPTER_VALIDATION.md](docs/V1.2D_OPENWAKEWORD_ADAPTER_VALIDATION.md) — OpenWakeWordAdapter 接入前安全验证记录
+- [V1.2D_B_WAKE_ENGINE_SAFETY_VALIDATION.md](docs/V1.2D_B_WAKE_ENGINE_SAFETY_VALIDATION.md) — Wake Engine 麦克风生命周期安全验证记录
 
 ## Settings UI
 
@@ -253,3 +254,5 @@ V1.2B-1 已增加 demo 层 wake event cooldown 合并：默认 `--cooldown-secon
 V1.2C 已新增 `src/xiaohuang/wake_engine_service.py`，把 `WakeEvent`、`WakeEngineStatus`、`WakeEventCoalescer`、`WakeEventStats` 和 `FakeWakeEngine` 沉淀为正式服务层。`scripts/wake_engine_demo.py` 已复用服务层 coalescer，保持 `--help` / `--check-install` / `--dry-run` / 实时 demo 行为不变。
 
 V1.2D-A 已新增 `src/xiaohuang/openwakeword_adapter.py`，把 openWakeWord optional imports、dependency check、model/runtime lifecycle、sounddevice frame loop、`WakeEvent` callback 和 per-label cooldown 统计封装到 adapter harness。`scripts/wake_engine_demo.py` 的真实监听路径已改为走 `OpenWakeWordAdapter.run_for_duration()`；`--help` / `--dry-run` 仍不加载模型、不打开麦克风，`--check-install` 只做结构化依赖检查。本阶段仍不修改 `voice_overlay.py`，不替换 STT 文本唤醒，不训练中文“贾维斯”模型，不新增依赖；下一步是 V1.2D-B 的麦克风释放、wake -> command recorder 切换、TTS pause/cooldown 和 `stt_text` fallback 安全验证。
+
+V1.2D-B 已在 `scripts/wake_engine_demo.py` 新增 `--safety-check`，支持 `--repeat` 和 `--gap-seconds`，用于重复验证 adapter start/run/stop、异常释放、`KeyboardInterrupt` 释放和 `status_after_stop.running=false`。本阶段仍不接入 `voice_overlay.py`，不替换 STT 文本唤醒，不训练中文“贾维斯”模型；wake -> command recorder、TTS pause/cooldown 和 `stt_text` fallback 仍需在正式接入前单独验证。

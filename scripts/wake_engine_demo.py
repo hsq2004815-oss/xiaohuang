@@ -75,6 +75,15 @@ class PredictionScore:
     detected: bool
 
 
+@dataclass(frozen=True)
+class SafetyCheckResult:
+    rounds: int
+    completed_rounds: int
+    all_rounds_completed: bool
+    microphone_released: bool | None
+    errors: int
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run an isolated V1.2B openWakeWord demo without touching XiaoHuang's main wake path.",
@@ -103,6 +112,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debug", action="store_true", help="Print every frame score instead of periodic summaries.")
     parser.add_argument("--dry-run", action="store_true", help="Print resolved configuration only; do not load models or open the microphone.")
     parser.add_argument("--check-install", action="store_true", help="Check optional dependencies without opening the microphone.")
+    parser.add_argument("--safety-check", action="store_true", help="Run repeated adapter start/stop rounds to validate microphone release.")
+    parser.add_argument("--repeat", type=positive_int, default=2, help="Safety-check rounds. Defaults to 2.")
+    parser.add_argument("--gap-seconds", type=nonnegative_float, default=1.0, help="Seconds to wait between safety-check rounds. Defaults to 1.0.")
     return parser
 
 
@@ -121,6 +133,13 @@ def positive_int(value: str) -> int:
     parsed = int(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("must be greater than 0")
+    return parsed
+
+
+def nonnegative_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be greater than or equal to 0")
     return parsed
 
 
@@ -317,6 +336,155 @@ def run_realtime_demo(config: DemoConfig) -> int:
     stats.update_from_wake_stats(wake_stats)
     print_detection_summary(stats, config)
     return 0
+
+
+def run_safety_check(
+    config: DemoConfig,
+    *,
+    repeat: int = 2,
+    gap_seconds: float = 1.0,
+    adapter_factory: Callable[[DemoConfig], Any] | None = None,
+    sleep_func: Callable[[float], None] = time.sleep,
+    print_func: Callable[[str], None] = print,
+) -> int:
+    result = collect_safety_check_result(
+        config,
+        repeat=repeat,
+        gap_seconds=gap_seconds,
+        adapter_factory=adapter_factory,
+        sleep_func=sleep_func,
+        print_func=print_func,
+    )
+    return 0 if result.all_rounds_completed else 2
+
+
+def collect_safety_check_result(
+    config: DemoConfig,
+    *,
+    repeat: int = 2,
+    gap_seconds: float = 1.0,
+    adapter_factory: Callable[[DemoConfig], Any] | None = None,
+    sleep_func: Callable[[float], None] = time.sleep,
+    print_func: Callable[[str], None] = print,
+) -> SafetyCheckResult:
+    factory = adapter_factory or create_openwakeword_adapter
+    completed_rounds = 0
+    errors = 0
+    release_checks: list[bool] = []
+
+    print_func("V1.2D-B openWakeWord adapter safety check")
+    print_config(config, dry_run=False)
+    print_func("safety_check=true")
+    print_func(f"rounds={repeat}")
+    print_func(f"gap_seconds={gap_seconds:g}")
+
+    for round_index in range(1, repeat + 1):
+        adapter = factory(config)
+        stats = WakeEventStats(
+            raw_detections=0,
+            coalesced_events=0,
+            suppressed_detections=0,
+            cooldown_seconds=config.cooldown_seconds,
+        )
+        round_error: str | None = None
+        started = False
+        stopped = False
+        status_after_stop = None
+        try:
+            adapter.start()
+            started = bool(adapter.status().running)
+            print_func(f"round={round_index} started={_bool_text(started)}")
+            stats = adapter.run_for_duration(
+                config.duration_seconds,
+                on_event=lambda event: _print_wake_event(event, coalesced=config.coalesce_events),
+                debug=config.debug,
+            )
+            completed_rounds += 1
+        except KeyboardInterrupt:
+            errors += 1
+            round_error = "KeyboardInterrupt"
+            print_func(f"round={round_index} interrupted=true")
+        except Exception as exc:
+            errors += 1
+            status = adapter.status()
+            round_error = str(status.error or exc)
+            print_func(f"round={round_index} error={round_error}")
+        finally:
+            try:
+                adapter.stop()
+                stopped = True
+            except Exception as exc:
+                errors += 1
+                stopped = False
+                round_error = str(exc)
+                print_func(f"round={round_index} stop_error={round_error}")
+            status_after_stop = adapter.status()
+            release_checks.append(not bool(status_after_stop.running))
+            _print_safety_round_summary(
+                round_index,
+                adapter=adapter,
+                stats=stats,
+                stopped=stopped,
+                status=status_after_stop,
+                error=round_error,
+                print_func=print_func,
+            )
+
+        if round_error is not None:
+            break
+        if round_index < repeat and gap_seconds > 0:
+            sleep_func(gap_seconds)
+
+    all_rounds_completed = completed_rounds == repeat and errors == 0
+    microphone_released = all(release_checks) if release_checks else None
+    print_func(f"all_rounds_completed={_bool_text(all_rounds_completed)}")
+    print_func(f"microphone_released={_bool_or_unknown(microphone_released)}")
+    print_func(f"errors={errors}")
+    return SafetyCheckResult(
+        rounds=repeat,
+        completed_rounds=completed_rounds,
+        all_rounds_completed=all_rounds_completed,
+        microphone_released=microphone_released,
+        errors=errors,
+    )
+
+
+def create_openwakeword_adapter(config: DemoConfig) -> OpenWakeWordAdapter:
+    return OpenWakeWordAdapter(
+        wake_phrase=config.wake_phrase,
+        model_path=config.model_path,
+        model_name=config.model_name,
+        device=config.device,
+        sample_rate=DEFAULT_SAMPLE_RATE,
+        chunk_ms=config.chunk_ms,
+        sensitivity=config.sensitivity,
+        cooldown_seconds=config.cooldown_seconds,
+        coalesce=config.coalesce_events,
+    )
+
+
+def _print_safety_round_summary(
+    round_index: int,
+    *,
+    adapter: Any,
+    stats: WakeEventStats,
+    stopped: bool,
+    status: Any,
+    error: str | None,
+    print_func: Callable[[str], None],
+) -> None:
+    print_func(f"round={round_index} stopped={_bool_text(stopped)}")
+    print_func(f"round={round_index} frames={getattr(adapter, 'frames_read', 0)}")
+    print_func(f"round={round_index} raw_detections={stats.raw_detections}")
+    print_func(f"round={round_index} coalesced_events={stats.coalesced_events}")
+    print_func(f"round={round_index} suppressed_detections={stats.suppressed_detections}")
+    print_func(
+        f"round={round_index} status_after_stop "
+        f"running={_bool_text(bool(status.running))} "
+        f"ready={_bool_text(bool(status.ready))} "
+        f"model_loaded={_bool_text(bool(status.model_loaded))} "
+        f"error={status.error or error or '-'}"
+    )
 
 
 def load_openwakeword_model(config: DemoConfig) -> Any:
@@ -613,6 +781,12 @@ def _bool_text(value: bool) -> str:
     return "true" if value else "false"
 
 
+def _bool_or_unknown(value: bool | None) -> str:
+    if value is None:
+        return "unknown"
+    return _bool_text(value)
+
+
 def configure_output_encoding() -> None:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -637,6 +811,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.dry_run:
         print_dry_run(config)
         return 0
+    if args.safety_check:
+        return run_safety_check(config, repeat=args.repeat, gap_seconds=args.gap_seconds)
     return run_realtime_demo(config)
 
 

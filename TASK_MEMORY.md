@@ -2,13 +2,22 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2D-A — OpenWakeWordAdapter harness / 接入前安全验证
-- **最新功能 commit**：V1.2D-A OpenWakeWord adapter harness（见 git log 最新提交）
-- **最新文档 commit**：V1.2D-A adapter 验证记录更新（见 git log 最新提交）
+- **阶段**：V1.2D-B — Wake Engine safety check / 麦克风生命周期验证
+- **最新功能 commit**：V1.2D-B Wake Engine safety validation（见 git log 最新提交）
+- **最新文档 commit**：V1.2D-B safety validation 记录更新（见 git log 最新提交）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
-- **工作区**：V1.2D-A adapter/demo/docs/tests 改动；运行产物均 ignored
-- **测试**：363 tests OK、compileall OK、wake_engine_demo/control_panel/voice_overlay help OK、check-install/dry-run OK；不跑真实麦克风自动测试
+- **工作区**：V1.2D-B adapter/demo/docs/tests 改动；运行产物均 ignored
+- **测试**：368 tests OK、compileall OK、wake_engine_demo/control_panel/voice_overlay help OK、check-install/dry-run OK；不跑真实麦克风自动测试
+
+### V1.2D-B Wake Engine safety validation 记录（2026-05-03）
+
+- `scripts/wake_engine_demo.py` 新增 `--safety-check`、`--repeat`、`--gap-seconds`，重复执行 adapter start / short run / stop，并输出每轮 frames、raw/coalesced/suppressed 统计和 `status_after_stop`。
+- `OpenWakeWordAdapter.status()` 区分 `model_loaded` 与 `ready`；模型加载后即保持 `model_loaded=True`，运行错误只影响 `ready/error`，错误摘要增加基础 secret redaction。
+- 单测新增覆盖 start 前 stop 幂等、普通异常释放 fake stream、`KeyboardInterrupt` 释放 fake stream、callback 只触发 coalesced event、两轮 fake run 后不残留 `running=True`、fake safety-check 两轮输出。
+- 新增 `docs/V1.2D_B_WAKE_ENGINE_SAFETY_VALIDATION.md`，并更新 V1.2 design、V1.2D adapter doc、README。
+- 未修改 `voice_overlay.py`、`wake_loop_service.py`、`wake_word_service.py`、conversation/TTS/LLM/reply pipeline、控制面板、托盘、PowerShell、requirements；未写 `E:\DataBase`；未下载模型；未训练中文“贾维斯”模型。
+- 下一步：真实麦克风短测 `--safety-check --repeat 2` 后，再设计 wake event -> command recorder 暂停/释放、TTS pause/cooldown 和 `stt_text` fallback。
 
 ### V1.2D-A OpenWakeWordAdapter harness 记录（2026-05-03）
 
