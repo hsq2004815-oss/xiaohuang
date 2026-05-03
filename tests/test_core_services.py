@@ -149,6 +149,177 @@ class V114BTrayAppTests(unittest.TestCase):
         self.assertIn("***", text)
 
 
+class V12CWakeEngineServiceTests(unittest.TestCase):
+    def test_wake_event_dataclass_fields(self):
+        from xiaohuang.wake_engine_service import WakeEvent
+
+        event = WakeEvent(
+            engine_type="openwakeword",
+            wake_phrase="贾维斯",
+            label="hey_jarvis",
+            score=0.98,
+            detected_at=10.0,
+            raw_event_count=3,
+            suppressed_event_count=2,
+        )
+
+        self.assertEqual(event.engine_type, "openwakeword")
+        self.assertEqual(event.wake_phrase, "贾维斯")
+        self.assertEqual(event.label, "hey_jarvis")
+        self.assertEqual(event.score, 0.98)
+        self.assertEqual(event.detected_at, 10.0)
+        self.assertEqual(event.raw_event_count, 3)
+        self.assertEqual(event.suppressed_event_count, 2)
+
+    def test_wake_engine_status_dataclass_fields(self):
+        from xiaohuang.wake_engine_service import WakeEngineStatus
+
+        status = WakeEngineStatus(
+            engine_type="fake",
+            running=True,
+            ready=True,
+            model_loaded=True,
+            wake_phrase="贾维斯",
+            sensitivity=0.5,
+            last_wake_time=12.0,
+            last_score=0.9,
+            error=None,
+        )
+
+        self.assertEqual(status.engine_type, "fake")
+        self.assertTrue(status.running)
+        self.assertTrue(status.ready)
+        self.assertTrue(status.model_loaded)
+        self.assertEqual(status.wake_phrase, "贾维斯")
+        self.assertEqual(status.sensitivity, 0.5)
+        self.assertEqual(status.last_wake_time, 12.0)
+        self.assertEqual(status.last_score, 0.9)
+        self.assertIsNone(status.error)
+
+    def test_wake_event_stats_dataclass_fields(self):
+        from xiaohuang.wake_engine_service import WakeEventStats
+
+        stats = WakeEventStats(
+            raw_detections=44,
+            coalesced_events=7,
+            suppressed_detections=37,
+            cooldown_seconds=2.5,
+        )
+
+        self.assertEqual(stats.raw_detections, 44)
+        self.assertEqual(stats.coalesced_events, 7)
+        self.assertEqual(stats.suppressed_detections, 37)
+        self.assertEqual(stats.cooldown_seconds, 2.5)
+
+    def test_wake_event_coalescer_accepts_first_label_event(self):
+        from xiaohuang.wake_engine_service import WakeEventCoalescer
+
+        coalescer = WakeEventCoalescer(cooldown_seconds=2.5)
+
+        self.assertTrue(coalescer.accept("hey_jarvis", now=10.0, score=0.9))
+
+    def test_wake_event_coalescer_suppresses_same_label_inside_cooldown(self):
+        from xiaohuang.wake_engine_service import WakeEventCoalescer
+
+        coalescer = WakeEventCoalescer(cooldown_seconds=2.5)
+        self.assertTrue(coalescer.accept("hey_jarvis", now=10.0, score=0.9))
+
+        self.assertFalse(coalescer.accept("hey_jarvis", now=11.0, score=0.95))
+        self.assertAlmostEqual(coalescer.remaining_seconds("hey_jarvis", now=11.0), 1.5)
+
+    def test_wake_event_coalescer_accepts_same_label_after_cooldown(self):
+        from xiaohuang.wake_engine_service import WakeEventCoalescer
+
+        coalescer = WakeEventCoalescer(cooldown_seconds=2.5)
+        self.assertTrue(coalescer.accept("hey_jarvis", now=10.0, score=0.9))
+
+        self.assertTrue(coalescer.accept("hey_jarvis", now=12.6, score=0.95))
+
+    def test_wake_event_coalescer_uses_per_label_cooldown(self):
+        from xiaohuang.wake_engine_service import WakeEventCoalescer
+
+        coalescer = WakeEventCoalescer(cooldown_seconds=2.5)
+        self.assertTrue(coalescer.accept("hey_jarvis", now=10.0, score=0.9))
+
+        self.assertTrue(coalescer.accept("alexa", now=11.0, score=0.8))
+
+    def test_wake_event_coalescer_stats_counts_raw_coalesced_and_suppressed(self):
+        from xiaohuang.wake_engine_service import WakeEventCoalescer
+
+        coalescer = WakeEventCoalescer(cooldown_seconds=2.5)
+        coalescer.accept("hey_jarvis", now=10.0, score=0.9)
+        coalescer.accept("hey_jarvis", now=10.5, score=0.96)
+        coalescer.accept("alexa", now=10.6, score=0.7)
+        stats = coalescer.stats()
+
+        self.assertEqual(stats.raw_detections, 3)
+        self.assertEqual(stats.coalesced_events, 2)
+        self.assertEqual(stats.suppressed_detections, 1)
+        self.assertEqual(stats.cooldown_seconds, 2.5)
+        self.assertEqual(coalescer.event_counts("hey_jarvis"), (2, 1))
+
+    def test_wake_event_coalescer_reset_clears_state_and_stats(self):
+        from xiaohuang.wake_engine_service import WakeEventCoalescer
+
+        coalescer = WakeEventCoalescer(cooldown_seconds=2.5)
+        coalescer.accept("hey_jarvis", now=10.0, score=0.9)
+        coalescer.accept("hey_jarvis", now=10.5, score=0.96)
+
+        coalescer.reset()
+        stats = coalescer.stats()
+
+        self.assertEqual(stats.raw_detections, 0)
+        self.assertEqual(stats.coalesced_events, 0)
+        self.assertEqual(stats.suppressed_detections, 0)
+        self.assertEqual(coalescer.remaining_seconds("hey_jarvis", now=11.0), 0.0)
+
+    def test_fake_wake_engine_start_stop_status(self):
+        from xiaohuang.wake_engine_service import FakeWakeEngine
+
+        engine = FakeWakeEngine(wake_phrase="贾维斯", sensitivity=0.5)
+        self.assertFalse(engine.status().running)
+        self.assertFalse(engine.status().ready)
+
+        engine.start()
+        self.assertTrue(engine.status().running)
+        self.assertTrue(engine.status().ready)
+        self.assertTrue(engine.status().model_loaded)
+
+        engine.stop()
+        self.assertFalse(engine.status().running)
+        self.assertFalse(engine.status().ready)
+
+    def test_fake_wake_engine_emit_fake_event_uses_coalescer(self):
+        from xiaohuang.wake_engine_service import FakeWakeEngine
+
+        engine = FakeWakeEngine(wake_phrase="贾维斯", label="hey_jarvis", cooldown_seconds=2.5)
+        engine.start()
+
+        event = engine.emit_fake_event(score=0.9, now=10.0)
+        suppressed = engine.emit_fake_event(score=0.95, now=11.0)
+        stats = engine.coalescer.stats()
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event.engine_type, "fake")
+        self.assertEqual(event.wake_phrase, "贾维斯")
+        self.assertEqual(event.label, "hey_jarvis")
+        self.assertIsNone(suppressed)
+        self.assertEqual(stats.raw_detections, 2)
+        self.assertEqual(stats.coalesced_events, 1)
+        self.assertEqual(stats.suppressed_detections, 1)
+
+    def test_fake_wake_engine_can_simulate_error(self):
+        from xiaohuang.wake_engine_service import FakeWakeEngine
+
+        engine = FakeWakeEngine()
+        engine.start()
+        engine.set_error("simulated")
+
+        self.assertFalse(engine.status().ready)
+        self.assertEqual(engine.status().error, "simulated")
+        self.assertIsNone(engine.emit_fake_event(score=1.0, now=10.0))
+
+
 class V12BWakeEngineDemoTests(unittest.TestCase):
     def test_wake_engine_demo_help_runs(self):
         import subprocess

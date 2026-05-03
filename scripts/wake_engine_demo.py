@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import importlib
 from pathlib import Path
 import sys
 import time
 from typing import Any, Callable, Sequence
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = PROJECT_ROOT / "src"
+sys.path.insert(0, str(SRC_DIR))
+
+from xiaohuang.wake_engine_service import WakeEvent, WakeEventCoalescer, WakeEventStats
 
 
 DEFAULT_ENGINE = "openwakeword"
@@ -45,30 +51,16 @@ class DemoConfig:
 
 
 @dataclass
-class WakeEventCoalescer:
-    cooldown_seconds: float
-    last_event_time_by_label: dict[str, float] = field(default_factory=dict)
-
-    def accept(self, label: str, now: float) -> bool:
-        last_event_time = self.last_event_time_by_label.get(label)
-        if last_event_time is not None and now - last_event_time < self.cooldown_seconds:
-            return False
-        self.last_event_time_by_label[label] = now
-        return True
-
-    def remaining_seconds(self, label: str, now: float) -> float:
-        last_event_time = self.last_event_time_by_label.get(label)
-        if last_event_time is None:
-            return 0.0
-        return max(0.0, self.cooldown_seconds - (now - last_event_time))
-
-
-@dataclass
 class DetectionStats:
     frames: int = 0
     raw_detections: int = 0
     coalesced_events: int = 0
     suppressed_detections: int = 0
+
+    def update_from_wake_stats(self, wake_stats: WakeEventStats) -> None:
+        self.raw_detections = wake_stats.raw_detections
+        self.coalesced_events = wake_stats.coalesced_events
+        self.suppressed_detections = wake_stats.suppressed_detections
 
 
 @dataclass(frozen=True)
@@ -452,18 +444,22 @@ def process_prediction_score(
     if score is None or not score.detected:
         return False
 
-    stats.raw_detections += 1
-    if not config.coalesce_events:
-        stats.coalesced_events += 1
-        _print_wake_event(config, score, coalesced=False)
+    accepted = coalescer.accept(score.label, now, score.score, coalesce=config.coalesce_events)
+    stats.update_from_wake_stats(coalescer.stats())
+    if accepted:
+        raw_event_count, suppressed_event_count = coalescer.event_counts(score.label)
+        event = WakeEvent(
+            engine_type=config.engine,
+            wake_phrase=config.wake_phrase,
+            label=score.label,
+            score=score.score,
+            detected_at=now,
+            raw_event_count=raw_event_count,
+            suppressed_event_count=suppressed_event_count,
+        )
+        _print_wake_event(event, coalesced=config.coalesce_events)
         return True
 
-    if coalescer.accept(score.label, now):
-        stats.coalesced_events += 1
-        _print_wake_event(config, score, coalesced=True)
-        return True
-
-    stats.suppressed_detections += 1
     if config.debug or force:
         remaining = coalescer.remaining_seconds(score.label, now)
         print(f"wake_suppressed label={score.label} score={score.score:.3f} reason=cooldown remaining={remaining:.3f}")
@@ -478,12 +474,12 @@ def print_detection_summary(stats: DetectionStats, config: DemoConfig) -> None:
     print(f"cooldown_seconds={config.cooldown_seconds:g}")
 
 
-def _print_wake_event(config: DemoConfig, score: PredictionScore, *, coalesced: bool) -> None:
+def _print_wake_event(event: WakeEvent, *, coalesced: bool) -> None:
     print(
-        f"wake_event engine={config.engine} "
-        f"wake_phrase={config.wake_phrase} "
-        f"label={score.label} "
-        f"score={score.score:.3f} "
+        f"wake_event engine={event.engine_type} "
+        f"wake_phrase={event.wake_phrase} "
+        f"label={event.label} "
+        f"score={event.score:.3f} "
         "raw_event=true "
         f"coalesced={_bool_text(coalesced)}"
     )

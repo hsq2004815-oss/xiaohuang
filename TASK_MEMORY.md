@@ -2,13 +2,24 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2B-1 — openWakeWord Demo wake_event cooldown 合并
-- **最新功能 commit**：V1.2B-1 cooldown 合并（见 git log 最新提交）
-- **最新文档 commit**：V1.2B-1 验证文档更新（见 git log 最新提交）
+- **阶段**：V1.2C — WakeEngine service abstraction / 唤醒引擎服务抽象层
+- **最新功能 commit**：V1.2C WakeEngine service abstraction（见 git log 最新提交）
+- **最新文档 commit**：V1.2C 服务抽象设计与验证记录更新（见 git log 最新提交）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
-- **工作区**：V1.2B-1 demo cooldown / 验证文档改动；运行产物均 ignored
-- **测试**：344 tests OK、compileall OK、wake_engine_demo/control_panel/voice_overlay help OK、check-install/dry-run OK；不跑真实麦克风自动测试
+- **工作区**：V1.2C service/docs/tests 改动；运行产物均 ignored
+- **测试**：356 tests OK、compileall OK、wake_engine_demo/control_panel/voice_overlay help OK、check-install/dry-run OK；不跑真实麦克风自动测试
+
+### V1.2C WakeEngine service abstraction 记录（2026-05-03）
+
+- 新增 `src/xiaohuang/wake_engine_service.py`：`WakeEvent`、`WakeEngineStatus`、`WakeEventStats`、`WakeEventCoalescer`、`FakeWakeEngine` 和轻量 `WakeEngine` Protocol。
+- `WakeEventCoalescer` 是 per-label cooldown：同一 label 在 cooldown 内只接受第一次 detection，不同 label 不互相抑制；统计 `raw_detections`、`coalesced_events`、`suppressed_detections`，支持 `reset()`。
+- `FakeWakeEngine` 不依赖麦克风或 openWakeWord，支持 start/stop/status、fake event emission、cooldown 测试和 error simulation，供 V1.2D 接入前测试使用。
+- `scripts/wake_engine_demo.py` 已复用 service 层 `WakeEventCoalescer` / `WakeEventStats` / `WakeEvent`；保留 `--help`、`--check-install`、`--dry-run`、`--list-devices`、`--cooldown-seconds`、`--no-coalesce`。
+- 新增 `docs/V1.2C_WAKE_ENGINE_SERVICE_DESIGN.md`，并更新 V1.2A/V1.2B 文档与 README，明确本阶段不接入 `voice_overlay.py`。
+- 未新增 `openwakeword_adapter.py`；adapter 边界留到 V1.2D 前安全验证阶段。
+- 未修改 `voice_overlay.py`、`wake_loop_service.py`、`wake_word_service.py`、控制面板、托盘、PowerShell、requirements；未新增依赖；未写 `E:\DataBase`；未下载模型；未训练中文“贾维斯”模型。
+- 下一步 V1.2D 前置：adapter optional import、安全状态、麦克风释放、命令录音切换、TTS 后 cooldown、自唤醒防护和 STT text fallback rollback。
 
 ### V1.2B-1 openWakeWord Event Coalescing 记录（2026-05-03）
 
