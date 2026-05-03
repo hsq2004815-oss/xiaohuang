@@ -2,13 +2,24 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2D-B — Wake Engine safety check / 麦克风生命周期验证
-- **最新功能 commit**：V1.2D-B Wake Engine safety validation（见 git log 最新提交）
-- **最新文档 commit**：V1.2D-B 真人 safety validation 记录更新（见 git log 最新提交）
+- **阶段**：V1.2D-C — Wake Command Bridge simulation / 接入前桥接状态机验证
+- **最新功能 commit**：V1.2D-C WakeEvent -> command recorder bridge simulation（见 git log 最新提交）
+- **最新文档 commit**：V1.2D-C 桥接验证记录更新（见 git log 最新提交）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
-- **工作区**：V1.2D-B adapter/demo/docs/tests 改动；运行产物均 ignored
-- **测试**：368 tests OK、compileall OK、wake_engine_demo/control_panel/voice_overlay help OK、check-install/dry-run OK；不跑真实麦克风自动测试
+- **工作区**：V1.2D-C bridge/demo/docs/tests 已完成并待提交；运行产物均 ignored
+- **测试**：381 tests OK、compileall OK、wake_command_bridge_demo help/dry-run/default OK、wake_engine_demo help OK、voice_overlay help OK；不跑真实麦克风自动测试
+
+### V1.2D-C Wake Command Bridge simulation 记录（2026-05-03）
+
+- 新增 `src/xiaohuang/wake_command_bridge_service.py`：`WakeBridgeDecision`、`WakeCommandBridgeConfig`、`WakeCommandBridgeState`、`WakeCommandBridge`、`FakeCommandStarter`。
+- bridge 只接收 `WakeEvent` 并调用注入的 fake command starter；不打开麦克风、不启动 openWakeWord/STT/voice_overlay/LLM/TTS。
+- 状态机覆盖 `accepted`、`disabled`、`cooldown`、`command_active`、`tts_active`、`bridge_busy`、`invalid_event`、`recorder_error`；recorder error 会释放 `bridge_busy`。
+- 新增 `scripts/wake_command_bridge_demo.py`：默认 `events=3`、`interval_seconds=0.5`、`cooldown_seconds=2.5`，预期只 `command_starts=1`，后续 event 因 cooldown 被 suppress。
+- 新增 `docs/V1.2D_C_WAKE_COMMAND_BRIDGE_VALIDATION.md`，记录桥接层目标、状态机、fake 验证、demo 命令、风险和下一步。
+- 新增单测覆盖 accepted/cooldown/cooldown 后恢复、command_active、tts_active、disabled、recorder_error、reset、fake starter 只接收 accepted event、demo help/dry-run/default/simulated blocks。
+- 未修改 `voice_overlay.py`、`wake_loop_service.py`、`wake_word_service.py`、conversation/TTS/LLM/reply pipeline、openwakeword adapter、控制面板、托盘、PowerShell、requirements；未写 `E:\DataBase`；未打开真实麦克风；未下载模型；未训练中文“贾维斯”模型。
+- 下一步 V1.2D-D：只读分析 `voice_overlay.py` 的 command recording 入口，设计 feature flag + 最小接入点；仍不直接替换 STT 文本唤醒。
 
 ### V1.2D-B Wake Engine safety validation 记录（2026-05-03）
 
@@ -19,7 +30,7 @@
 - 真人 safety-check 已通过：`--engine openwakeword --duration-seconds 10 --device 0 --debug --cooldown-seconds 2.5 --safety-check --repeat 2 --gap-seconds 1`。
 - 关键结果：round 2 `frames=123`、`raw_detections=17`、`coalesced_events=3`、`suppressed_detections=14`、`status_after_stop running=false ready=false model_loaded=true error=-`；最终 `all_rounds_completed=true`、`microphone_released=true`、`errors=0`。
 - 未修改 `voice_overlay.py`、`wake_loop_service.py`、`wake_word_service.py`、conversation/TTS/LLM/reply pipeline、控制面板、托盘、PowerShell、requirements；未写 `E:\DataBase`；未下载模型；未训练中文“贾维斯”模型。
-- 下一步：进入 V1.2D-C，做 wake event -> command recorder 模拟桥接设计/验证；仍需单独处理 TTS pause/cooldown 和 `stt_text` fallback。
+- 后续已进入 V1.2D-C 并完成 wake event -> fake command starter 模拟桥接；真实 command recorder、TTS pause/cooldown 和 `stt_text` fallback 仍需后续主链路设计/人工验证。
 
 ### V1.2D-A OpenWakeWordAdapter harness 记录（2026-05-03）
 

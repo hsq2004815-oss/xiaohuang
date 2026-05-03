@@ -320,6 +320,223 @@ class V12CWakeEngineServiceTests(unittest.TestCase):
         self.assertIsNone(engine.emit_fake_event(score=1.0, now=10.0))
 
 
+class V12DCWakeCommandBridgeTests(unittest.TestCase):
+    def _wake_event(self, detected_at: float = 10.0):
+        from xiaohuang.wake_engine_service import WakeEvent
+
+        return WakeEvent(
+            engine_type="fake",
+            wake_phrase="贾维斯",
+            label="hey_jarvis",
+            score=0.9,
+            detected_at=detected_at,
+        )
+
+    def _bridge(self, *, cooldown: float = 2.5, enabled: bool = True, raise_on_start: bool = False):
+        from xiaohuang.wake_command_bridge_service import (
+            FakeCommandStarter,
+            WakeCommandBridge,
+            WakeCommandBridgeConfig,
+        )
+
+        clock = ManualClock(10.0)
+        starter = FakeCommandStarter(raise_on_start=raise_on_start)
+        bridge = WakeCommandBridge(
+            WakeCommandBridgeConfig(enabled=enabled, post_wake_cooldown_seconds=cooldown),
+            starter,
+            time_fn=clock.now,
+        )
+        return bridge, starter, clock
+
+    def test_bridge_accepts_first_wake_event(self):
+        bridge, starter, _ = self._bridge()
+
+        decision = bridge.handle_wake_event(self._wake_event())
+
+        self.assertTrue(decision.accepted)
+        self.assertEqual(decision.reason, "accepted")
+        self.assertEqual(starter.call_count, 1)
+        self.assertEqual(bridge.state().accepted_count, 1)
+        self.assertEqual(bridge.state().suppressed_count, 0)
+
+    def test_bridge_rejects_second_event_inside_cooldown(self):
+        bridge, starter, clock = self._bridge(cooldown=2.5)
+        bridge.handle_wake_event(self._wake_event(detected_at=10.0))
+        clock.advance(1.0)
+
+        decision = bridge.handle_wake_event(self._wake_event(detected_at=11.0))
+
+        self.assertFalse(decision.accepted)
+        self.assertEqual(decision.reason, "cooldown")
+        self.assertEqual(starter.call_count, 1)
+        self.assertEqual(bridge.state().accepted_count, 1)
+        self.assertEqual(bridge.state().suppressed_count, 1)
+
+    def test_bridge_accepts_after_cooldown(self):
+        bridge, starter, clock = self._bridge(cooldown=2.5)
+        bridge.handle_wake_event(self._wake_event(detected_at=10.0))
+        clock.advance(2.6)
+
+        decision = bridge.handle_wake_event(self._wake_event(detected_at=12.6))
+
+        self.assertTrue(decision.accepted)
+        self.assertEqual(starter.call_count, 2)
+        self.assertEqual(bridge.state().accepted_count, 2)
+
+    def test_bridge_rejects_when_command_active(self):
+        bridge, starter, _ = self._bridge()
+        bridge.mark_command_started()
+
+        decision = bridge.handle_wake_event(self._wake_event())
+
+        self.assertFalse(decision.accepted)
+        self.assertEqual(decision.reason, "command_active")
+        self.assertEqual(starter.call_count, 0)
+
+    def test_bridge_rejects_when_tts_active(self):
+        bridge, starter, _ = self._bridge()
+        bridge.mark_tts_started()
+
+        decision = bridge.handle_wake_event(self._wake_event())
+
+        self.assertFalse(decision.accepted)
+        self.assertEqual(decision.reason, "tts_active")
+        self.assertEqual(starter.call_count, 0)
+
+    def test_bridge_rejects_when_disabled(self):
+        bridge, starter, _ = self._bridge(enabled=False)
+
+        decision = bridge.handle_wake_event(self._wake_event())
+
+        self.assertFalse(decision.accepted)
+        self.assertEqual(decision.reason, "disabled")
+        self.assertEqual(starter.call_count, 0)
+
+    def test_bridge_recorder_error_releases_busy_state(self):
+        bridge, starter, _ = self._bridge(raise_on_start=True)
+
+        decision = bridge.handle_wake_event(self._wake_event())
+        state = bridge.state()
+
+        self.assertFalse(decision.accepted)
+        self.assertEqual(decision.reason, "recorder_error")
+        self.assertEqual(starter.call_count, 0)
+        self.assertFalse(state.bridge_busy)
+        self.assertEqual(state.accepted_count, 0)
+        self.assertEqual(state.suppressed_count, 1)
+
+    def test_bridge_reset_clears_state(self):
+        bridge, _, _ = self._bridge()
+        bridge.handle_wake_event(self._wake_event())
+        bridge.mark_command_started()
+        bridge.mark_tts_started()
+
+        bridge.reset()
+        state = bridge.state()
+
+        self.assertFalse(state.command_active)
+        self.assertFalse(state.tts_active)
+        self.assertFalse(state.bridge_busy)
+        self.assertIsNone(state.last_wake_time)
+        self.assertEqual(state.accepted_count, 0)
+        self.assertEqual(state.suppressed_count, 0)
+        self.assertIsNone(state.last_reason)
+
+    def test_fake_command_starter_only_receives_accepted_events(self):
+        bridge, starter, clock = self._bridge(cooldown=2.5)
+        first = self._wake_event(detected_at=10.0)
+        second = self._wake_event(detected_at=11.0)
+
+        bridge.handle_wake_event(first)
+        clock.advance(1.0)
+        bridge.handle_wake_event(second)
+
+        self.assertEqual(starter.calls, [first])
+
+    def test_wake_command_bridge_demo_help_runs(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, "scripts/wake_command_bridge_demo.py", "--help"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--events", result.stdout)
+        self.assertIn("--simulate-tts", result.stdout)
+        self.assertIn("--simulate-command-active", result.stdout)
+
+    def test_wake_command_bridge_demo_dry_run(self):
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, "scripts/wake_command_bridge_demo.py", "--dry-run"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("bridge_demo=true", result.stdout)
+        self.assertIn("dry_run=true", result.stdout)
+        self.assertIn("will_open_microphone=false", result.stdout)
+
+    def test_wake_command_bridge_demo_default_cooldown_starts_once(self):
+        import subprocess
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/wake_command_bridge_demo.py",
+                "--events",
+                "3",
+                "--interval-seconds",
+                "0.5",
+                "--cooldown-seconds",
+                "2.5",
+            ],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("event_index=1 decision=accepted reason=accepted", result.stdout)
+        self.assertIn("event_index=2 decision=suppressed reason=cooldown", result.stdout)
+        self.assertIn("command_starts=1", result.stdout)
+        self.assertIn("accepted_count=1", result.stdout)
+
+    def test_wake_command_bridge_demo_simulated_blocks(self):
+        import subprocess
+
+        for flag, reason in [
+            ("--simulate-tts", "tts_active"),
+            ("--simulate-command-active", "command_active"),
+            ("--simulate-error", "recorder_error"),
+        ]:
+            result = subprocess.run(
+                [sys.executable, "scripts/wake_command_bridge_demo.py", flag, "--events", "1"],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0)
+            self.assertIn(f"reason={reason}", result.stdout)
+
+
+class ManualClock:
+    def __init__(self, current: float = 0.0):
+        self.current = current
+
+    def now(self) -> float:
+        return self.current
+
+    def advance(self, seconds: float) -> None:
+        self.current += seconds
+
+
 class V12DOpenWakeWordAdapterTests(unittest.TestCase):
     def test_openwakeword_adapter_import_does_not_require_openwakeword(self):
         from xiaohuang import openwakeword_adapter
