@@ -2,13 +2,24 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.1.4D-B — 控制面板状态刷新非阻塞化
-- **最新功能 commit**：待提交 `feat: add tray launch controls`
+- **阶段**：V1.2A — Wake Engine / 唤醒增强设计
+- **最新功能 commit**：`7a9d43a` fix: resolve async control panel readiness race
 - **最新文档 commit**：`65927ea` docs: record V1.1.4B tray validation
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`（V1.1.4C 开发前）
 - **工作区**：V1.1.4C tray launch operation lock release；运行产物均 ignored
 - **测试**：295 tests OK、compileall OK、tray/settings/overlay help OK；真人托盘菜单点击需用户本机确认
+
+### V1.2A Wake Engine 设计记录（2026-05-03）
+
+- 新增 docs-only 设计：`docs/V1.2_WAKE_ENGINE_DESIGN.md`。
+- 目标：解决当前 STT 文本匹配唤醒不灵敏、用户需要喊多次的问题，规划专用 Wake Word / KWS 引擎。
+- 数据库 API `127.0.0.1:8765` 未运行，按要求只读 `E:\DataBase` curated 文件和本地 raw 项目，未重建索引，未写数据库。
+- 本地参考项目：`openWakeWord`、`Wake-Word`、`FunASR`；未找到本地 `wyoming-openwakeword` / `sherpa-onnx` / `mycroft-precise` 独立仓库，已用官方资料补充。
+- 推荐路线：V1.2 优先 openWakeWord 独立 demo + adapter 抽象，保留 STT 文本匹配 fallback；Porcupine 只作体验标杆/可选方案，wyoming-openwakeword 只借鉴 server 架构，sherpa-onnx / FunASR KWS 做中长期对比，Precise 只研究。
+- 规划新增但本阶段不实现：`src/xiaohuang/wake_engine_service.py`、`src/xiaohuang/openwakeword_adapter.py`、`scripts/wake_engine_demo.py`，后续可选 `scripts/wake_engine_server.py`。
+- 明确 V1.2A 不修改 `voice_overlay.py`、wake/session/TTS/LLM router、控制面板、托盘、PowerShell、配置代码，不下载模型，不训练模型，不新增依赖。
+- `E:\OpenSourceWakeTest\wake_projects_install_report.md` 不存在；待 V1.2B 独立实验补充安装和麦克风验证结果。
 
 ### V1.1.4D 设计记录（2026-05-03）
 

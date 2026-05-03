@@ -185,6 +185,7 @@ V0.9.1 对 V0.9 的 DeepSeek 单句回复做了错误处理、回复清洗和稳
 - [V1.1.4_TRAY_LAUNCH_CONTROL_DESIGN.md](docs/V1.1.4_TRAY_LAUNCH_CONTROL_DESIGN.md) — 托盘常驻与启动控制设计
 - [V1.1.4B_TRAY_VALIDATION.md](docs/V1.1.4B_TRAY_VALIDATION.md) — 最小托盘程序真人验证记录
 - [V1.1.4D_STATUS_CONTROL_PANEL_DESIGN.md](docs/V1.1.4D_STATUS_CONTROL_PANEL_DESIGN.md) — 基础状态 UI / 控制面板设计
+- [V1.2_WAKE_ENGINE_DESIGN.md](docs/V1.2_WAKE_ENGINE_DESIGN.md) — Wake Engine / 专用唤醒增强设计
 
 ## Settings UI
 
@@ -237,3 +238,7 @@ V1.1.4D-B 流畅性修复：控制面板周期刷新和手动刷新不再在 Tki
 V1.1.4D-B 竞态修复：启动/重启操作完成时，操作 worker 会在后台线程内用短暂 grace window 采集 `final_status`，主线程只用该 operation completion result 决定弹窗；若 `final_status` 已 READY / `can_wake_now=True`，清空最近错误并按成功提示。operation completion pending 期间普通周期刷新不会交叉覆盖操作结果。
 
 V1.1.4B 真人验证结果：托盘图标、右键菜单、打开 Settings UI、读取 `config_settings_ui_test.json`、打开 `logs/`、关于/状态、退出托盘均正常。退出托盘不会停止 STT server 或 `voice_overlay.py`，也未影响 wake / session / TTS / LLM router 主链路。
+
+## V1.2 Wake Engine Design
+
+V1.2A 已新增 docs-only 设计，用于规划从当前 STT 文本匹配唤醒演进到专用 Wake Word / KWS 引擎。推荐路线是先以 openWakeWord 做独立 demo 和 adapter 抽象，保留当前 STT 文本匹配作为 fallback；Porcupine 作为体验标杆/可选方案，wyoming-openwakeword 作为 server 架构参考，sherpa-onnx / FunASR KWS 作为中长期对比研究。V1.2A 不修改 `voice_overlay.py`、控制面板、托盘、PowerShell 或运行配置。
