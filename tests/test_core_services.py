@@ -248,6 +248,56 @@ class V114CLaunchControlTests(unittest.TestCase):
 
         self.assertEqual(commands, [])
 
+    def test_classify_voice_overlay_absolute_path(self):
+        from xiaohuang.launch_control_service import classify_process_command_line
+
+        result = classify_process_command_line(
+            r'"F:\for_xiaohuang\conda310\python.exe" "E:\Projects\xiaohuang\scripts\voice_overlay.py"',
+            Path(r"E:\Projects\xiaohuang"),
+        )
+
+        self.assertEqual(result, "voice_overlay")
+
+    def test_classify_voice_overlay_relative_backslash_path(self):
+        from xiaohuang.launch_control_service import classify_process_command_line
+
+        result = classify_process_command_line(
+            r'python.exe scripts\voice_overlay.py --config C:\Users\tester\.xiaohuang\config.json',
+            Path(r"E:\Projects\xiaohuang"),
+        )
+
+        self.assertEqual(result, "voice_overlay")
+
+    def test_classify_voice_overlay_forward_slash_path(self):
+        from xiaohuang.launch_control_service import classify_process_command_line
+
+        result = classify_process_command_line(
+            "python.exe E:/Projects/xiaohuang/scripts/voice_overlay.py --debug",
+            Path(r"E:\Projects\xiaohuang"),
+        )
+
+        self.assertEqual(result, "voice_overlay")
+
+    def test_classify_voice_overlay_under_pythonw(self):
+        from xiaohuang.launch_control_service import classify_process_command_line
+
+        result = classify_process_command_line(
+            r'pythonw.exe "E:/Projects/xiaohuang/scripts/voice_overlay.py" --resident-hidden',
+            Path(r"E:\Projects\xiaohuang"),
+        )
+
+        self.assertEqual(result, "voice_overlay")
+
+    def test_classify_stt_server_uses_same_path_normalization(self):
+        from xiaohuang.launch_control_service import classify_process_command_line
+
+        result = classify_process_command_line(
+            "python.exe E:/Projects/xiaohuang/scripts/stt_server.py --port 8766",
+            Path(r"E:\Projects\xiaohuang"),
+        )
+
+        self.assertEqual(result, "stt_server")
+
     def test_run_command_uses_shell_false(self):
         import tray_app
 
@@ -283,6 +333,7 @@ class V114CLaunchControlTests(unittest.TestCase):
             wait_until_ready,
         )
 
+        polls = []
         result = wait_until_ready(
             Path(r"E:\Projects\xiaohuang"),
             timeout_seconds=1,
@@ -293,10 +344,51 @@ class V114CLaunchControlTests(unittest.TestCase):
             health_checker=lambda url: HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
             monotonic=lambda: 0.0,
             sleeper=lambda seconds: None,
+            on_poll=polls.append,
         )
 
         self.assertTrue(result.ok)
         self.assertEqual(result.reason, "ready")
+        self.assertEqual(polls, ["readiness poll stt=True overlay=True health=ready model_loaded=True"])
+
+    def test_status_control_and_wait_use_same_detected_processes(self):
+        from xiaohuang.launch_control_service import (
+            HealthCheckResult,
+            parse_process_rows,
+            summarize_process_status,
+            wait_until_ready,
+        )
+        from xiaohuang.status_control_service import ConfigSummary, READY, compute_status
+
+        project_root = Path(r"E:\Projects\xiaohuang")
+        processes = parse_process_rows(
+            [
+                {"ProcessId": 10, "CommandLine": r'python.exe scripts\stt_server.py --port 8766'},
+                {"ProcessId": 11, "CommandLine": r'pythonw.exe "E:/Projects/xiaohuang/scripts/voice_overlay.py"'},
+            ],
+            project_root,
+        )
+        health = HealthCheckResult(True, "ok=True status=ready model_loaded=True")
+
+        panel_status = compute_status(
+            summarize_process_status(processes),
+            health,
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+        wait_result = wait_until_ready(
+            project_root,
+            timeout_seconds=1,
+            process_detector=lambda root: processes,
+            health_checker=lambda url: health,
+            monotonic=lambda: 0.0,
+            sleeper=lambda seconds: None,
+        )
+
+        self.assertEqual(panel_status.overall_status, READY)
+        self.assertTrue(panel_status.overlay_running)
+        self.assertTrue(wait_result.ok)
+        self.assertTrue(wait_result.status.voice_overlay_running)
 
     def test_wait_until_ready_eventually_succeeds_after_health_failure(self):
         from xiaohuang.launch_control_service import (
@@ -373,6 +465,58 @@ class V114CLaunchControlTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertNotEqual(result.reason, "ready")
+
+    def test_wait_until_ready_does_not_timeout_overlay_missing_when_overlay_exists(self):
+        from xiaohuang.launch_control_service import (
+            HealthCheckResult,
+            parse_process_rows,
+            wait_until_ready,
+        )
+
+        project_root = Path(r"E:\Projects\xiaohuang")
+        processes = parse_process_rows(
+            [
+                {"ProcessId": 20, "CommandLine": "python.exe E:/Projects/xiaohuang/scripts/stt_server.py"},
+                {"ProcessId": 21, "CommandLine": "pythonw.exe E:/Projects/xiaohuang/scripts/voice_overlay.py"},
+            ],
+            project_root,
+        )
+
+        result = wait_until_ready(
+            project_root,
+            timeout_seconds=1,
+            process_detector=lambda root: processes,
+            health_checker=lambda url: HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            monotonic=lambda: 0.0,
+            sleeper=lambda seconds: None,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertNotEqual(result.reason, "timeout_voice_overlay_missing")
+
+    def test_readiness_poll_callback_does_not_require_real_log_file(self):
+        from xiaohuang.launch_control_service import (
+            HealthCheckResult,
+            XiaoHuangProcess,
+            wait_until_ready,
+        )
+
+        polls = []
+        result = wait_until_ready(
+            Path(r"E:\Projects\xiaohuang"),
+            timeout_seconds=1,
+            process_detector=lambda root: [
+                XiaoHuangProcess(1, "stt_server"),
+                XiaoHuangProcess(2, "voice_overlay"),
+            ],
+            health_checker=lambda url: HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            monotonic=lambda: 0.0,
+            sleeper=lambda seconds: None,
+            on_poll=polls.append,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(len(polls), 1)
 
     def test_wait_until_stopped_returns_true_when_processes_gone(self):
         from xiaohuang.launch_control_service import wait_until_stopped
@@ -745,6 +889,57 @@ class V114DAStatusControlTests(unittest.TestCase):
 
         self.assertTrue(ready.can_wake_now)
         self.assertFalse(partial.can_wake_now)
+
+    def test_can_wake_now_accepts_ready_status_without_model_loaded_flag(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, READY, compute_status
+
+        status = compute_status(
+            ProcessStatus(True, True, 2),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=False"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+
+        self.assertEqual(status.overall_status, READY)
+        self.assertTrue(status.can_wake_now)
+
+    def test_ready_status_overrides_wait_timeout_operation_result(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus, WaitResult
+        from xiaohuang.status_control_service import (
+            ConfigSummary,
+            compute_status,
+            _resolve_ready_operation_result,
+        )
+
+        current_status = compute_status(
+            ProcessStatus(True, True, 2),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path("config.json"),
+            ConfigSummary("贾维斯测试", ["贾维斯"], "deepseek", True),
+        )
+        timeout = WaitResult(
+            ok=False,
+            reason="timeout_voice_overlay_missing",
+            status=ProcessStatus(True, False, 1),
+            health=HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            elapsed_seconds=90.0,
+        )
+
+        result = _resolve_ready_operation_result(
+            timeout,
+            current_status,
+            0.0,
+            success_title="重启完成",
+            success_message="小黄已重启并就绪。",
+            failure_title="重启未就绪",
+            failure_prefix="启动命令已发出，但服务未就绪：",
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.title, "重启完成")
+        self.assertIsNone(result.error)
+        self.assertNotIn("timeout_voice_overlay_missing", result.message)
 
     def test_config_summary_reads_user_config(self):
         from xiaohuang.status_control_service import load_config_summary

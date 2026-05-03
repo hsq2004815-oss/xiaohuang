@@ -12,6 +12,7 @@ from xiaohuang.launch_control_service import (
     DEFAULT_HEALTH_URL,
     HealthCheckResult,
     ProcessStatus,
+    WaitResult,
     XiaoHuangProcess,
     build_restart_commands,
     build_start_sequence_for_status,
@@ -113,7 +114,16 @@ def run_start_operation(
         result = wait_until_ready(project_root, timeout_seconds=timeout_seconds, health_url=DEFAULT_HEALTH_URL)
         if result.ok:
             return _operation_result(True, "小黄已就绪", "小黄已启动并就绪。", started_at)
-        return _operation_result(False, "启动未就绪", f"服务已运行，但尚未就绪：{result.reason}", started_at, result.reason)
+        current = build_status(project_root, config_path)
+        return _resolve_ready_operation_result(
+            result,
+            current,
+            started_at,
+            success_title="小黄已就绪",
+            success_message="小黄已启动并就绪。",
+            failure_title="启动未就绪",
+            failure_prefix="服务已运行，但尚未就绪：",
+        )
 
     commands = build_start_sequence_for_status(status, project_root, config_path)
     for index, command in enumerate(commands):
@@ -136,9 +146,19 @@ def run_start_operation(
             result = wait_until_ready(project_root, timeout_seconds=timeout_seconds, health_url=DEFAULT_HEALTH_URL)
             if result.ok:
                 return _operation_result(True, "小黄已就绪", "小黄已启动并就绪。", started_at)
+            current = build_status(project_root, config_path)
+            resolved = _resolve_ready_operation_result(
+                result,
+                current,
+                started_at,
+                success_title="小黄已就绪",
+                success_message="小黄已启动并就绪。",
+                failure_title="启动未就绪",
+                failure_prefix="启动命令已发出，但服务未就绪：",
+            )
             if process.poll() is not None:
                 _safe_collect_process(process)
-            return _operation_result(False, "启动未就绪", f"启动命令已发出，但服务未就绪：{result.reason}", started_at, result.reason)
+            return resolved
         if not _run_blocking_command(command, project_root, label):
             return _operation_result(False, "启动失败", "清理残留进程失败。", started_at, "cleanup_failed")
         stopped = wait_until_stopped(project_root, timeout_seconds=30.0)
@@ -188,9 +208,19 @@ def run_restart_operation(
     ready = wait_until_ready(project_root, timeout_seconds=timeout_seconds, health_url=DEFAULT_HEALTH_URL)
     if ready.ok:
         return _operation_result(True, "重启完成", "小黄已重启并就绪。", started_at)
+    current = build_status(project_root, config_path)
+    resolved = _resolve_ready_operation_result(
+        ready,
+        current,
+        started_at,
+        success_title="重启完成",
+        success_message="小黄已重启并就绪。",
+        failure_title="重启未就绪",
+        failure_prefix="启动命令已发出，但服务未就绪：",
+    )
     if process.poll() is not None:
         _safe_collect_process(process)
-    return _operation_result(False, "重启未就绪", f"启动命令已发出，但服务未就绪：{ready.reason}", started_at, ready.reason)
+    return resolved
 
 
 def load_config_summary(
@@ -227,7 +257,6 @@ def compute_status(
         overall_status == READY
         and process_status.stt_server_running
         and stt_ready
-        and model_loaded
         and process_status.voice_overlay_running
     )
 
@@ -313,6 +342,27 @@ def _operation_result(
         message=message,
         elapsed_seconds=round(time.monotonic() - started_at, 2),
         error=error,
+    )
+
+
+def _resolve_ready_operation_result(
+    wait_result: WaitResult,
+    current_status: ControlPanelStatus,
+    started_at: float,
+    *,
+    success_title: str,
+    success_message: str,
+    failure_title: str,
+    failure_prefix: str,
+) -> ControlOperationResult:
+    if wait_result.ok or current_status.can_wake_now:
+        return _operation_result(True, success_title, success_message, started_at)
+    return _operation_result(
+        False,
+        failure_title,
+        f"{failure_prefix}{wait_result.reason}",
+        started_at,
+        wait_result.reason,
     )
 
 

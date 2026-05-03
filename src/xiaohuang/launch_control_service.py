@@ -132,16 +132,49 @@ def ensure_log_dir(project_root: Path) -> Path:
     return log_dir
 
 
+def normalize_process_command_line(command_line: str | Path) -> str:
+    return str(command_line or "").lower().replace("/", "\\")
+
+
 def classify_process_command_line(command_line: str, project_root: Path) -> str | None:
-    lower_command = command_line.lower()
-    project_text = str(project_root).lower()
-    if project_text not in lower_command and "xiaohuang" not in lower_command:
-        return None
-    if "voice_overlay.py" in lower_command or "voice_overlay" in lower_command:
+    normalized_command = normalize_process_command_line(command_line)
+    project_text = normalize_process_command_line(project_root)
+    if _contains_script_reference(normalized_command, project_text, "voice_overlay.py"):
         return "voice_overlay"
-    if "stt_server.py" in lower_command or "stt_server" in lower_command:
+    if _contains_script_reference(normalized_command, project_text, "stt_server.py"):
         return "stt_server"
     return None
+
+
+def _contains_script_reference(command_line: str, project_text: str, script_name: str) -> bool:
+    script_fragment = f"scripts\\{script_name}"
+    project_script = f"{project_text}\\{script_fragment}"
+    if project_script in command_line:
+        return True
+
+    start = 0
+    while True:
+        index = command_line.find(script_fragment, start)
+        if index < 0:
+            break
+        prefix = command_line[:index]
+        previous = prefix[-1:] if prefix else ""
+        previous_pair = prefix[-2:] if len(prefix) >= 2 else prefix
+        if not previous or previous in (" ", '"', "'") or previous_pair == ".\\":
+            return True
+        start = index + len(script_fragment)
+
+    start = 0
+    while True:
+        index = command_line.find(script_name, start)
+        if index < 0:
+            return False
+        before = command_line[index - 1 : index] if index > 0 else ""
+        after_index = index + len(script_name)
+        after = command_line[after_index : after_index + 1]
+        if before in ("", " ", '"', "'") and after in ("", " ", '"', "'"):
+            return True
+        start = after_index
 
 
 def parse_process_rows(rows: object, project_root: Path) -> list[XiaoHuangProcess]:
@@ -222,6 +255,18 @@ def check_stt_health(health_url: str = DEFAULT_HEALTH_URL, *, timeout_seconds: f
     )
 
 
+def format_readiness_poll(status: ProcessStatus, health: HealthCheckResult | None) -> str:
+    health_label = "ready" if health and health.ready else "not_ready"
+    model_loaded = _health_summary_bool(health.summary if health else "", "model_loaded")
+    return (
+        "readiness poll "
+        f"stt={status.stt_server_running} "
+        f"overlay={status.voice_overlay_running} "
+        f"health={health_label} "
+        f"model_loaded={model_loaded}"
+    )
+
+
 def wait_until_ready(
     project_root: Path,
     *,
@@ -232,6 +277,7 @@ def wait_until_ready(
     health_checker: Callable[[str], HealthCheckResult] = check_stt_health,
     monotonic: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
+    on_poll: Callable[[str], None] | None = None,
 ) -> WaitResult:
     started_at = monotonic()
     deadline = started_at + timeout_seconds
@@ -243,6 +289,11 @@ def wait_until_ready(
         processes = process_detector(project_root)
         last_status = summarize_process_status(processes)
         last_health = health_checker(health_url)
+        if on_poll:
+            try:
+                on_poll(format_readiness_poll(last_status, last_health))
+            except Exception:
+                pass
         if last_status.is_fully_running and last_health.ready:
             return WaitResult(True, "ready", last_status, last_health, now - started_at)
         if now >= deadline:
@@ -255,6 +306,11 @@ def wait_until_ready(
                 reason = "timeout_health_not_ready"
             return WaitResult(False, reason, last_status, last_health, now - started_at)
         sleeper(min(poll_interval_seconds, max(0.0, deadline - now)))
+
+
+def _health_summary_bool(summary: str, key: str) -> bool:
+    normalized = summary.replace(" ", "").lower()
+    return f"{key.lower()}=true" in normalized or f"{key.lower()}=1" in normalized
 
 
 def wait_until_stopped(

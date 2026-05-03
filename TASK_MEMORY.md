@@ -28,7 +28,18 @@
 - 控制面板支持启动/停止/重启、刷新状态、打开设置、打开日志目录；操作在后台线程执行，关闭窗口不停止小黄。
 - `scripts/tray_app.py` 菜单新增“打开控制面板”，原有启动/停止/重启/退出托盘语义不变。
 - 未修改 PowerShell、`voice_overlay.py`、wake/session/TTS/LLM 主链路，未新增依赖，未写 `E:\DataBase`。
-- 自动验证待本轮完成；人工验证仍需用户从托盘打开控制面板并真实启动/唤醒/重启/停止。
+- 自动验证：315 tests OK、compileall OK、control_panel/tray_app/settings_ui/voice_overlay help OK；人工验证仍需用户从托盘打开控制面板并真实启动/唤醒/重启/停止。
+
+### V1.1.4D-A readiness 修复记录（2026-05-03）
+
+- 修复 blocker：UI 已显示 READY 时，启动/重启操作仍返回 `timeout_voice_overlay_missing` 的不一致。
+- 根因：`voice_overlay.py` 命令行分类没有完整规范化路径形式，且启动/重启等待超时后没有用控制面板最终 READY 状态兜底。
+- `launch_control_service.classify_process_command_line()` 现在支持绝对路径、相对 `scripts\...`、正斜杠、带引号和 `pythonw.exe` 形式；其他项目绝对路径同名脚本仍不计入。
+- `wait_until_ready()` 增加可注入 compact poll 文本：`readiness poll stt=True overlay=True health=ready model_loaded=True`，单测不写真实日志。
+- `status_control_service` 启动/重启在 wait timeout 后会重读 `build_status()`；若 `can_wake_now=True`，返回成功，避免 READY 后误弹未就绪错误。
+- READY 条件统一为 STT 进程 + overlay 进程 + `/health` ready（`status=ready` 或 `model_loaded=True`）。
+- 未修改 PowerShell、`voice_overlay.py`、wake/session/TTS/LLM router，未新增依赖，未写 `E:\DataBase`。
+- 自动验证：315 tests OK、compileall OK、control_panel/tray_app/settings_ui/voice_overlay help OK。
 
 ### V1.1.3C 验证收尾记录（2026-05-02）
 
