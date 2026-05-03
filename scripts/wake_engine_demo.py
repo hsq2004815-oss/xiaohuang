@@ -12,6 +12,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
+from xiaohuang.openwakeword_adapter import (
+    OpenWakeWordAdapter,
+    OpenWakeWordDependencyStatus,
+    check_openwakeword_dependencies,
+)
 from xiaohuang.wake_engine_service import WakeEvent, WakeEventCoalescer, WakeEventStats
 
 
@@ -181,7 +186,29 @@ def collect_install_statuses(
     ]
 
 
-def print_install_report(statuses: Sequence[DependencyStatus]) -> None:
+def print_install_report(statuses: OpenWakeWordDependencyStatus | Sequence[DependencyStatus]) -> None:
+    if isinstance(statuses, OpenWakeWordDependencyStatus):
+        print("V1.2B openWakeWord demo install check")
+        print("adapter_harness=true")
+        print(f"openwakeword_installed={_bool_text(statuses.openwakeword_installed)}")
+        print(f"numpy_installed={_bool_text(statuses.numpy_installed)}")
+        print(f"sounddevice_installed={_bool_text(statuses.sounddevice_installed)}")
+        onnxruntime_text = (
+            "unknown"
+            if statuses.onnxruntime_available is None
+            else _bool_text(statuses.onnxruntime_available)
+        )
+        print(f"onnxruntime_available={onnxruntime_text}")
+        print(f"audio_backend_available={_bool_text(statuses.sounddevice_installed)}")
+        print(f"ready_for_realtime_demo={_bool_text(statuses.ready_for_realtime_demo)}")
+        for error in statuses.errors:
+            print(f"dependency_error message={error}")
+        if not statuses.openwakeword_installed:
+            print(f"install_hint_openwakeword={OPENWAKEWORD_INSTALL_HINT}")
+        if not statuses.sounddevice_installed:
+            print(f"install_hint_audio={AUDIO_INSTALL_HINT}")
+        return
+
     print("V1.2B openWakeWord demo install check")
     for status in statuses:
         print(
@@ -252,42 +279,44 @@ def run_realtime_demo(config: DemoConfig) -> int:
         print(f"error=model_path_not_found path={config.model_path}")
         return 2
 
+    adapter = OpenWakeWordAdapter(
+        wake_phrase=config.wake_phrase,
+        model_path=config.model_path,
+        model_name=config.model_name,
+        device=config.device,
+        sample_rate=DEFAULT_SAMPLE_RATE,
+        chunk_ms=config.chunk_ms,
+        sensitivity=config.sensitivity,
+        cooldown_seconds=config.cooldown_seconds,
+        coalesce=config.coalesce_events,
+    )
+    listening_started = False
     try:
-        np = importlib.import_module("numpy")
+        adapter.start()
+        print("audio_backend=sounddevice")
+        print("listening=true")
+        listening_started = True
+        wake_stats = adapter.run_for_duration(
+            config.duration_seconds,
+            on_event=lambda event: _print_wake_event(event, coalesced=config.coalesce_events),
+            debug=config.debug,
+        )
+    except KeyboardInterrupt:
+        print("interrupted=true")
+        return 130
     except Exception as exc:
-        print(f"Missing optional dependency: numpy. Install in a test env with: pip install numpy ({exc})")
-        return 2
-
-    try:
-        model = load_openwakeword_model(config)
-    except Exception as exc:
-        print(f"openwakeword_load_error={exc}")
+        status = adapter.status()
+        print(f"openwakeword_runtime_error={status.error or exc}")
         print(f"install_hint_openwakeword={OPENWAKEWORD_INSTALL_HINT}")
         return 2
+    finally:
+        if listening_started:
+            print("listening=false")
 
-    try:
-        return _run_with_sounddevice(config, model, np)
-    except MissingAudioBackend:
-        pass
-    except KeyboardInterrupt:
-        print("interrupted=true")
-        return 130
-    except Exception as exc:
-        print(f"sounddevice_runtime_error={exc}")
-        return 2
-
-    try:
-        return _run_with_pyaudio(config, model, np)
-    except MissingAudioBackend:
-        print("No optional audio backend is available.")
-        print(f"Missing optional dependency: sounddevice. Install in a test env with: {AUDIO_INSTALL_HINT}")
-        return 2
-    except KeyboardInterrupt:
-        print("interrupted=true")
-        return 130
-    except Exception as exc:
-        print(f"pyaudio_runtime_error={exc}")
-        return 2
+    stats = DetectionStats(frames=adapter.frames_read)
+    stats.update_from_wake_stats(wake_stats)
+    print_detection_summary(stats, config)
+    return 0
 
 
 def load_openwakeword_model(config: DemoConfig) -> Any:
@@ -601,7 +630,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     config = build_demo_config(args)
     if args.check_install:
-        print_install_report(collect_install_statuses())
+        print_install_report(check_openwakeword_dependencies())
         return 0
     if args.list_devices:
         return list_devices()

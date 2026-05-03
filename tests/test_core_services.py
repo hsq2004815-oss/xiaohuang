@@ -320,6 +320,189 @@ class V12CWakeEngineServiceTests(unittest.TestCase):
         self.assertIsNone(engine.emit_fake_event(score=1.0, now=10.0))
 
 
+class V12DOpenWakeWordAdapterTests(unittest.TestCase):
+    def test_openwakeword_adapter_import_does_not_require_openwakeword(self):
+        from xiaohuang import openwakeword_adapter
+
+        self.assertTrue(hasattr(openwakeword_adapter, "OpenWakeWordAdapter"))
+
+    def test_dependency_check_reports_missing_optional_dependencies(self):
+        from xiaohuang.openwakeword_adapter import check_openwakeword_dependencies
+
+        def fake_import(name):
+            raise ImportError(f"{name} missing")
+
+        status = check_openwakeword_dependencies(import_module=fake_import)
+
+        self.assertFalse(status.openwakeword_installed)
+        self.assertFalse(status.numpy_installed)
+        self.assertFalse(status.sounddevice_installed)
+        self.assertFalse(status.onnxruntime_available)
+        self.assertFalse(status.ready_for_realtime_demo)
+        self.assertTrue(any("openwakeword" in error for error in status.errors))
+
+    def test_dependency_check_can_be_simulated_ready(self):
+        from xiaohuang.openwakeword_adapter import check_openwakeword_dependencies
+
+        def fake_import(name):
+            return SimpleNamespace(__version__="1.0")
+
+        status = check_openwakeword_dependencies(import_module=fake_import)
+
+        self.assertTrue(status.openwakeword_installed)
+        self.assertTrue(status.numpy_installed)
+        self.assertTrue(status.sounddevice_installed)
+        self.assertTrue(status.onnxruntime_available)
+        self.assertTrue(status.ready_for_realtime_demo)
+        self.assertEqual(status.errors, [])
+
+    def test_adapter_initial_status(self):
+        from xiaohuang.openwakeword_adapter import OpenWakeWordAdapter
+
+        adapter = OpenWakeWordAdapter(wake_phrase="贾维斯", sensitivity=0.6)
+        status = adapter.status()
+
+        self.assertEqual(status.engine_type, "openwakeword")
+        self.assertFalse(status.running)
+        self.assertFalse(status.ready)
+        self.assertFalse(status.model_loaded)
+        self.assertEqual(status.wake_phrase, "贾维斯")
+        self.assertEqual(status.sensitivity, 0.6)
+        self.assertIsNone(status.error)
+
+    def test_adapter_start_stop_are_idempotent_with_injected_runtime(self):
+        import numpy as np
+        from xiaohuang.openwakeword_adapter import OpenWakeWordAdapter
+
+        load_count = {"model": 0}
+
+        class FakeModel:
+            def predict(self, frame):
+                return {"hey_jarvis": 0.0}
+
+        def model_factory(adapter):
+            load_count["model"] += 1
+            return FakeModel()
+
+        adapter = OpenWakeWordAdapter(
+            model_factory=model_factory,
+            input_stream_factory=FakeInputStream,
+            numpy_module=np,
+        )
+
+        adapter.start()
+        adapter.start()
+        self.assertTrue(adapter.status().running)
+        self.assertTrue(adapter.status().ready)
+        self.assertEqual(load_count["model"], 1)
+
+        adapter.stop()
+        adapter.stop()
+        self.assertFalse(adapter.status().running)
+        self.assertFalse(adapter.status().ready)
+
+    def test_adapter_run_for_duration_uses_coalescer_and_fake_audio(self):
+        import numpy as np
+        from xiaohuang.openwakeword_adapter import OpenWakeWordAdapter
+
+        FakeInputStream.instances.clear()
+        predictions = [
+            {"hey_jarvis": 0.90},
+            {"hey_jarvis": 0.95},
+            {"hey_jarvis": 0.96},
+            {"alexa": 0.80},
+        ]
+        fake_model = FakePredictionModel(predictions)
+        now = {"value": 0.0}
+
+        def time_fn():
+            now["value"] += 1.0
+            return now["value"]
+
+        events = []
+        adapter = OpenWakeWordAdapter(
+            wake_phrase="贾维斯",
+            sensitivity=0.5,
+            cooldown_seconds=2.5,
+            model_factory=lambda adapter: fake_model,
+            input_stream_factory=FakeInputStream,
+            numpy_module=np,
+            time_fn=time_fn,
+        )
+
+        stats = adapter.run_for_duration(8.0, on_event=events.append)
+
+        self.assertEqual(adapter.frames_read, 4)
+        self.assertEqual(stats.raw_detections, 4)
+        self.assertEqual(stats.coalesced_events, 3)
+        self.assertEqual(stats.suppressed_detections, 1)
+        self.assertEqual([event.label for event in events], ["hey_jarvis", "hey_jarvis", "alexa"])
+        self.assertEqual(events[0].wake_phrase, "贾维斯")
+        self.assertEqual(events[0].engine_type, "openwakeword")
+        self.assertFalse(adapter.status().running)
+        self.assertTrue(FakeInputStream.instances[0].closed)
+
+    def test_adapter_run_for_duration_can_disable_coalescing(self):
+        import numpy as np
+        from xiaohuang.openwakeword_adapter import OpenWakeWordAdapter
+
+        fake_model = FakePredictionModel([{"hey_jarvis": 0.9}, {"hey_jarvis": 0.95}])
+        now = {"value": 0.0}
+
+        def time_fn():
+            now["value"] += 1.0
+            return now["value"]
+
+        events = []
+        adapter = OpenWakeWordAdapter(
+            sensitivity=0.5,
+            cooldown_seconds=2.5,
+            coalesce=False,
+            model_factory=lambda adapter: fake_model,
+            input_stream_factory=FakeInputStream,
+            numpy_module=np,
+            time_fn=time_fn,
+        )
+
+        stats = adapter.run_for_duration(4.0, on_event=events.append)
+
+        self.assertEqual(stats.raw_detections, 2)
+        self.assertEqual(stats.coalesced_events, 2)
+        self.assertEqual(stats.suppressed_detections, 0)
+        self.assertEqual(len(events), 2)
+
+
+class FakePredictionModel:
+    def __init__(self, predictions):
+        self._predictions = list(predictions)
+
+    def predict(self, frame):
+        if not self._predictions:
+            return {"hey_jarvis": 0.0}
+        return self._predictions.pop(0)
+
+
+class FakeInputStream:
+    instances = []
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.closed = False
+        self.read_count = 0
+        FakeInputStream.instances.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.closed = True
+        return False
+
+    def read(self, blocksize):
+        self.read_count += 1
+        return [[0] for _ in range(blocksize)], False
+
+
 class V12BWakeEngineDemoTests(unittest.TestCase):
     def test_wake_engine_demo_help_runs(self):
         import subprocess
