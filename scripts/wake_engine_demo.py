@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import importlib
 from pathlib import Path
 import sys
@@ -14,6 +14,7 @@ DEFAULT_WAKE_PHRASE = "贾维斯"
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_CHUNK_MS = 80
 DEFAULT_SENSITIVITY = 0.5
+DEFAULT_COOLDOWN_SECONDS = 2.5
 OPENWAKEWORD_INSTALL_HINT = "pip install openwakeword"
 AUDIO_INSTALL_HINT = "pip install sounddevice"
 
@@ -38,7 +39,43 @@ class DemoConfig:
     chunk_ms: int
     chunk_samples: int
     sensitivity: float
+    cooldown_seconds: float
+    coalesce_events: bool
     debug: bool
+
+
+@dataclass
+class WakeEventCoalescer:
+    cooldown_seconds: float
+    last_event_time_by_label: dict[str, float] = field(default_factory=dict)
+
+    def accept(self, label: str, now: float) -> bool:
+        last_event_time = self.last_event_time_by_label.get(label)
+        if last_event_time is not None and now - last_event_time < self.cooldown_seconds:
+            return False
+        self.last_event_time_by_label[label] = now
+        return True
+
+    def remaining_seconds(self, label: str, now: float) -> float:
+        last_event_time = self.last_event_time_by_label.get(label)
+        if last_event_time is None:
+            return 0.0
+        return max(0.0, self.cooldown_seconds - (now - last_event_time))
+
+
+@dataclass
+class DetectionStats:
+    frames: int = 0
+    raw_detections: int = 0
+    coalesced_events: int = 0
+    suppressed_detections: int = 0
+
+
+@dataclass(frozen=True)
+class PredictionScore:
+    label: str
+    score: float
+    detected: bool
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,6 +91,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--duration-seconds", type=positive_float, default=10.0, help="Maximum demo duration. Defaults to 10.")
     parser.add_argument("--chunk-ms", type=positive_int, default=DEFAULT_CHUNK_MS, help="Audio chunk size in milliseconds. Defaults to 80.")
     parser.add_argument("--sensitivity", type=sensitivity_value, default=DEFAULT_SENSITIVITY, help="Display/demo detection threshold from 0.0 to 1.0.")
+    parser.add_argument(
+        "--cooldown-seconds",
+        type=positive_float,
+        default=DEFAULT_COOLDOWN_SECONDS,
+        help="Seconds to coalesce repeated detections for the same label. Defaults to 2.5.",
+    )
+    parser.add_argument(
+        "--no-coalesce",
+        action="store_false",
+        dest="coalesce_events",
+        help="Disable wake_event coalescing and emit every raw detection.",
+    )
     parser.add_argument("--debug", action="store_true", help="Print every frame score instead of periodic summaries.")
     parser.add_argument("--dry-run", action="store_true", help="Print resolved configuration only; do not load models or open the microphone.")
     parser.add_argument("--check-install", action="store_true", help="Check optional dependencies without opening the microphone.")
@@ -97,6 +146,8 @@ def build_demo_config(args: argparse.Namespace) -> DemoConfig:
         chunk_ms=int(args.chunk_ms),
         chunk_samples=chunk_samples,
         sensitivity=float(args.sensitivity),
+        cooldown_seconds=float(args.cooldown_seconds),
+        coalesce_events=bool(args.coalesce_events),
         debug=bool(args.debug),
     )
 
@@ -184,6 +235,8 @@ def print_config(config: DemoConfig, *, dry_run: bool = False) -> None:
     print(f"chunk_ms={config.chunk_ms}")
     print(f"chunk_samples={config.chunk_samples}")
     print(f"sensitivity={config.sensitivity:g}")
+    print(f"cooldown_seconds={config.cooldown_seconds:g}")
+    print(f"coalesce_events={_bool_text(config.coalesce_events)}")
     print(f"debug={_bool_text(config.debug)}")
 
 
@@ -274,8 +327,8 @@ def _run_with_sounddevice(config: DemoConfig, model: Any, np: Any) -> int:
     print("audio_backend=sounddevice")
     print("listening=true")
     deadline = time.monotonic() + config.duration_seconds
-    frames = 0
-    detections = 0
+    stats = DetectionStats()
+    coalescer = WakeEventCoalescer(config.cooldown_seconds)
     last_summary = 0.0
     with sd.InputStream(
         samplerate=DEFAULT_SAMPLE_RATE,
@@ -288,16 +341,23 @@ def _run_with_sounddevice(config: DemoConfig, model: Any, np: Any) -> int:
             data, overflowed = stream.read(config.chunk_samples)
             frame = np.asarray(data).reshape(-1).astype(np.int16)
             prediction = model.predict(frame)
-            detected = print_prediction(prediction, config, force=config.debug or overflowed)
-            detections += int(detected)
-            frames += 1
+            score = best_prediction_score(prediction, config)
+            print_score_line(score, prediction, config, force=config.debug or overflowed)
+            process_prediction_score(
+                score,
+                config,
+                stats,
+                coalescer,
+                now=time.monotonic(),
+                force=config.debug or overflowed,
+            )
+            stats.frames += 1
             now = time.monotonic()
             if not config.debug and now - last_summary >= 1.0:
-                print_prediction(prediction, config, force=True, prefix="score")
+                print_score_line(score, prediction, config, force=True, prefix="score")
                 last_summary = now
     print("listening=false")
-    print(f"frames={frames}")
-    print(f"detections={detections}")
+    print_detection_summary(stats, config)
     return 0
 
 
@@ -326,23 +386,23 @@ def _run_with_pyaudio(config: DemoConfig, model: Any, np: Any) -> int:
         )
         print("listening=true")
         deadline = time.monotonic() + config.duration_seconds
-        frames = 0
-        detections = 0
+        stats = DetectionStats()
+        coalescer = WakeEventCoalescer(config.cooldown_seconds)
         last_summary = 0.0
         while time.monotonic() < deadline:
             data = stream.read(config.chunk_samples, exception_on_overflow=False)
             frame = np.frombuffer(data, dtype=np.int16)
             prediction = model.predict(frame)
-            detected = print_prediction(prediction, config, force=config.debug)
-            detections += int(detected)
-            frames += 1
+            score = best_prediction_score(prediction, config)
+            print_score_line(score, prediction, config, force=config.debug)
+            process_prediction_score(score, config, stats, coalescer, now=time.monotonic(), force=config.debug)
+            stats.frames += 1
             now = time.monotonic()
             if not config.debug and now - last_summary >= 1.0:
-                print_prediction(prediction, config, force=True, prefix="score")
+                print_score_line(score, prediction, config, force=True, prefix="score")
                 last_summary = now
         print("listening=false")
-        print(f"frames={frames}")
-        print(f"detections={detections}")
+        print_detection_summary(stats, config)
         return 0
     finally:
         if stream is not None:
@@ -351,19 +411,82 @@ def _run_with_pyaudio(config: DemoConfig, model: Any, np: Any) -> int:
         audio.terminate()
 
 
-def print_prediction(prediction: Any, config: DemoConfig, *, force: bool, prefix: str = "frame") -> bool:
+def best_prediction_score(prediction: Any, config: DemoConfig) -> PredictionScore | None:
     scores = _flatten_prediction(prediction)
     if not scores:
-        if force:
-            print(f"{prefix} score_unavailable=true raw={prediction!r}")
-        return False
+        return None
     label, score = max(scores.items(), key=lambda item: item[1])
-    detected = score >= config.sensitivity
-    if force or detected:
-        print(f"{prefix} label={label} score={score:.3f} detected={_bool_text(detected)} threshold={config.sensitivity:.3f}")
-    if detected:
-        print(f"wake_event engine={config.engine} wake_phrase={config.wake_phrase} label={label} score={score:.3f}")
-    return detected
+    return PredictionScore(label=label, score=score, detected=score >= config.sensitivity)
+
+
+def print_score_line(
+    score: PredictionScore | None,
+    raw_prediction: Any,
+    config: DemoConfig,
+    *,
+    force: bool,
+    prefix: str = "frame",
+) -> None:
+    if score is None:
+        if force:
+            print(f"{prefix} score_unavailable=true raw={raw_prediction!r}")
+        return
+    if force or score.detected:
+        print(
+            f"{prefix} label={score.label} "
+            f"score={score.score:.3f} "
+            f"detected={_bool_text(score.detected)} "
+            f"threshold={config.sensitivity:.3f}"
+        )
+
+
+def process_prediction_score(
+    score: PredictionScore | None,
+    config: DemoConfig,
+    stats: DetectionStats,
+    coalescer: WakeEventCoalescer,
+    *,
+    now: float,
+    force: bool = False,
+) -> bool:
+    if score is None or not score.detected:
+        return False
+
+    stats.raw_detections += 1
+    if not config.coalesce_events:
+        stats.coalesced_events += 1
+        _print_wake_event(config, score, coalesced=False)
+        return True
+
+    if coalescer.accept(score.label, now):
+        stats.coalesced_events += 1
+        _print_wake_event(config, score, coalesced=True)
+        return True
+
+    stats.suppressed_detections += 1
+    if config.debug or force:
+        remaining = coalescer.remaining_seconds(score.label, now)
+        print(f"wake_suppressed label={score.label} score={score.score:.3f} reason=cooldown remaining={remaining:.3f}")
+    return False
+
+
+def print_detection_summary(stats: DetectionStats, config: DemoConfig) -> None:
+    print(f"frames={stats.frames}")
+    print(f"raw_detections={stats.raw_detections}")
+    print(f"coalesced_events={stats.coalesced_events}")
+    print(f"suppressed_detections={stats.suppressed_detections}")
+    print(f"cooldown_seconds={config.cooldown_seconds:g}")
+
+
+def _print_wake_event(config: DemoConfig, score: PredictionScore, *, coalesced: bool) -> None:
+    print(
+        f"wake_event engine={config.engine} "
+        f"wake_phrase={config.wake_phrase} "
+        f"label={score.label} "
+        f"score={score.score:.3f} "
+        "raw_event=true "
+        f"coalesced={_bool_text(coalesced)}"
+    )
 
 
 def install_hint_for(name: str) -> str:

@@ -161,6 +161,20 @@ class V12BWakeEngineDemoTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("--check-install", result.stdout)
         self.assertIn("--dry-run", result.stdout)
+        self.assertIn("--cooldown-seconds", result.stdout)
+        self.assertIn("--no-coalesce", result.stdout)
+
+    def test_wake_engine_demo_check_install_command_runs(self):
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, "scripts/wake_engine_demo.py", "--check-install"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("V1.2B openWakeWord demo install check", result.stdout)
+        self.assertIn("ready_for_realtime_demo=", result.stdout)
 
     def test_wake_engine_demo_check_install_does_not_fail_when_optional_dependency_missing(self):
         import wake_engine_demo
@@ -187,6 +201,8 @@ class V12BWakeEngineDemoTests(unittest.TestCase):
                 "openwakeword",
                 "--wake-phrase",
                 "贾维斯",
+                "--cooldown-seconds",
+                "2.5",
             ],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
@@ -196,6 +212,8 @@ class V12BWakeEngineDemoTests(unittest.TestCase):
         self.assertIn("dry_run=true", result.stdout)
         self.assertIn("will_load_model=false", result.stdout)
         self.assertIn("will_open_microphone=false", result.stdout)
+        self.assertIn("cooldown_seconds=2.5", result.stdout)
+        self.assertIn("coalesce_events=true", result.stdout)
         self.assertIn("wake_phrase=贾维斯", result.stdout)
 
     def test_wake_engine_demo_parse_args(self):
@@ -215,6 +233,9 @@ class V12BWakeEngineDemoTests(unittest.TestCase):
                 "80",
                 "--sensitivity",
                 "0.6",
+                "--cooldown-seconds",
+                "1.5",
+                "--no-coalesce",
             ]
         )
         config = wake_engine_demo.build_demo_config(args)
@@ -225,6 +246,64 @@ class V12BWakeEngineDemoTests(unittest.TestCase):
         self.assertEqual(config.duration_seconds, 3.0)
         self.assertEqual(config.chunk_samples, 1280)
         self.assertEqual(config.sensitivity, 0.6)
+        self.assertEqual(config.cooldown_seconds, 1.5)
+        self.assertFalse(config.coalesce_events)
+
+    def test_wake_event_coalescer_accepts_first_label_event(self):
+        import wake_engine_demo
+
+        coalescer = wake_engine_demo.WakeEventCoalescer(cooldown_seconds=2.5)
+
+        self.assertTrue(coalescer.accept("hey_jarvis", now=10.0))
+
+    def test_wake_event_coalescer_suppresses_same_label_inside_cooldown(self):
+        import wake_engine_demo
+
+        coalescer = wake_engine_demo.WakeEventCoalescer(cooldown_seconds=2.5)
+        self.assertTrue(coalescer.accept("hey_jarvis", now=10.0))
+
+        self.assertFalse(coalescer.accept("hey_jarvis", now=11.0))
+        self.assertAlmostEqual(coalescer.remaining_seconds("hey_jarvis", now=11.0), 1.5)
+
+    def test_wake_event_coalescer_accepts_same_label_after_cooldown(self):
+        import wake_engine_demo
+
+        coalescer = wake_engine_demo.WakeEventCoalescer(cooldown_seconds=2.5)
+        self.assertTrue(coalescer.accept("hey_jarvis", now=10.0))
+
+        self.assertTrue(coalescer.accept("hey_jarvis", now=12.6))
+
+    def test_wake_event_coalescer_uses_per_label_cooldown(self):
+        import wake_engine_demo
+
+        coalescer = wake_engine_demo.WakeEventCoalescer(cooldown_seconds=2.5)
+        self.assertTrue(coalescer.accept("hey_jarvis", now=10.0))
+
+        self.assertTrue(coalescer.accept("alexa", now=11.0))
+
+    def test_wake_engine_demo_detection_summary_includes_coalesced_counts(self):
+        from contextlib import redirect_stdout
+        import io
+        import wake_engine_demo
+
+        config = wake_engine_demo.build_demo_config(wake_engine_demo.parse_args(["--cooldown-seconds", "2.5"]))
+        stats = wake_engine_demo.DetectionStats(
+            frames=373,
+            raw_detections=29,
+            coalesced_events=3,
+            suppressed_detections=26,
+        )
+        output = io.StringIO()
+
+        with redirect_stdout(output):
+            wake_engine_demo.print_detection_summary(stats, config)
+
+        text = output.getvalue()
+        self.assertIn("frames=373", text)
+        self.assertIn("raw_detections=29", text)
+        self.assertIn("coalesced_events=3", text)
+        self.assertIn("suppressed_detections=26", text)
+        self.assertIn("cooldown_seconds=2.5", text)
 
 
 class V114CLaunchControlTests(unittest.TestCase):

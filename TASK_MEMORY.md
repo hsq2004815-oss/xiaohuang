@@ -2,23 +2,34 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2B — openWakeWord 独立 Demo / 本机可行性验证
-- **最新功能 commit**：待提交 `feat: add openWakeWord demo harness`
-- **最新文档 commit**：`65927ea` docs: record V1.1.4B tray validation
+- **阶段**：V1.2B-1 — openWakeWord Demo wake_event cooldown 合并
+- **最新功能 commit**：V1.2B-1 cooldown 合并（见 git log 最新提交）
+- **最新文档 commit**：V1.2B-1 验证文档更新（见 git log 最新提交）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
-- **分支**：`main...origin/main`（V1.1.4C 开发前）
-- **工作区**：V1.1.4C tray launch operation lock release；运行产物均 ignored
-- **测试**：295 tests OK、compileall OK、tray/settings/overlay help OK；真人托盘菜单点击需用户本机确认
+- **分支**：`main...origin/main`
+- **工作区**：V1.2B-1 demo cooldown / 验证文档改动；运行产物均 ignored
+- **测试**：344 tests OK、compileall OK、wake_engine_demo/control_panel/voice_overlay help OK、check-install/dry-run OK；不跑真实麦克风自动测试
+
+### V1.2B-1 openWakeWord Event Coalescing 记录（2026-05-03）
+
+- `scripts/wake_engine_demo.py` 增加 `--cooldown-seconds`（默认 2.5）和 `--no-coalesce`；默认按 label 做 per-label cooldown。
+- 结束 summary 新增 `raw_detections`、`coalesced_events`、`suppressed_detections`、`cooldown_seconds`；raw detection 仍代表帧级 score 命中，不等于用户喊话次数。
+- 用户真人验证：`openwakeword 0.6.0`、`onnxruntime 1.23.2`、`sounddevice 0.5.5`、`numpy 2.2.6` 可用；`pyaudio` / `PyAudioWPatch` 未安装但不影响 sounddevice backend。
+- 设备：`--list-devices` 共 12 个 input device；继续用 device 0，因为小黄历史一直用 device 0。
+- 模型：初次缺 `alexa_v0.1.onnx`，用户执行 `openwakeword.utils.download_models()` 后默认模型可用；本仓库未提交模型。
+- 真人结果：30 秒 demo `listening=true`；英文 `hey_jarvis` 多次成功，score 最高接近 0.998；静默测试 `frames=748, detections=0`；重复唤醒 `frames=373, detections=29`。
+- 结论：openWakeWord 本机可行性通过，但 `wake_phrase=贾维斯` 只是显示名，真实 label 是英文 `hey_jarvis`；中文“贾维斯”模型未完成，不接入 `voice_overlay.py`。
+- 下一步 V1.2C：`WakeEngine` abstraction + adapter + event coalescing + `stt_text` fallback，先验证麦克风释放、命令录音切换和 TTS 后 cooldown。
 
 ### V1.2B openWakeWord 独立 Demo 记录（2026-05-03）
 
 - 新增 `scripts/wake_engine_demo.py`：独立 openWakeWord demo harness，支持 `--help`、`--check-install`、`--dry-run`、`--list-devices`、短时监听参数、score/event 输出路径。
 - 新增 `docs/V1.2B_OPENWAKEWORD_DEMO_VALIDATION.md`：记录本机依赖、设备、限制和下一步真人体验方法。
-- 当前 `F:\for_xiaohuang\conda310\python.exe` 环境：`openwakeword` 未通过 pip 安装；`D:\github-project\openWakeWord` 是本机源码 checkout，加入 `PYTHONPATH` 后能找到包，但导入继续缺 `onnxruntime`；`numpy` 和 `sounddevice` 已安装；`pyaudio` / `pyaudiowpatch` 未安装。
-- `--check-install` 设计为 exit code 0 + `openwakeword_installed=false`，缺依赖时不阻断自动验证。
+- 当前 `F:\for_xiaohuang\conda310\python.exe` 环境已由用户补齐：`openwakeword 0.6.0`、`onnxruntime 1.23.2`、`numpy 2.2.6` 和 `sounddevice 0.5.5` 已可用；`pyaudio` / `pyaudiowpatch` 未安装。
+- `--check-install` 设计为 exit code 0；当前已返回 `openwakeword_installed=true` / `ready_for_realtime_demo=true`。
 - `--list-devices` 已能通过 `sounddevice` 列出 12 个 input device；stdout/stderr 设置 errors=replace，避免 Windows 设备名特殊字符导致 GBK 编码崩溃。
-- 本阶段未修改 `voice_overlay.py`、`wake_loop_service.py`、`wake_word_service.py`、控制面板、托盘、PowerShell、配置主链路，未新增依赖，未下载模型，未训练中文“贾维斯”模型，未写 `E:\DataBase`。
-- 后续 V1.2C 前建议：用户确认安装 `openwakeword` / `onnxruntime` 后，先用 `wake_engine_demo.py --check-install`、`--list-devices`、短时 `--duration-seconds 30 --debug` 记录 score/CPU/设备占用，再抽象 WakeEngine service。
+- 本阶段未修改 `voice_overlay.py`、`wake_loop_service.py`、`wake_word_service.py`、控制面板、托盘、PowerShell、配置主链路，仓库未新增依赖，未提交模型文件，未训练中文“贾维斯”模型，未写 `E:\DataBase`。
+- 后续 V1.2C 前建议：继续用 `wake_engine_demo.py --check-install`、`--list-devices`、短时 `--duration-seconds 30 --debug --cooldown-seconds 2.5` 记录 score/CPU/设备占用，再抽象 WakeEngine service。
 
 ### V1.2A Wake Engine 设计记录（2026-05-03）
 

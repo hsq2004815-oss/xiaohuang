@@ -244,4 +244,6 @@ V1.1.4B 真人验证结果：托盘图标、右键菜单、打开 Settings UI、
 
 V1.2A 已新增 docs-only 设计，用于规划从当前 STT 文本匹配唤醒演进到专用 Wake Word / KWS 引擎。推荐路线是先以 openWakeWord 做独立 demo 和 adapter 抽象，保留当前 STT 文本匹配作为 fallback；Porcupine 作为体验标杆/可选方案，wyoming-openwakeword 作为 server 架构参考，sherpa-onnx / FunASR KWS 作为中长期对比研究。V1.2A 不修改 `voice_overlay.py`、控制面板、托盘、PowerShell 或运行配置。
 
-V1.2B 已新增独立 demo harness：`scripts/wake_engine_demo.py`。该脚本支持 `--help`、`--check-install`、`--dry-run` 和 `--list-devices`，未安装 openWakeWord 时会输出清晰的 optional dependency 状态并保持自动验证可继续。当前环境尚未通过 pip 安装 `openwakeword`；`D:\github-project\openWakeWord` 是本机源码 checkout，加入 `PYTHONPATH` 后可被定位，但还缺 `onnxruntime`，因此尚未验证模型加载、wake score 或真人唤醒效果。
+V1.2B 已新增独立 demo harness：`scripts/wake_engine_demo.py`。该脚本支持 `--help`、`--check-install`、`--dry-run` 和 `--list-devices`，未安装 openWakeWord 时会输出清晰的 optional dependency 状态并保持自动验证可继续。
+
+V1.2B-1 已增加 demo 层 wake event cooldown 合并：默认 `--cooldown-seconds 2.5`，同一 label 在 cooldown 内的连续 raw detections 只统计为一次 `coalesced_events`。真人验证结果：`openwakeword 0.6.0` / `onnxruntime 1.23.2` / `sounddevice 0.5.5` 可用，device 0 可监听，英文 `hey_jarvis` 可稳定触发，静默测试 `frames=748, detections=0`；当前仍不是中文“贾维斯”模型，暂不接入 `voice_overlay.py`。
