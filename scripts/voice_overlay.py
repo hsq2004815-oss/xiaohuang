@@ -46,12 +46,6 @@ from xiaohuang.overlay_state_service import (
     get_overlay_status_text,
 )
 from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
-from xiaohuang.openwakeword_adapter import (
-    OpenWakeWordAdapter,
-    OpenWakeWordDependencyStatus,
-    OpenWakeWordRuntimeStatus,
-    check_openwakeword_dependencies,
-)
 from xiaohuang.reply_pipeline_service import (
     ReplyPipelineConfig,
     ReplyPipelineResult,
@@ -66,20 +60,32 @@ from xiaohuang.wake_command_bridge_service import WakeCommandBridge, WakeCommand
 from xiaohuang.wake_engine_service import WakeEvent
 from xiaohuang.wake_loop_service import STT_MODE_COMMAND, STT_MODE_WAKE_CHECK, WakeLoopOptions, WakeLoopResult, run_wake_loop_once
 from xiaohuang.wake_runtime_service import (
+    OPENWAKEWORD_QUEUE_POLL_SECONDS,
+    OPENWAKEWORD_STATUS_INTERVAL_SECONDS,
     WAKE_ENGINE_OPENWAKEWORD,
     WAKE_ENGINE_STT_TEXT,
+    WakeEngineLoopStopped,
     WakeEngineRuntimeConfig,
+    WakeEngineRuntimeError,
     WakeEngineRuntimePlan,
+    OpenWakeWordBridgeRuntime,
+    OpenWakeWordBridgeRuntime as _OpenWakeWordBridgeRuntime,
+    OpenWakeWordListenerHandle,
     build_wake_engine_runtime_config as _build_wake_engine_runtime_config,
+    create_openwakeword_adapter as _create_openwakeword_adapter,
     format_openwakeword_dependency_error as _format_openwakeword_dependency_error,
+    handle_openwakeword_event as _handle_openwakeword_event,
+    log_openwakeword_listener_status as _log_openwakeword_listener_status,
     normalize_wake_engine as _normalize_wake_engine,
+    run_openwakeword_listener as _run_openwakeword_listener,
     select_wake_engine_runtime as _select_wake_engine_runtime,
+    start_openwakeword_listener as _start_openwakeword_listener,
+    stop_adapter_safely as _stop_adapter_safely,
+    stop_openwakeword_listener as _stop_openwakeword_listener,
+    wait_for_openwakeword_event as _wait_for_openwakeword_event,
+    wake_engine_runtime_error as _wake_engine_runtime_error,
 )
 from xiaohuang.wake_word_service import DEFAULT_WAKE_ALIASES, WakeMatchResult, parse_wake_phrases
-
-
-OPENWAKEWORD_QUEUE_POLL_SECONDS = 0.1
-OPENWAKEWORD_STATUS_INTERVAL_SECONDS = 5.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -150,82 +156,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-class WakeEngineLoopStopped(Exception):
-    pass
-
-
-class WakeEngineRuntimeError(RuntimeError):
-    pass
-
-
-@dataclass(frozen=True)
-class OpenWakeWordListenerHandle:
-    thread: threading.Thread
-    adapter: object
-    event_queue: queue.Queue[WakeEvent]
-    error_queue: queue.Queue[str]
-    bridge_runtime: "_OpenWakeWordBridgeRuntime"
-
-
-class _OpenWakeWordBridgeRuntime:
-    def __init__(
-        self,
-        cooldown_seconds: float,
-        command_queue: queue.Queue[WakeEvent] | None = None,
-    ) -> None:
-        self.accepted_event: WakeEvent | None = None
-        self.active_adapter = None
-        self.command_queue = command_queue
-        self._lock = threading.RLock()
-        self.bridge = WakeCommandBridge(
-            WakeCommandBridgeConfig(post_wake_cooldown_seconds=cooldown_seconds),
-            self._accept_wake_event,
-        )
-
-    def begin_wait(self, adapter) -> None:
-        with self._lock:
-            self.accepted_event = None
-            self.active_adapter = adapter
-
-    def end_wait(self) -> None:
-        with self._lock:
-            self.active_adapter = None
-
-    def handle_event(self, event: WakeEvent):
-        with self._lock:
-            return self.bridge.handle_wake_event(event)
-
-    def mark_command_started(self) -> None:
-        with self._lock:
-            self.bridge.mark_command_started()
-
-    def mark_command_finished(self) -> None:
-        with self._lock:
-            self.bridge.mark_command_finished()
-
-    def mark_tts_started(self) -> None:
-        with self._lock:
-            self.bridge.mark_tts_started()
-
-    def mark_tts_finished(self) -> None:
-        with self._lock:
-            self.bridge.mark_tts_finished()
-
-    def state(self):
-        with self._lock:
-            return self.bridge.state()
-
-    def _accept_wake_event(self, event: WakeEvent) -> object:
-        command_queue = None
-        with self._lock:
-            self.accepted_event = event
-            self.bridge.mark_command_started()
-            command_queue = self.command_queue
-        if command_queue is not None:
-            command_queue.put(event)
-        return {"accepted": True}
-
-
 def _print_wake_engine_runtime_config(
     runtime_config: WakeEngineRuntimeConfig,
     selected_engine: str,
@@ -239,18 +169,6 @@ def _print_wake_engine_runtime_config(
         f"wake_sensitivity={runtime_config.sensitivity}",
     ):
         _log_runtime_message(logger, "info", message)
-
-
-def _create_openwakeword_adapter(runtime_config: WakeEngineRuntimeConfig) -> OpenWakeWordAdapter:
-    return OpenWakeWordAdapter(
-        wake_phrase=runtime_config.wake_phrase,
-        model_path=runtime_config.model_path,
-        model_name=runtime_config.model_name,
-        device=runtime_config.device,
-        sample_rate=runtime_config.sample_rate,
-        sensitivity=runtime_config.sensitivity,
-        cooldown_seconds=runtime_config.cooldown_seconds,
-    )
 
 
 class VoiceOverlayApp:
@@ -936,93 +854,6 @@ def _run_overlay_loop(
             _stop_openwakeword_listener(openwakeword_listener)
 
 
-def _start_openwakeword_listener(
-    *,
-    app: VoiceOverlayApp,
-    runtime_config: WakeEngineRuntimeConfig,
-    bridge_runtime: _OpenWakeWordBridgeRuntime,
-    logger,
-    debug: bool,
-    stop_event: threading.Event,
-    adapter_factory: Callable[[WakeEngineRuntimeConfig], object] | None = None,
-) -> OpenWakeWordListenerHandle:
-    event_queue: queue.Queue[WakeEvent] = queue.Queue()
-    error_queue: queue.Queue[str] = queue.Queue()
-    bridge_runtime.command_queue = event_queue
-    try:
-        adapter = (adapter_factory or _create_openwakeword_adapter)(runtime_config)
-    except Exception as exc:
-        error = str(exc)
-        _log_runtime_message(logger, "error", f"openwakeword_listener_error error={error}")
-        raise WakeEngineRuntimeError(error) from exc
-
-    handle = OpenWakeWordListenerHandle(
-        thread=threading.Thread(
-            target=_run_openwakeword_listener,
-            kwargs={
-                "app": app,
-                "runtime_config": runtime_config,
-                "bridge_runtime": bridge_runtime,
-                "logger": logger,
-                "debug": debug,
-                "stop_event": stop_event,
-                "adapter": adapter,
-                "error_queue": error_queue,
-            },
-            name="openwakeword-listener",
-            daemon=True,
-        ),
-        adapter=adapter,
-        event_queue=event_queue,
-        error_queue=error_queue,
-        bridge_runtime=bridge_runtime,
-    )
-    handle.thread.start()
-    return handle
-
-
-def _run_openwakeword_listener(
-    *,
-    app: VoiceOverlayApp,
-    runtime_config: WakeEngineRuntimeConfig,
-    bridge_runtime: _OpenWakeWordBridgeRuntime,
-    logger,
-    debug: bool,
-    stop_event: threading.Event,
-    adapter,
-    error_queue: queue.Queue[str],
-) -> None:
-    _log_runtime_message(logger, "info", "openwakeword_listener_starting")
-    try:
-        _log_runtime_message(logger, "info", "openwakeword_listener_running")
-        app.thread_safe_set_state(STATE_WAKE_CHECKING, f"openWakeWord：{runtime_config.wake_phrase}")
-        bridge_runtime.begin_wait(adapter)
-        try:
-            adapter.run_until_stopped(
-                stop_event,
-                on_event=lambda event: _handle_openwakeword_event(event, bridge_runtime, logger, debug),
-                debug=debug,
-                on_status=lambda status: _log_openwakeword_listener_status(logger, status),
-                status_interval_seconds=OPENWAKEWORD_STATUS_INTERVAL_SECONDS,
-            )
-        except KeyboardInterrupt:
-            raise
-        except Exception as exc:
-            error = _wake_engine_runtime_error(adapter, exc)
-            _log_runtime_message(logger, "error", f"openwakeword_listener_error error={error}")
-            error_queue.put(error)
-            if runtime_config.fallback_enabled:
-                _log_runtime_message(logger, "warning", f"fallback_to_stt_text reason={error}")
-            else:
-                stop_event.set()
-            return
-        finally:
-            bridge_runtime.end_wait()
-    finally:
-        _stop_adapter_safely(adapter)
-        _log_runtime_message(logger, "info", "openwakeword_listener_stopped")
-
-
 def _run_openwakeword_turn_from_listener(
     *,
     app: VoiceOverlayApp,
@@ -1051,34 +882,6 @@ def _run_openwakeword_turn_from_listener(
         record_func=record_func,
         build_recording_path_func=build_recording_path_func,
     )
-
-
-def _wait_for_openwakeword_event(
-    listener: OpenWakeWordListenerHandle,
-    stop_event: threading.Event,
-) -> WakeEvent:
-    while True:
-        try:
-            error = listener.error_queue.get_nowait()
-        except queue.Empty:
-            error = None
-        if error is not None:
-            raise WakeEngineRuntimeError(error)
-
-        if stop_event.is_set():
-            raise WakeEngineLoopStopped()
-
-        try:
-            return listener.event_queue.get(timeout=OPENWAKEWORD_QUEUE_POLL_SECONDS)
-        except queue.Empty:
-            pass
-
-        if not listener.thread.is_alive():
-            try:
-                error = listener.error_queue.get_nowait()
-            except queue.Empty:
-                error = "openwakeword listener stopped unexpectedly"
-            raise WakeEngineRuntimeError(error)
 
 
 def _record_openwakeword_command(
@@ -1139,36 +942,6 @@ def _record_openwakeword_command(
     )
 
 
-def _stop_openwakeword_listener(listener: OpenWakeWordListenerHandle) -> None:
-    _stop_adapter_safely(listener.adapter)
-    listener.thread.join(timeout=1.0)
-
-
-def _stop_adapter_safely(adapter) -> None:
-    if adapter is None:
-        return
-    try:
-        adapter.stop()
-    except Exception:
-        pass
-
-
-def _log_openwakeword_listener_status(logger, status: OpenWakeWordRuntimeStatus) -> None:
-    labels = ",".join(status.model_labels) if status.model_labels else "-"
-    max_label = status.max_label or "-"
-    max_score = "-" if status.max_score is None else f"{status.max_score:.3f}"
-    _log_runtime_message(
-        logger,
-        "info",
-        "openwakeword_listener_status "
-        f"device_index={status.device} sample_rate={status.sample_rate} "
-        f"sensitivity={status.sensitivity} model_labels={labels} "
-        f"frames={status.frames_read} max_label={max_label} max_score={max_score} "
-        f"raw={status.raw_detections} coalesced={status.coalesced_events} "
-        f"suppressed={status.suppressed_detections}",
-    )
-
-
 def _run_openwakeword_wake_loop_once(
     *,
     app: VoiceOverlayApp,
@@ -1225,44 +998,6 @@ def _run_openwakeword_wake_loop_once(
     finally:
         _stop_adapter_safely(adapter)
     raise WakeEngineLoopStopped()
-
-
-def _handle_openwakeword_event(
-    event: WakeEvent,
-    bridge_runtime: _OpenWakeWordBridgeRuntime,
-    logger,
-    debug: bool,
-) -> None:
-    _log_runtime_message(
-        logger,
-        "info",
-        f"openwakeword_wake_event label={event.label} score={event.score}",
-    )
-    decision = bridge_runtime.handle_event(event)
-    _log_runtime_message(
-        logger,
-        "info",
-        "openwakeword_bridge_decision "
-        f"accepted={_bool_text(decision.accepted)} reason={decision.reason}",
-    )
-    if debug:
-        _safe_print(
-            "openWakeWord event "
-            f"label={event.label} score={event.score} "
-            f"accepted={'true' if decision.accepted else 'false'} "
-            f"reason={decision.reason}"
-        )
-    if not decision.accepted:
-        logger.info("openWakeWord wake event suppressed: reason=%s label=%s", decision.reason, event.label)
-
-
-def _wake_engine_runtime_error(adapter, exc: Exception) -> str:
-    try:
-        status = adapter.status()
-    except Exception:
-        status = None
-    status_error = getattr(status, "error", None)
-    return str(status_error or exc)
 
 
 def _call_overlay_transcription(func: Callable[..., dict], wav_path: Path, server_url: str, mode: str) -> dict:
