@@ -1,6 +1,6 @@
-# 小黄 Windows 桌面 AI 助手 V1.2D-C（Wake Command Bridge 模拟验证）
+# 小黄 Windows 桌面 AI 助手 V1.2E（openWakeWord overlay listener）
 
-小黄是一个 Windows 桌面 AI 助手项目。当前已从 V0.9.1 单句原型演进到 V1.2D-C WakeEvent -> Command Recorder 模拟桥接验证阶段。
+小黄是一个 Windows 桌面 AI 助手项目。当前已从 V0.9.1 单句原型演进到 V1.2E openWakeWord feature flag 接入阶段。
 
 管道：唤醒后听一句话 → STT server 转写 → DeepSeek 单句回复（或规则 fallback） → 可选 edge-tts 播放 → 多轮会话（可选）。
 
@@ -262,7 +262,9 @@ V1.2D-B 真人 safety-check 已通过：device 0、10 秒、2 轮重复运行后
 
 V1.2D-C 已新增 `src/xiaohuang/wake_command_bridge_service.py` 和 `scripts/wake_command_bridge_demo.py`，用 fake `WakeEvent` 与 fake command starter 验证 bridge 状态机：`accepted`、`cooldown`、`command_active`、`tts_active`、`disabled`、`bridge_busy`、`invalid_event`、`recorder_error`。默认 demo 不打开麦克风、不启动 openWakeWord/STT/overlay/LLM/TTS；`events=3`、`interval=0.5`、`cooldown=2.5` 时只会启动一次 fake command starter。本阶段仍不修改 `voice_overlay.py`，不替换 STT 文本唤醒；下一步是 V1.2D-D 只读分析正式 command recorder 接入点。
 
-V1.2E 已把 openWakeWord 以 feature flag 接入 `voice_overlay.py` 主链路。默认 `wake.engine` 仍是 `stt_text`，旧 STT 文本唤醒行为不变；只有显式配置 `wake.engine="openwakeword"` 时才启动 `OpenWakeWordAdapter`。openWakeWord 依赖或运行失败时，`fallback_enabled=true` 会回退到旧 `stt_text` 路径；`fallback_enabled=false` 会显示错误并保持安全状态。
+V1.2E 已把 openWakeWord 以 feature flag 接入 `voice_overlay.py` 主链路。默认 `wake.engine` 仍是 `stt_text`，旧 STT 文本唤醒行为不变；只有显式配置 `wake.engine="openwakeword"` 时才启动 `OpenWakeWordAdapter`。openWakeWord 由 `voice_overlay.py` 自己启动后台 listener thread，收到 accepted `WakeEvent` 后投递到 overlay worker，并进入旧 VAD command recorder / STT command 入口。openWakeWord 依赖或运行失败时，`fallback_enabled=true` 会回退到旧 `stt_text` 路径；`fallback_enabled=false` 会记录错误并安全停止。
+
+V1.2E listener 日志关键字：启动时输出 `wake_engine_selected`、`wake_fallback_enabled`、`wake_device_index`、`wake_cooldown_seconds`、`wake_sensitivity`；openWakeWord 分支输出 `openwakeword_listener_starting`、`openwakeword_listener_running`、`openwakeword_listener_cycle_done`；accepted 事件输出 `openwakeword_wake_event`、`openwakeword_bridge_decision`、`command_record_start source=openwakeword`。command recording 和 TTS 播放期间会屏蔽/暂停 wake event，避免重复触发或自唤醒。
 
 最小 openWakeWord 配置示例：
 

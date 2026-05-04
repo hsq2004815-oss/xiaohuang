@@ -2,13 +2,23 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2E — openWakeWord behind feature flag 接入 voice_overlay 主链路
-- **最新功能 commit**：V1.2E voice overlay wake engine feature flag（见 git log 最新提交）
+- **阶段**：V1.2E — openWakeWord overlay listener 修复
+- **最新功能 commit**：V1.2E openWakeWord listener lifecycle fix（见 git log 最新提交）
 - **最新文档 commit**：V1.2E README/TASK_MEMORY 最小使用说明（见 git log 最新提交）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
-- **工作区**：V1.2E voice_overlay/config/tests/README 改动已完成并待提交；运行产物均 ignored
-- **测试**：389 tests OK、compileall OK、voice_overlay/wake_engine_demo/wake_command_bridge_demo/control_panel/tray_app help OK；本次不自动跑真实 openWakeWord 主链路
+- **工作区**：当前修复将 openWakeWord 从同步 turn-loop polling 改为 voice_overlay 自己启动后台 listener thread；运行产物均 ignored
+- **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+
+### V1.2E openWakeWord listener 修复记录（2026-05-04）
+
+- 根因：上一版 `voice_overlay.py` 的 openWakeWord 集成仍在 overlay turn loop 里同步创建 adapter 并短时 `run_for_duration()`，没有 overlay-owned background listener 生命周期，导致主程序隔离测试中缺少 listener startup/running/error/cycle 日志，且不够明确证明 listener 持续运行。
+- 修复：`voice_overlay.py` 在 `wake.engine=openwakeword` 时创建 daemon listener thread；listener 持续按短窗口循环调用 adapter，把 accepted `WakeEvent` 通过 Queue 投递给 overlay worker。
+- accepted event 进入统一 command recorder：overlay worker 从 queue 取事件后调用旧 VAD command recording + STT command 入口，不新增残缺命令流程。
+- 日志新增/规范：`wake_engine_selected`、`wake_fallback_enabled`、`wake_device_index`、`wake_cooldown_seconds`、`wake_sensitivity`、`openwakeword_listener_starting`、`openwakeword_listener_running`、`openwakeword_listener_cycle_done`、`openwakeword_listener_error`、`fallback_to_stt_text`、`openwakeword_wake_event`、`openwakeword_bridge_decision`、`command_record_start source=openwakeword`。
+- command recording 和 TTS 播放期间通过 bridge state 暂停/屏蔽 openWakeWord event；退出时 stop listener / adapter。
+- 单测新增 fake adapter 覆盖 listener thread 启动、连续循环、不打开真实麦克风的 accepted event queue handoff、command/tts active 抑制、listener error fallback 和 fallback disabled safe stop。
+- 未修改 PowerShell、requirements、`E:\DataBase`；未下载模型；未训练模型。
 
 ### V1.2E openWakeWord feature flag 接入记录（2026-05-04）
 

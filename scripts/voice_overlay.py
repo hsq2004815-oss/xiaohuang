@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import queue
 from dataclasses import dataclass
 import math
 import sys
@@ -69,6 +70,7 @@ from xiaohuang.wake_word_service import DEFAULT_WAKE_ALIASES, WakeMatchResult, p
 WAKE_ENGINE_STT_TEXT = "stt_text"
 WAKE_ENGINE_OPENWAKEWORD = "openwakeword"
 OPENWAKEWORD_POLL_SECONDS = 1.0
+OPENWAKEWORD_QUEUE_POLL_SECONDS = 0.1
 
 
 def parse_args() -> argparse.Namespace:
@@ -169,41 +171,80 @@ class WakeEngineRuntimeError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class OpenWakeWordListenerHandle:
+    thread: threading.Thread
+    adapter: object
+    event_queue: queue.Queue[WakeEvent]
+    error_queue: queue.Queue[str]
+    bridge_runtime: "_OpenWakeWordBridgeRuntime"
+
+
 class _OpenWakeWordBridgeRuntime:
-    def __init__(self, cooldown_seconds: float) -> None:
+    def __init__(
+        self,
+        cooldown_seconds: float,
+        command_queue: queue.Queue[WakeEvent] | None = None,
+    ) -> None:
         self.accepted_event: WakeEvent | None = None
         self.active_adapter = None
+        self.command_queue = command_queue
+        self._lock = threading.RLock()
         self.bridge = WakeCommandBridge(
             WakeCommandBridgeConfig(post_wake_cooldown_seconds=cooldown_seconds),
             self._accept_wake_event,
         )
 
     def begin_wait(self, adapter) -> None:
-        self.accepted_event = None
-        self.active_adapter = adapter
+        with self._lock:
+            self.accepted_event = None
+            self.active_adapter = adapter
 
     def end_wait(self) -> None:
-        self.active_adapter = None
+        with self._lock:
+            self.active_adapter = None
 
     def handle_event(self, event: WakeEvent):
-        return self.bridge.handle_wake_event(event)
+        with self._lock:
+            return self.bridge.handle_wake_event(event)
 
     def mark_command_started(self) -> None:
-        self.bridge.mark_command_started()
+        adapter = None
+        with self._lock:
+            self.bridge.mark_command_started()
+            adapter = self.active_adapter
+        _stop_adapter_safely(adapter)
 
     def mark_command_finished(self) -> None:
-        self.bridge.mark_command_finished()
+        with self._lock:
+            self.bridge.mark_command_finished()
 
     def mark_tts_started(self) -> None:
-        self.bridge.mark_tts_started()
+        adapter = None
+        with self._lock:
+            self.bridge.mark_tts_started()
+            adapter = self.active_adapter
+        _stop_adapter_safely(adapter)
 
     def mark_tts_finished(self) -> None:
-        self.bridge.mark_tts_finished()
+        with self._lock:
+            self.bridge.mark_tts_finished()
+
+    def state(self):
+        with self._lock:
+            return self.bridge.state()
 
     def _accept_wake_event(self, event: WakeEvent) -> object:
-        self.accepted_event = event
-        if self.active_adapter is not None:
-            self.active_adapter.stop()
+        adapter = None
+        command_queue = None
+        with self._lock:
+            self.accepted_event = event
+            self.bridge.mark_command_started()
+            adapter = self.active_adapter
+            command_queue = self.command_queue
+        _stop_adapter_safely(adapter)
+        if command_queue is not None:
+            command_queue.put(event)
         return {"accepted": True}
 
 
@@ -268,6 +309,21 @@ def _normalize_wake_engine(engine: str | None) -> str:
 def _format_openwakeword_dependency_error(status: OpenWakeWordDependencyStatus) -> str:
     details = "; ".join(status.errors) if status.errors else "dependency check failed"
     return f"openwakeword dependency unavailable: {details}"
+
+
+def _print_wake_engine_runtime_config(
+    runtime_config: WakeEngineRuntimeConfig,
+    selected_engine: str,
+    logger,
+) -> None:
+    for message in (
+        f"wake_engine_selected={selected_engine}",
+        f"wake_fallback_enabled={_bool_text(runtime_config.fallback_enabled)}",
+        f"wake_device_index={runtime_config.device}",
+        f"wake_cooldown_seconds={runtime_config.cooldown_seconds}",
+        f"wake_sensitivity={runtime_config.sensitivity}",
+    ):
+        _log_runtime_message(logger, "info", message)
 
 
 def _create_openwakeword_adapter(runtime_config: WakeEngineRuntimeConfig) -> OpenWakeWordAdapter:
@@ -598,6 +654,7 @@ def main() -> int:
     if wake_engine_plan.warning:
         print(wake_engine_plan.warning)
         logger.warning(wake_engine_plan.warning)
+    _print_wake_engine_runtime_config(wake_engine_runtime, wake_engine_plan.engine, logger)
 
     tts_output_dir = PROJECT_ROOT / args.tts_output_dir
     post_response_cooldown = resolve_post_response_cooldown(enable_tts, app_config.overlay.post_response_cooldown)
@@ -706,239 +763,510 @@ def _run_overlay_loop(
             latency_tracker=turn_tracker,
         )
 
-    openwakeword_bridge = (
-        _OpenWakeWordBridgeRuntime(wake_engine_runtime.cooldown_seconds)
-        if wake_engine_mode == WAKE_ENGINE_OPENWAKEWORD and wake_engine_runtime is not None
-        else None
-    )
-
-    while not stop_event.is_set():
+    openwakeword_bridge: _OpenWakeWordBridgeRuntime | None = None
+    openwakeword_listener: OpenWakeWordListenerHandle | None = None
+    if wake_engine_mode == WAKE_ENGINE_OPENWAKEWORD and wake_engine_runtime is not None:
+        openwakeword_bridge = _OpenWakeWordBridgeRuntime(wake_engine_runtime.cooldown_seconds)
         try:
-            turn_tracker = LatencyTracker()
-            turn_tracker.start("turn_total_ms")
-
-            if wake_engine_mode == WAKE_ENGINE_OPENWAKEWORD and wake_engine_runtime is not None and openwakeword_bridge is not None:
-                try:
-                    result = _run_openwakeword_wake_loop_once(
-                        app=app,
-                        options=options,
-                        runtime_config=wake_engine_runtime,
-                        bridge_runtime=openwakeword_bridge,
-                        logger=logger,
-                        debug=debug,
-                        stop_event=stop_event,
-                        latency_tracker=turn_tracker,
-                        resident_hidden=resident_hidden,
-                        request_transcription_func=_overlay_stt,
-                    )
-                except WakeEngineLoopStopped:
-                    break
-                except WakeEngineRuntimeError as exc:
-                    if wake_engine_runtime.fallback_enabled:
-                        logger.warning("openWakeWord runtime failed; falling back to stt_text: %s", exc)
-                        if debug:
-                            _safe_print(f"openWakeWord runtime failed; falling back to stt_text: {exc}")
-                        result = _run_stt_text_turn(turn_tracker)
-                    else:
-                        logger.error("openWakeWord runtime failed and fallback is disabled: %s", exc)
-                        app.thread_safe_set_state(STATE_ERROR, str(exc))
-                        break
-            else:
-                result = _run_stt_text_turn(turn_tracker)
-            if stop_event.is_set():
-                break
-            logger.info("Overlay command transcription: %s", result.command_text)
-            app.thread_safe_set_state(STATE_REPLYING)
-
-            pipeline_config = ReplyPipelineConfig(
-                enable_llm=enable_llm,
-                enable_tts=enable_tts,
-                llm_config=llm_config,
-                tts_voice=tts_voice,
-                tts_output_dir=tts_output_dir,
-                persona=persona,
-            )
-            pipeline_result = _generate_reply_pipeline_guarded(
-                result.command_text,
-                config=pipeline_config,
+            openwakeword_listener = _start_openwakeword_listener(
                 app=app,
+                runtime_config=wake_engine_runtime,
                 bridge_runtime=openwakeword_bridge,
-                on_debug=_make_llm_debug_handler(logger, debug),
-                playback_warn=lambda message: _playback_warning(logger, message),
-                latency_tracker=turn_tracker,
+                logger=logger,
+                debug=debug,
+                stop_event=stop_event,
             )
-
-            if debug:
-                _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
-                _safe_print(f"Reply source: {pipeline_result.reply_source}")
-                turn_tracker.end("turn_total_ms")
-                summary = turn_tracker.summary_ms()
-                if summary:
-                    _safe_print(format_latency_summary(summary, turn=1, source=pipeline_result.reply_source))
-            turn_tracker.end("turn_total_ms")
-            logger.info(format_latency_summary(turn_tracker.summary_ms(), turn=1, source=pipeline_result.reply_source))
-            logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
-
-            if pipeline_result.tts_error:
-                _warn(logger, pipeline_result.tts_error)
-                if not session_config.enabled:
-                    app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
-
-            if session_config.enabled:
-                if stop_event.wait(0.3):
-                    break
+        except WakeEngineRuntimeError as exc:
+            if wake_engine_runtime.fallback_enabled:
+                _log_runtime_message(logger, "warning", f"fallback_to_stt_text reason={exc}")
+                wake_engine_mode = WAKE_ENGINE_STT_TEXT
             else:
-                app.thread_safe_set_state(
-                    STATE_RESULT,
-                    build_reply_result_text(
-                        result.command_text,
-                        pipeline_result.reply_text,
-                        pipeline_result.source_note,
-                        assistant_name=app.assistant_name,
-                    ),
-                )
-                if pipeline_result.tts_error:
-                    _warn(logger, pipeline_result.tts_error)
-                    app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
-                if debug and post_response_cooldown > 0:
-                    _safe_print(f"Post-response cooldown: {post_response_cooldown:.1f}s")
-                if stop_event.wait(post_response_cooldown):
-                    break
+                _log_runtime_message(logger, "error", f"openwakeword_listener_error error={exc}")
+                app.thread_safe_set_state(STATE_ERROR, str(exc))
+                return
 
-            # --- conversation session: listen for follow-up commands ---
-            turn_count = 1
-            session_started = time.perf_counter()
-            no_speech_retries = 0
-            exit_phrase_detected = False
-            while (
-                should_continue_session(
-                    turn_count, session_config,
-                    elapsed_seconds=time.perf_counter() - session_started,
-                    no_speech_retries=no_speech_retries,
-                )
-                and not stop_event.is_set()
-            ):
-                followup_timeout = get_followup_timeout_seconds(session_config)
-                st = LatencyTracker()
-                st.start("turn_total_ms")
-                if debug:
-                    _safe_print(f"Session turn {turn_count + 1}/{session_config.max_turns} (follow-up window: {followup_timeout:.1f}s)")
-                app.thread_safe_set_state(STATE_LISTENING, "你还可以继续说")
+    try:
+        while not stop_event.is_set():
+            try:
+                turn_tracker = LatencyTracker()
+                turn_tracker.start("turn_total_ms")
 
-                next_text = _record_command_transcribe(
-                    options=options,
-                    max_seconds=followup_timeout,
-                    stt_mode=STT_MODE_COMMAND,
-                    debug=debug,
-                    logger=logger,
-                    latency_tracker=st,
-                )
+                if (
+                    wake_engine_mode == WAKE_ENGINE_OPENWAKEWORD
+                    and wake_engine_runtime is not None
+                    and openwakeword_bridge is not None
+                    and openwakeword_listener is not None
+                ):
+                    try:
+                        result = _run_openwakeword_turn_from_listener(
+                            app=app,
+                            options=options,
+                            listener=openwakeword_listener,
+                            logger=logger,
+                            debug=debug,
+                            stop_event=stop_event,
+                            latency_tracker=turn_tracker,
+                            resident_hidden=resident_hidden,
+                            request_transcription_func=_overlay_stt,
+                        )
+                    except WakeEngineLoopStopped:
+                        break
+                    except WakeEngineRuntimeError as exc:
+                        _stop_openwakeword_listener(openwakeword_listener)
+                        openwakeword_listener = None
+                        if wake_engine_runtime.fallback_enabled:
+                            wake_engine_mode = WAKE_ENGINE_STT_TEXT
+                            result = _run_stt_text_turn(turn_tracker)
+                        else:
+                            app.thread_safe_set_state(STATE_ERROR, str(exc))
+                            break
+                else:
+                    result = _run_stt_text_turn(turn_tracker)
                 if stop_event.is_set():
                     break
-                if not next_text:
-                    no_speech_retries += 1
-                    if debug:
-                        _safe_print(f"Session no speech retry {no_speech_retries}/{session_config.max_no_speech_retries + 1}")
-                    if should_exit_for_no_speech(no_speech_retries, session_config):
-                        logger.info("Session ended: no_speech")
-                        break
-                    continue
+                logger.info("Overlay command transcription: %s", result.command_text)
+                app.thread_safe_set_state(STATE_REPLYING)
+
+                pipeline_config = ReplyPipelineConfig(
+                    enable_llm=enable_llm,
+                    enable_tts=enable_tts,
+                    llm_config=llm_config,
+                    tts_voice=tts_voice,
+                    tts_output_dir=tts_output_dir,
+                    persona=persona,
+                )
+                pipeline_result = _generate_reply_pipeline_guarded(
+                    result.command_text,
+                    config=pipeline_config,
+                    app=app,
+                    bridge_runtime=openwakeword_bridge,
+                    on_debug=_make_llm_debug_handler(logger, debug),
+                    playback_warn=lambda message: _playback_warning(logger, message),
+                    latency_tracker=turn_tracker,
+                )
+
                 if debug:
-                    _safe_print(f"Session command: {next_text}")
+                    _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
+                    _safe_print(f"Reply source: {pipeline_result.reply_source}")
+                    turn_tracker.end("turn_total_ms")
+                    summary = turn_tracker.summary_ms()
+                    if summary:
+                        _safe_print(format_latency_summary(summary, turn=1, source=pipeline_result.reply_source))
+                turn_tracker.end("turn_total_ms")
+                logger.info(format_latency_summary(turn_tracker.summary_ms(), turn=1, source=pipeline_result.reply_source))
+                logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
 
-                no_speech_retries = 0
+                if pipeline_result.tts_error:
+                    _warn(logger, pipeline_result.tts_error)
+                    if not session_config.enabled:
+                        app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
 
-                if is_session_exit_text(next_text):
-                    if debug:
-                        _safe_print("Session exit phrase detected")
-                    pipeline_result = ReplyPipelineResult(
-                        reply_text=SESSION_EXIT_REPLY, reply_source="session_exit", source_note=None,
-                    )
-                    if enable_tts and not stop_event.is_set():
-                        pipeline_result = _generate_reply_pipeline_guarded(
-                            next_text, config=pipeline_config,
-                            app=app,
-                            bridge_runtime=openwakeword_bridge,
-                            on_debug=_make_llm_debug_handler(logger, debug),
-                            playback_warn=lambda m: _playback_warning(logger, m),
-                            latency_tracker=st,
-                        )
-                    _safe_print(f"XiaoHuang: {pipeline_result.reply_text}")
-                    logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
-                    st.end("turn_total_ms")
-                    logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
+                if session_config.enabled:
+                    if stop_event.wait(0.3):
+                        break
+                else:
                     app.thread_safe_set_state(
                         STATE_RESULT,
                         build_reply_result_text(
-                            next_text,
+                            result.command_text,
                             pipeline_result.reply_text,
                             pipeline_result.source_note,
                             assistant_name=app.assistant_name,
                         ),
                     )
-                    exit_phrase_detected = True
-                    turn_count += 1
+                    if pipeline_result.tts_error:
+                        _warn(logger, pipeline_result.tts_error)
+                        app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
+                    if debug and post_response_cooldown > 0:
+                        _safe_print(f"Post-response cooldown: {post_response_cooldown:.1f}s")
                     if stop_event.wait(post_response_cooldown):
                         break
-                    break
 
-                pipeline_result = _generate_reply_pipeline_guarded(
-                    next_text, config=pipeline_config,
-                    app=app,
-                    bridge_runtime=openwakeword_bridge,
-                    on_debug=_make_llm_debug_handler(logger, debug),
-                    playback_warn=lambda m: _playback_warning(logger, m),
-                    latency_tracker=st,
-                )
-                _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
-                _safe_print(f"Reply source: {pipeline_result.reply_source}")
-                st.end("turn_total_ms")
-                logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
-                logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
-                if pipeline_result.tts_error:
-                    _warn(logger, pipeline_result.tts_error)
-                if stop_event.wait(0.3):
-                    break
-                turn_count += 1
+                # --- conversation session: listen for follow-up commands ---
+                turn_count = 1
+                session_started = time.perf_counter()
+                no_speech_retries = 0
+                exit_phrase_detected = False
+                while (
+                    should_continue_session(
+                        turn_count, session_config,
+                        elapsed_seconds=time.perf_counter() - session_started,
+                        no_speech_retries=no_speech_retries,
+                    )
+                    and not stop_event.is_set()
+                ):
+                    followup_timeout = get_followup_timeout_seconds(session_config)
+                    st = LatencyTracker()
+                    st.start("turn_total_ms")
+                    if debug:
+                        _safe_print(f"Session turn {turn_count + 1}/{session_config.max_turns} (follow-up window: {followup_timeout:.1f}s)")
+                    app.thread_safe_set_state(STATE_LISTENING, "你还可以继续说")
 
-            # --- end session, return to standby ---
-            reason = get_session_end_reason(
-                turn_count=turn_count, config=session_config,
-                elapsed_seconds=time.perf_counter() - session_started,
-                no_speech_retries=no_speech_retries,
-                exit_phrase_detected=exit_phrase_detected,
-                stop_event_set=stop_event.is_set(),
-            )
-            if reason:
-                logger.info(
-                    "Session ended: reason=%s completed_turns=%s max_turns=%s elapsed_seconds=%.1f "
-                    "max_session_seconds=%.1f no_speech_retries=%s max_no_speech_retries=%s",
-                    reason, turn_count, session_config.max_turns,
-                    time.perf_counter() - session_started, session_config.max_session_seconds,
-                    no_speech_retries, session_config.max_no_speech_retries,
+                    next_text = _record_command_transcribe(
+                        options=options,
+                        max_seconds=followup_timeout,
+                        stt_mode=STT_MODE_COMMAND,
+                        debug=debug,
+                        logger=logger,
+                        latency_tracker=st,
+                    )
+                    if stop_event.is_set():
+                        break
+                    if not next_text:
+                        no_speech_retries += 1
+                        if debug:
+                            _safe_print(f"Session no speech retry {no_speech_retries}/{session_config.max_no_speech_retries + 1}")
+                        if should_exit_for_no_speech(no_speech_retries, session_config):
+                            logger.info("Session ended: no_speech")
+                            break
+                        continue
+                    if debug:
+                        _safe_print(f"Session command: {next_text}")
+
+                    no_speech_retries = 0
+
+                    if is_session_exit_text(next_text):
+                        if debug:
+                            _safe_print("Session exit phrase detected")
+                        pipeline_result = ReplyPipelineResult(
+                            reply_text=SESSION_EXIT_REPLY, reply_source="session_exit", source_note=None,
+                        )
+                        if enable_tts and not stop_event.is_set():
+                            pipeline_result = _generate_reply_pipeline_guarded(
+                                next_text, config=pipeline_config,
+                                app=app,
+                                bridge_runtime=openwakeword_bridge,
+                                on_debug=_make_llm_debug_handler(logger, debug),
+                                playback_warn=lambda m: _playback_warning(logger, m),
+                                latency_tracker=st,
+                            )
+                        _safe_print(f"XiaoHuang: {pipeline_result.reply_text}")
+                        logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
+                        st.end("turn_total_ms")
+                        logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
+                        app.thread_safe_set_state(
+                            STATE_RESULT,
+                            build_reply_result_text(
+                                next_text,
+                                pipeline_result.reply_text,
+                                pipeline_result.source_note,
+                                assistant_name=app.assistant_name,
+                            ),
+                        )
+                        exit_phrase_detected = True
+                        turn_count += 1
+                        if stop_event.wait(post_response_cooldown):
+                            break
+                        break
+
+                    pipeline_result = _generate_reply_pipeline_guarded(
+                        next_text, config=pipeline_config,
+                        app=app,
+                        bridge_runtime=openwakeword_bridge,
+                        on_debug=_make_llm_debug_handler(logger, debug),
+                        playback_warn=lambda m: _playback_warning(logger, m),
+                        latency_tracker=st,
+                    )
+                    _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
+                    _safe_print(f"Reply source: {pipeline_result.reply_source}")
+                    st.end("turn_total_ms")
+                    logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
+                    logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
+                    if pipeline_result.tts_error:
+                        _warn(logger, pipeline_result.tts_error)
+                    if stop_event.wait(0.3):
+                        break
+                    turn_count += 1
+
+                # --- end session, return to standby ---
+                reason = get_session_end_reason(
+                    turn_count=turn_count, config=session_config,
+                    elapsed_seconds=time.perf_counter() - session_started,
+                    no_speech_retries=no_speech_retries,
+                    exit_phrase_detected=exit_phrase_detected,
+                    stop_event_set=stop_event.is_set(),
                 )
-            if stop_event.wait(0.5 if post_response_cooldown > 0 else 0):
+                if reason:
+                    logger.info(
+                        "Session ended: reason=%s completed_turns=%s max_turns=%s elapsed_seconds=%.1f "
+                        "max_session_seconds=%.1f no_speech_retries=%s max_no_speech_retries=%s",
+                        reason, turn_count, session_config.max_turns,
+                        time.perf_counter() - session_started, session_config.max_session_seconds,
+                        no_speech_retries, session_config.max_no_speech_retries,
+                    )
+                if stop_event.wait(0.5 if post_response_cooldown > 0 else 0):
+                    break
+                app.thread_safe_set_state(STATE_IDLE)
+                if resident_hidden:
+                    app.hide_overlay()
+                stop_event.wait(0.5)
+            except (SttServerUnavailable, SttServerError) as exc:
+                if stop_event.is_set():
+                    break
+                logger.warning("Command STT failed: %s", exc)
+                if debug:
+                    _safe_print(f"Command STT failed: {exc}")
+                app.thread_safe_set_state(STATE_ERROR, f"STT 转写失败：{exc}")
+                if stop_event.wait(2.0):
+                    break
+            except Exception as exc:
+                if stop_event.is_set():
+                    break
+                logger.exception("Voice overlay wake loop failed.")
+                app.thread_safe_set_state(STATE_ERROR, str(exc))
+                if stop_event.wait(2.0):
+                    break
+    finally:
+        if openwakeword_listener is not None:
+            _stop_openwakeword_listener(openwakeword_listener)
+
+
+def _start_openwakeword_listener(
+    *,
+    app: VoiceOverlayApp,
+    runtime_config: WakeEngineRuntimeConfig,
+    bridge_runtime: _OpenWakeWordBridgeRuntime,
+    logger,
+    debug: bool,
+    stop_event: threading.Event,
+    adapter_factory: Callable[[WakeEngineRuntimeConfig], object] | None = None,
+) -> OpenWakeWordListenerHandle:
+    event_queue: queue.Queue[WakeEvent] = queue.Queue()
+    error_queue: queue.Queue[str] = queue.Queue()
+    bridge_runtime.command_queue = event_queue
+    try:
+        adapter = (adapter_factory or _create_openwakeword_adapter)(runtime_config)
+    except Exception as exc:
+        error = str(exc)
+        _log_runtime_message(logger, "error", f"openwakeword_listener_error error={error}")
+        raise WakeEngineRuntimeError(error) from exc
+
+    handle = OpenWakeWordListenerHandle(
+        thread=threading.Thread(
+            target=_run_openwakeword_listener,
+            kwargs={
+                "app": app,
+                "runtime_config": runtime_config,
+                "bridge_runtime": bridge_runtime,
+                "logger": logger,
+                "debug": debug,
+                "stop_event": stop_event,
+                "adapter": adapter,
+                "error_queue": error_queue,
+            },
+            name="openwakeword-listener",
+            daemon=True,
+        ),
+        adapter=adapter,
+        event_queue=event_queue,
+        error_queue=error_queue,
+        bridge_runtime=bridge_runtime,
+    )
+    handle.thread.start()
+    return handle
+
+
+def _run_openwakeword_listener(
+    *,
+    app: VoiceOverlayApp,
+    runtime_config: WakeEngineRuntimeConfig,
+    bridge_runtime: _OpenWakeWordBridgeRuntime,
+    logger,
+    debug: bool,
+    stop_event: threading.Event,
+    adapter,
+    error_queue: queue.Queue[str],
+) -> None:
+    _log_runtime_message(logger, "info", "openwakeword_listener_starting")
+    try:
+        _log_runtime_message(logger, "info", "openwakeword_listener_running")
+        while not stop_event.is_set():
+            if not _wait_openwakeword_listener_unpaused(bridge_runtime, stop_event):
                 break
-            app.thread_safe_set_state(STATE_IDLE)
-            if resident_hidden:
-                app.hide_overlay()
-            stop_event.wait(0.5)
-        except (SttServerUnavailable, SttServerError) as exc:
-            if stop_event.is_set():
-                break
-            logger.warning("Command STT failed: %s", exc)
-            if debug:
-                _safe_print(f"Command STT failed: {exc}")
-            app.thread_safe_set_state(STATE_ERROR, f"STT 转写失败：{exc}")
-            if stop_event.wait(2.0):
-                break
-        except Exception as exc:
-            if stop_event.is_set():
-                break
-            logger.exception("Voice overlay wake loop failed.")
-            app.thread_safe_set_state(STATE_ERROR, str(exc))
-            if stop_event.wait(2.0):
-                break
+            app.thread_safe_set_state(STATE_WAKE_CHECKING, f"openWakeWord：{runtime_config.wake_phrase}")
+            bridge_runtime.begin_wait(adapter)
+            try:
+                stats = adapter.run_for_duration(
+                    runtime_config.poll_seconds,
+                    on_event=lambda event: _handle_openwakeword_event(event, bridge_runtime, logger, debug),
+                    debug=debug,
+                )
+            except KeyboardInterrupt:
+                raise
+            except Exception as exc:
+                error = _wake_engine_runtime_error(adapter, exc)
+                _log_runtime_message(logger, "error", f"openwakeword_listener_error error={error}")
+                error_queue.put(error)
+                if runtime_config.fallback_enabled:
+                    _log_runtime_message(logger, "warning", f"fallback_to_stt_text reason={error}")
+                else:
+                    stop_event.set()
+                return
+            finally:
+                try:
+                    adapter.stop()
+                finally:
+                    bridge_runtime.end_wait()
+
+            _log_openwakeword_listener_cycle(logger, adapter, stats)
+    finally:
+        _stop_adapter_safely(adapter)
+
+
+def _wait_openwakeword_listener_unpaused(
+    bridge_runtime: _OpenWakeWordBridgeRuntime,
+    stop_event: threading.Event,
+) -> bool:
+    while not stop_event.is_set():
+        state = bridge_runtime.state()
+        if not state.command_active and not state.tts_active:
+            return True
+        if stop_event.wait(0.05):
+            return False
+    return False
+
+
+def _run_openwakeword_turn_from_listener(
+    *,
+    app: VoiceOverlayApp,
+    options: WakeLoopOptions,
+    listener: OpenWakeWordListenerHandle,
+    logger,
+    debug: bool,
+    stop_event: threading.Event,
+    latency_tracker=None,
+    resident_hidden: bool = False,
+    request_transcription_func: Callable[..., dict] = request_transcription,
+    record_func=record_until_silence,
+    build_recording_path_func=build_recording_path,
+) -> WakeLoopResult:
+    event = _wait_for_openwakeword_event(listener, stop_event)
+    return _record_openwakeword_command(
+        event=event,
+        app=app,
+        options=options,
+        bridge_runtime=listener.bridge_runtime,
+        logger=logger,
+        debug=debug,
+        latency_tracker=latency_tracker,
+        resident_hidden=resident_hidden,
+        request_transcription_func=request_transcription_func,
+        record_func=record_func,
+        build_recording_path_func=build_recording_path_func,
+    )
+
+
+def _wait_for_openwakeword_event(
+    listener: OpenWakeWordListenerHandle,
+    stop_event: threading.Event,
+) -> WakeEvent:
+    while True:
+        try:
+            error = listener.error_queue.get_nowait()
+        except queue.Empty:
+            error = None
+        if error is not None:
+            raise WakeEngineRuntimeError(error)
+
+        if stop_event.is_set():
+            raise WakeEngineLoopStopped()
+
+        try:
+            return listener.event_queue.get(timeout=OPENWAKEWORD_QUEUE_POLL_SECONDS)
+        except queue.Empty:
+            pass
+
+        if not listener.thread.is_alive():
+            try:
+                error = listener.error_queue.get_nowait()
+            except queue.Empty:
+                error = "openwakeword listener stopped unexpectedly"
+            raise WakeEngineRuntimeError(error)
+
+
+def _record_openwakeword_command(
+    *,
+    event: WakeEvent,
+    app: VoiceOverlayApp,
+    options: WakeLoopOptions,
+    bridge_runtime: _OpenWakeWordBridgeRuntime,
+    logger,
+    debug: bool,
+    latency_tracker=None,
+    resident_hidden: bool = False,
+    request_transcription_func: Callable[..., dict] = request_transcription,
+    record_func=record_until_silence,
+    build_recording_path_func=build_recording_path,
+) -> WakeLoopResult:
+    _track = _make_latency_track(latency_tracker)
+    if resident_hidden:
+        app.show_overlay()
+    app.thread_safe_set_state(STATE_WAKE_DETECTED, f"{event.wake_phrase} ({event.label})")
+    _log_runtime_message(logger, "info", "command_record_start source=openwakeword")
+
+    bridge_runtime.mark_command_started()
+    try:
+        app.thread_safe_set_state(STATE_LISTENING)
+        command_path = build_recording_path_func(options.recording_dir)
+        _track("command_record_ms", start=True)
+        command_result = record_func(
+            command_path,
+            device_id=options.device_id,
+            sample_rate=options.sample_rate,
+            channels=options.channels,
+            max_seconds=options.max_seconds,
+            silence_seconds=options.silence_seconds,
+        )
+        _track("command_record_ms", start=False)
+        app.thread_safe_set_state(STATE_TRANSCRIBING)
+        _track("command_stt_ms", start=True)
+        command_response = _call_overlay_transcription(
+            request_transcription_func,
+            command_result.path,
+            options.server_url,
+            STT_MODE_COMMAND,
+        )
+        _track("command_stt_ms", start=False)
+    finally:
+        bridge_runtime.mark_command_finished()
+
+    command_text = str(command_response.get("text", ""))
+    if debug:
+        _safe_print(f"Command transcription: {command_text}")
+    return WakeLoopResult(
+        wake_text=event.label,
+        command_text=command_text,
+        command_path=Path(command_result.path),
+        actual_recording_seconds=float(command_result.duration_seconds),
+        stop_reason=str(command_result.stop_reason),
+    )
+
+
+def _stop_openwakeword_listener(listener: OpenWakeWordListenerHandle) -> None:
+    _stop_adapter_safely(listener.adapter)
+    listener.thread.join(timeout=1.0)
+
+
+def _stop_adapter_safely(adapter) -> None:
+    if adapter is None:
+        return
+    try:
+        adapter.stop()
+    except Exception:
+        pass
+
+
+def _log_openwakeword_listener_cycle(logger, adapter, stats) -> None:
+    frames = getattr(adapter, "frames_read", "-")
+    raw = getattr(stats, "raw_detections", "-")
+    coalesced = getattr(stats, "coalesced_events", "-")
+    suppressed = getattr(stats, "suppressed_detections", "-")
+    _log_runtime_message(
+        logger,
+        "info",
+        "openwakeword_listener_cycle_done "
+        f"frames={frames} raw={raw} coalesced={coalesced} suppressed={suppressed}",
+    )
 
 
 def _run_openwakeword_wake_loop_once(
@@ -958,13 +1286,12 @@ def _run_openwakeword_wake_loop_once(
     build_recording_path_func=build_recording_path,
 ) -> WakeLoopResult:
     adapter = (adapter_factory or _create_openwakeword_adapter)(runtime_config)
-    _track = _make_latency_track(latency_tracker)
     try:
         while not stop_event.is_set():
             app.thread_safe_set_state(STATE_WAKE_CHECKING, f"openWakeWord：{runtime_config.wake_phrase}")
             bridge_runtime.begin_wait(adapter)
             try:
-                adapter.run_for_duration(
+                stats = adapter.run_for_duration(
                     runtime_config.poll_seconds,
                     on_event=lambda event: _handle_openwakeword_event(event, bridge_runtime, logger, debug),
                     debug=debug,
@@ -978,63 +1305,27 @@ def _run_openwakeword_wake_loop_once(
                     adapter.stop()
                 finally:
                     bridge_runtime.end_wait()
+            _log_openwakeword_listener_cycle(logger, adapter, stats)
 
             event = bridge_runtime.accepted_event
             if event is None:
                 continue
 
-            if resident_hidden:
-                app.show_overlay()
-            app.thread_safe_set_state(STATE_WAKE_DETECTED, f"{event.wake_phrase} ({event.label})")
-            logger.info(
-                "openWakeWord accepted wake event: label=%s score=%s raw=%s suppressed=%s",
-                event.label,
-                event.score,
-                event.raw_event_count,
-                event.suppressed_event_count,
-            )
-
-            bridge_runtime.mark_command_started()
-            try:
-                app.thread_safe_set_state(STATE_LISTENING)
-                command_path = build_recording_path_func(options.recording_dir)
-                _track("command_record_ms", start=True)
-                command_result = record_func(
-                    command_path,
-                    device_id=options.device_id,
-                    sample_rate=options.sample_rate,
-                    channels=options.channels,
-                    max_seconds=options.max_seconds,
-                    silence_seconds=options.silence_seconds,
-                )
-                _track("command_record_ms", start=False)
-                app.thread_safe_set_state(STATE_TRANSCRIBING)
-                _track("command_stt_ms", start=True)
-                command_response = _call_overlay_transcription(
-                    request_transcription_func,
-                    command_result.path,
-                    options.server_url,
-                    STT_MODE_COMMAND,
-                )
-                _track("command_stt_ms", start=False)
-            finally:
-                bridge_runtime.mark_command_finished()
-
-            command_text = str(command_response.get("text", ""))
-            if debug:
-                _safe_print(f"Command transcription: {command_text}")
-            return WakeLoopResult(
-                wake_text=event.label,
-                command_text=command_text,
-                command_path=Path(command_result.path),
-                actual_recording_seconds=float(command_result.duration_seconds),
-                stop_reason=str(command_result.stop_reason),
+            return _record_openwakeword_command(
+                event=event,
+                app=app,
+                options=options,
+                bridge_runtime=bridge_runtime,
+                logger=logger,
+                debug=debug,
+                latency_tracker=latency_tracker,
+                resident_hidden=resident_hidden,
+                request_transcription_func=request_transcription_func,
+                record_func=record_func,
+                build_recording_path_func=build_recording_path_func,
             )
     finally:
-        try:
-            adapter.stop()
-        except Exception:
-            pass
+        _stop_adapter_safely(adapter)
     raise WakeEngineLoopStopped()
 
 
@@ -1044,7 +1335,18 @@ def _handle_openwakeword_event(
     logger,
     debug: bool,
 ) -> None:
+    _log_runtime_message(
+        logger,
+        "info",
+        f"openwakeword_wake_event label={event.label} score={event.score}",
+    )
     decision = bridge_runtime.handle_event(event)
+    _log_runtime_message(
+        logger,
+        "info",
+        "openwakeword_bridge_decision "
+        f"accepted={_bool_text(decision.accepted)} reason={decision.reason}",
+    )
     if debug:
         _safe_print(
             "openWakeWord event "
@@ -1160,6 +1462,16 @@ def _safe_print(message: str) -> None:
     except UnicodeEncodeError:
         encoding = getattr(sys.stdout, "encoding", "utf-8") or "utf-8"
         print(message.encode(encoding, errors="replace").decode(encoding, errors="replace"))
+
+
+def _log_runtime_message(logger, level: str, message: str) -> None:
+    _safe_print(message)
+    log_func = getattr(logger, level, logger.info)
+    log_func(message)
+
+
+def _bool_text(value: bool) -> str:
+    return "true" if value else "false"
 
 
 def _handle_wake_state(app: VoiceOverlayApp, state: str, payload: str | None = None) -> None:

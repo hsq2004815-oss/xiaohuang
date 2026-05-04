@@ -678,21 +678,187 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         self.assertTrue(adapter.stopped)
         self.assertEqual(bridge.bridge.state().accepted_count, 1)
 
+    def test_openwakeword_startup_config_logs_required_fields(self):
+        from voice_overlay import WAKE_ENGINE_OPENWAKEWORD, _print_wake_engine_runtime_config
+
+        logger = FakeLogger()
+
+        _print_wake_engine_runtime_config(self._runtime_config(), WAKE_ENGINE_OPENWAKEWORD, logger)
+
+        log_text = logger.text
+        self.assertIn("wake_engine_selected=openwakeword", log_text)
+        self.assertIn("wake_fallback_enabled=true", log_text)
+        self.assertIn("wake_device_index=0", log_text)
+        self.assertIn("wake_cooldown_seconds=2.5", log_text)
+        self.assertIn("wake_sensitivity=0.5", log_text)
+
+    def test_openwakeword_listener_thread_starts_and_keeps_running_across_cycles(self):
+        import threading
+        from voice_overlay import (
+            _OpenWakeWordBridgeRuntime,
+            _start_openwakeword_listener,
+            _stop_openwakeword_listener,
+        )
+
+        app = FakeOverlayApp()
+        logger = FakeLogger()
+        stop_event = threading.Event()
+        adapter = LoopingFakeOpenWakeWordAdapter([], stop_event=stop_event, stop_after_runs=2)
+        bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+
+        handle = _start_openwakeword_listener(
+            app=app,
+            runtime_config=self._runtime_config(),
+            bridge_runtime=bridge,
+            logger=logger,
+            debug=False,
+            stop_event=stop_event,
+            adapter_factory=lambda _config: adapter,
+        )
+        handle.thread.join(timeout=1.0)
+        _stop_openwakeword_listener(handle)
+
+        self.assertGreaterEqual(adapter.run_count, 2)
+        self.assertFalse(handle.thread.is_alive())
+        self.assertIn("openwakeword_listener_starting", logger.text)
+        self.assertIn("openwakeword_listener_running", logger.text)
+        self.assertIn("openwakeword_listener_cycle_done", logger.text)
+
+    def test_openwakeword_listener_accepted_event_enters_command_entry_once(self):
+        import threading
+        from voice_overlay import (
+            _OpenWakeWordBridgeRuntime,
+            _run_openwakeword_turn_from_listener,
+            _start_openwakeword_listener,
+            _stop_openwakeword_listener,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = FakeOverlayApp()
+            logger = FakeLogger()
+            stop_event = threading.Event()
+            bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+            adapter = OneShotFakeOpenWakeWordAdapter([self._wake_event()])
+            recording_path = Path(temp_dir) / "command.wav"
+            record_calls: list[Path] = []
+            options = WakeLoopOptions(
+                device_id=0,
+                server_url="http://127.0.0.1:8766",
+                wake_window_seconds=0.1,
+                wake_phrases=["贾维斯"],
+                max_seconds=1.0,
+                silence_seconds=0.1,
+                sample_rate=16000,
+                channels=1,
+                recording_dir=Path(temp_dir),
+            )
+
+            def fake_record(path, **_kwargs):
+                record_calls.append(Path(path))
+                return SimpleNamespace(path=Path(path), duration_seconds=0.4, stop_reason="silence_after_speech")
+
+            handle = _start_openwakeword_listener(
+                app=app,
+                runtime_config=self._runtime_config(),
+                bridge_runtime=bridge,
+                logger=logger,
+                debug=False,
+                stop_event=stop_event,
+                adapter_factory=lambda _config: adapter,
+            )
+            result = _run_openwakeword_turn_from_listener(
+                app=app,
+                options=options,
+                listener=handle,
+                logger=logger,
+                debug=False,
+                stop_event=stop_event,
+                record_func=fake_record,
+                build_recording_path_func=lambda _dir: recording_path,
+                request_transcription_func=lambda _path, _url, mode=None: {"text": "打开记事本"},
+            )
+            stop_event.set()
+            _stop_openwakeword_listener(handle)
+
+        self.assertEqual(result.command_text, "打开记事本")
+        self.assertEqual(len(record_calls), 1)
+        self.assertEqual(bridge.bridge.state().accepted_count, 1)
+        self.assertIn("openwakeword_bridge_decision accepted=true reason=accepted", logger.text)
+        self.assertIn("command_record_start source=openwakeword", logger.text)
+
     def test_openwakeword_bridge_rejects_command_and_tts_active_events(self):
+        import queue
         from voice_overlay import _OpenWakeWordBridgeRuntime
 
-        command_bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+        command_queue = queue.Queue()
+        command_bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5, command_queue=command_queue)
         command_bridge.mark_command_started()
         command_decision = command_bridge.handle_event(self._wake_event())
 
-        tts_bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+        tts_queue = queue.Queue()
+        tts_bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5, command_queue=tts_queue)
         tts_bridge.mark_tts_started()
         tts_decision = tts_bridge.handle_event(self._wake_event())
 
         self.assertFalse(command_decision.accepted)
         self.assertEqual(command_decision.reason, "command_active")
+        self.assertTrue(command_queue.empty())
         self.assertFalse(tts_decision.accepted)
         self.assertEqual(tts_decision.reason, "tts_active")
+        self.assertTrue(tts_queue.empty())
+
+    def test_openwakeword_listener_error_logs_and_fallbacks_when_enabled(self):
+        import threading
+        from voice_overlay import _OpenWakeWordBridgeRuntime, _start_openwakeword_listener
+
+        app = FakeOverlayApp()
+        logger = FakeLogger()
+        stop_event = threading.Event()
+        bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+        adapter = FailingOpenWakeWordAdapter("fake listener failed")
+
+        handle = _start_openwakeword_listener(
+            app=app,
+            runtime_config=self._runtime_config(fallback_enabled=True),
+            bridge_runtime=bridge,
+            logger=logger,
+            debug=False,
+            stop_event=stop_event,
+            adapter_factory=lambda _config: adapter,
+        )
+        handle.thread.join(timeout=1.0)
+
+        self.assertFalse(handle.thread.is_alive())
+        self.assertFalse(stop_event.is_set())
+        self.assertEqual(handle.error_queue.get_nowait(), "fake listener failed")
+        self.assertIn("openwakeword_listener_error error=fake listener failed", logger.text)
+        self.assertIn("fallback_to_stt_text reason=fake listener failed", logger.text)
+
+    def test_openwakeword_listener_error_safely_stops_when_fallback_disabled(self):
+        import threading
+        from voice_overlay import _OpenWakeWordBridgeRuntime, _start_openwakeword_listener
+
+        app = FakeOverlayApp()
+        logger = FakeLogger()
+        stop_event = threading.Event()
+        bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+        adapter = FailingOpenWakeWordAdapter("fake listener failed")
+
+        handle = _start_openwakeword_listener(
+            app=app,
+            runtime_config=self._runtime_config(fallback_enabled=False),
+            bridge_runtime=bridge,
+            logger=logger,
+            debug=False,
+            stop_event=stop_event,
+            adapter_factory=lambda _config: adapter,
+        )
+        handle.thread.join(timeout=1.0)
+
+        self.assertFalse(handle.thread.is_alive())
+        self.assertTrue(stop_event.is_set())
+        self.assertIn("openwakeword_listener_error error=fake listener failed", logger.text)
+        self.assertNotIn("fallback_to_stt_text", logger.text)
 
     def test_command_recording_error_leaves_wake_engine_stopped_and_command_inactive(self):
         import threading
@@ -753,12 +919,14 @@ class FakeOpenWakeWordAdapter:
         self.events = list(events)
         self.stopped = False
         self.run_count = 0
+        self.frames_read = 0
 
     def run_for_duration(self, _duration_seconds, on_event=None, debug=False):
         from xiaohuang.wake_engine_service import WakeEventStats
 
         self.stopped = False
         self.run_count += 1
+        self.frames_read = len(self.events)
         for event in self.events:
             if self.stopped:
                 break
@@ -766,7 +934,7 @@ class FakeOpenWakeWordAdapter:
                 on_event(event)
         return WakeEventStats(
             raw_detections=len(self.events),
-            coalesced_events=1,
+            coalesced_events=1 if self.events else 0,
             suppressed_detections=max(0, len(self.events) - 1),
             cooldown_seconds=2.5,
         )
@@ -778,18 +946,70 @@ class FakeOpenWakeWordAdapter:
         return SimpleNamespace(error=None, running=not self.stopped, ready=not self.stopped, model_loaded=True)
 
 
+class OneShotFakeOpenWakeWordAdapter(FakeOpenWakeWordAdapter):
+    def run_for_duration(self, duration_seconds, on_event=None, debug=False):
+        result = super().run_for_duration(duration_seconds, on_event=on_event, debug=debug)
+        self.events = []
+        return result
+
+
+class LoopingFakeOpenWakeWordAdapter(FakeOpenWakeWordAdapter):
+    def __init__(self, events, *, stop_event, stop_after_runs: int):
+        super().__init__(events)
+        self.stop_event = stop_event
+        self.stop_after_runs = stop_after_runs
+
+    def run_for_duration(self, duration_seconds, on_event=None, debug=False):
+        result = super().run_for_duration(duration_seconds, on_event=on_event, debug=debug)
+        if self.run_count >= self.stop_after_runs:
+            self.stop_event.set()
+        return result
+
+
+class FailingOpenWakeWordAdapter(FakeOpenWakeWordAdapter):
+    def __init__(self, error: str):
+        super().__init__([])
+        self.error = error
+
+    def run_for_duration(self, _duration_seconds, on_event=None, debug=False):
+        self.run_count += 1
+        raise RuntimeError(self.error)
+
+    def status(self):
+        return SimpleNamespace(error=self.error, running=False, ready=False, model_loaded=True)
+
+
 class FakeLogger:
-    def info(self, *_args, **_kwargs):
-        pass
+    def __init__(self):
+        self.records: list[tuple[str, str]] = []
 
-    def warning(self, *_args, **_kwargs):
-        pass
+    @property
+    def text(self) -> str:
+        return "\n".join(message for _level, message in self.records)
 
-    def error(self, *_args, **_kwargs):
-        pass
+    def info(self, *args, **_kwargs):
+        self._record("info", *args)
 
-    def exception(self, *_args, **_kwargs):
-        pass
+    def warning(self, *args, **_kwargs):
+        self._record("warning", *args)
+
+    def error(self, *args, **_kwargs):
+        self._record("error", *args)
+
+    def exception(self, *args, **_kwargs):
+        self._record("exception", *args)
+
+    def _record(self, level: str, *args) -> None:
+        if not args:
+            message = ""
+        else:
+            message = str(args[0])
+            if len(args) > 1:
+                try:
+                    message = message % args[1:]
+                except Exception:
+                    message = " ".join(str(arg) for arg in args)
+        self.records.append((level, message))
 
 
 class ManualClock:
