@@ -495,8 +495,39 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
 
     root = tk.Tk()
     root.title("小黄控制面板")
-    root.geometry("760x800")
-    root.minsize(700, 680)
+    root.geometry("760x650")
+    root.minsize(620, 480)
+
+    # --- scrollable canvas ---
+    canvas = tk.Canvas(root, highlightthickness=0)
+    scrollbar = ttk.Scrollbar(root, orient="vertical", command=canvas.yview)
+
+    main = ttk.Frame(canvas, padding=12)
+    main.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+
+    _canvas_window = canvas.create_window((0, 0), window=main, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    def _on_canvas_width(event):
+        canvas.itemconfig(_canvas_window, width=event.width)
+
+    canvas.bind("<Configure>", _on_canvas_width)
+
+    def _on_mousewheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _bind_mw(_event):
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+    def _unbind_mw(_event):
+        canvas.unbind_all("<MouseWheel>")
+
+    canvas.bind("<MouseWheel>", _on_mousewheel)
+    canvas.bind("<Enter>", _bind_mw)
+    canvas.bind("<Leave>", _unbind_mw)
+
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
 
     state = {
         "closed": False,
@@ -513,9 +544,6 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         "wake_config_syncing": False,
     }
     operation_buttons: list[ttk.Button] = []
-
-    main = ttk.Frame(root, padding=12)
-    main.pack(fill="both", expand=True)
 
     top = ttk.Frame(main)
     top.pack(fill="x")
@@ -622,6 +650,8 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
             var.set(f"[{mark}] {text}")
         error_text = status.last_error or "无"
         elapsed_text = "-" if status.last_operation_elapsed_seconds is None else f"{status.last_operation_elapsed_seconds:.1f}s"
+        dirty_hint = "下方 Wake Engine 配置已修改，请点击保存" if state["wake_config_dirty"] else ""
+        wake_dirty_var.set(dirty_hint)
         bottom_var.set(
             f"最近操作：{status.last_operation or '-'}    最近耗时：{elapsed_text}\n"
             f"最近错误：{error_text}\n"
@@ -755,12 +785,12 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
     for col in range(6):
         actions.columnconfigure(col, weight=1)
 
-    wake_config_frame = ttk.LabelFrame(main, text="Wake Engine 配置", padding=(14, 10))
-    wake_config_frame.pack(fill="x", pady=(12, 0))
+    wake_config_frame = ttk.LabelFrame(main, text="Wake Engine 配置", padding=(14, 8))
+    wake_config_frame.pack(fill="x", pady=(10, 0))
 
     # --- row 0: engine dropdown | fallback toggle | restart hint ---
     ttk.Label(wake_config_frame, text="wake.engine：").grid(
-        row=0, column=0, sticky="w", padx=(0, 4), pady=5,
+        row=0, column=0, sticky="w", padx=(0, 4), pady=3,
     )
     ttk.Combobox(
         wake_config_frame,
@@ -768,58 +798,66 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         values=WAKE_ENGINE_CHOICES,
         state="readonly",
         width=14,
-    ).grid(row=0, column=1, sticky="w", padx=(0, 16), pady=5)
+    ).grid(row=0, column=1, sticky="w", padx=(0, 14), pady=3)
     ttk.Checkbutton(
         wake_config_frame,
         text="fallback_enabled",
         variable=wake_fallback_var,
-    ).grid(row=0, column=2, sticky="w", padx=(0, 16), pady=5)
+    ).grid(row=0, column=2, sticky="w", padx=(0, 14), pady=3)
     ttk.Label(
         wake_config_frame,
         text="修改后需重启小黄生效",
         foreground="gray",
-    ).grid(row=0, column=3, sticky="e", padx=(0, 0), pady=5)
+    ).grid(row=0, column=3, sticky="e", padx=(0, 0), pady=3)
 
     # --- row 1: device_index | cooldown_seconds | sensitivity ---
     ttk.Label(wake_config_frame, text="device_index：").grid(
-        row=1, column=0, sticky="w", padx=(0, 4), pady=5,
+        row=1, column=0, sticky="w", padx=(0, 4), pady=3,
     )
-    ttk.Entry(wake_config_frame, textvariable=wake_device_var, width=8).grid(
-        row=1, column=1, sticky="w", padx=(0, 16), pady=5,
+    ttk.Entry(wake_config_frame, textvariable=wake_device_var, width=7).grid(
+        row=1, column=1, sticky="w", padx=(0, 14), pady=3,
     )
     ttk.Label(wake_config_frame, text="cooldown_seconds：").grid(
-        row=1, column=2, sticky="w", padx=(0, 4), pady=5,
+        row=1, column=2, sticky="w", padx=(0, 4), pady=3,
     )
-    ttk.Entry(wake_config_frame, textvariable=wake_cooldown_var, width=8).grid(
-        row=1, column=3, sticky="w", padx=(0, 16), pady=5,
+    ttk.Entry(wake_config_frame, textvariable=wake_cooldown_var, width=7).grid(
+        row=1, column=3, sticky="w", padx=(0, 14), pady=3,
     )
     ttk.Label(wake_config_frame, text="sensitivity：").grid(
-        row=1, column=4, sticky="w", padx=(0, 4), pady=5,
+        row=1, column=4, sticky="w", padx=(0, 4), pady=3,
     )
-    ttk.Entry(wake_config_frame, textvariable=wake_sensitivity_var, width=8).grid(
-        row=1, column=5, sticky="w", padx=(0, 0), pady=5,
+    ttk.Entry(wake_config_frame, textvariable=wake_sensitivity_var, width=7).grid(
+        row=1, column=5, sticky="w", padx=(0, 0), pady=3,
     )
 
     # --- row 2: action buttons ---
     ttk.Button(wake_config_frame, text="保存配置", command=do_save_wake_config).grid(
-        row=2, column=0, columnspan=2, sticky="ew", padx=(0, 8), pady=(10, 6),
+        row=2, column=0, columnspan=2, sticky="ew", padx=(0, 8), pady=(8, 2),
     )
     save_restart_button = ttk.Button(wake_config_frame, text="保存并重启小黄", command=do_save_wake_config_and_restart)
-    save_restart_button.grid(row=2, column=2, columnspan=2, sticky="ew", padx=(0, 8), pady=(10, 6))
+    save_restart_button.grid(row=2, column=2, columnspan=2, sticky="ew", padx=(0, 8), pady=(8, 2))
     operation_buttons.append(save_restart_button)
 
-    # --- row 3: openWakeWord label note ---
+    # --- row 3: unsaved hint (shown only when dirty) ---
+    wake_dirty_var = tk.StringVar(value="")
+    ttk.Label(
+        wake_config_frame,
+        textvariable=wake_dirty_var,
+        foreground="#e67e22",
+    ).grid(row=3, column=0, columnspan=6, sticky="w", padx=(0, 0), pady=(0, 2))
+
+    # --- row 4: openWakeWord label note ---
     ttk.Label(
         wake_config_frame,
         text='openWakeWord 当前唤醒模型 label 是 hey_jarvis，不是中文"贾维斯"自定义模型。',
         foreground="gray",
         wraplength=480,
-    ).grid(row=3, column=0, columnspan=6, sticky="w", padx=(0, 0), pady=(0, 4))
+    ).grid(row=4, column=0, columnspan=6, sticky="w", padx=(0, 0), pady=(0, 4))
 
     wake_config_frame.columnconfigure(5, weight=1)
 
     bottom_var = tk.StringVar(value="提示：修改唤醒引擎后需重启小黄生效；关闭此窗口不会停止小黄。")
-    ttk.Label(main, textvariable=bottom_var, foreground="gray", wraplength=700).pack(fill="x", pady=(12, 0))
+    ttk.Label(main, textvariable=bottom_var, foreground="gray", wraplength=700).pack(fill="x", pady=(8, 4))
 
     def on_close() -> None:
         state["closed"] = True
