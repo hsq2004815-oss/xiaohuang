@@ -2,9 +2,9 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2E — openWakeWord continuous overlay listener 修复
-- **最新功能 commit**：V1.2E continuous openWakeWord listener fix（见 git log 最新提交）
-- **最新文档 commit**：V1.2E README/TASK_MEMORY 最小使用说明（见 git log 最新提交）
+- **阶段**：V1.2F-B — wake_runtime_service 纯配置/选择逻辑抽取
+- **最新功能 commit**：V1.2E-B 控制面板布局优化（见 git log）
+- **最新架构 commit**：V1.2F-B wake_runtime_service 抽取（见 git log）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
@@ -18,6 +18,14 @@
 - 配置文件不存在、非法 device/cooldown/sensitivity 会提示错误，不创建错误路径。
 - 保存后提示需要重启；“保存并重启小黄”复用控制面板现有 `run_restart_operation()`。
 - 本阶段未修改 `voice_overlay.py` / openWakeWord adapter / wake bridge / PowerShell / requirements，也不打开麦克风或启动 openWakeWord。
+
+### V1.2F-B wake_runtime_service 抽取记录（2026-05-04）
+
+- 新建 `src/xiaohuang/wake_runtime_service.py`：`WAKE_ENGINE_STT_TEXT`/`OPENWAKEWORD`、`WakeEngineRuntimeConfig`/`Plan`、`normalize_wake_engine()`、`build_wake_engine_runtime_config()`、`select_wake_engine_runtime()`、`format_openwakeword_dependency_error()`。
+- `voice_overlay.py` 改为从 `wake_runtime_service` import 并以 `_` 别名保持兼容；删除本地重复定义 ~110 行。
+- 未迁移 listener 线程、command recording、TTS/reply/session、`WakeEngineLoopStopped`/`RuntimeError`、`_OpenWakeWordBridgeRuntime`、`_print_wake_engine_runtime_config`、`_create_openwakeword_adapter`。
+- 新增 12 个纯函数单测，指向 `wake_runtime_service`（normalize/select/fallback/unsupported engine/error format）。
+- 本阶段未改 openWakeWord adapter / wake bridge / wake engine / PowerShell / E:\DataBase，不打开麦克风。
 
 ### V1.2E continuous openWakeWord listener 修复记录（2026-05-04）
 

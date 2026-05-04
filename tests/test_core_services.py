@@ -3313,6 +3313,148 @@ class V12EBControlPanelWakeEngineTests(unittest.TestCase):
         self.assertFalse(config_path.exists())
 
 
+class V12FBWakeRuntimeServiceTests(unittest.TestCase):
+    """Tests for src/xiaohuang/wake_runtime_service.py — pure config/selection logic."""
+
+    def _config(self, *, engine: str = "openwakeword", fallback_enabled: bool = True):
+        from xiaohuang.wake_runtime_service import WakeEngineRuntimeConfig
+
+        return WakeEngineRuntimeConfig(
+            engine=engine,
+            wake_phrase="贾维斯",
+            fallback_enabled=fallback_enabled,
+            device=0,
+            sample_rate=16000,
+            sensitivity=0.5,
+            cooldown_seconds=2.5,
+            model_path=None,
+            model_name="hey_jarvis",
+            poll_seconds=1.0,
+        )
+
+    def _ready_deps(self):
+        from xiaohuang.openwakeword_adapter import OpenWakeWordDependencyStatus
+
+        return OpenWakeWordDependencyStatus(
+            openwakeword_installed=True,
+            numpy_installed=True,
+            sounddevice_installed=True,
+            onnxruntime_available=True,
+            ready_for_realtime_demo=True,
+            errors=[],
+        )
+
+    def _missing_deps(self):
+        from xiaohuang.openwakeword_adapter import OpenWakeWordDependencyStatus
+
+        return OpenWakeWordDependencyStatus(
+            openwakeword_installed=False,
+            numpy_installed=True,
+            sounddevice_installed=True,
+            onnxruntime_available=True,
+            ready_for_realtime_demo=False,
+            errors=["Missing optional dependency: openwakeword"],
+        )
+
+    def test_normalize_wake_engine_none_defaults_to_stt_text(self):
+        from xiaohuang.wake_runtime_service import normalize_wake_engine
+
+        self.assertEqual(normalize_wake_engine(None), "stt_text")
+
+    def test_normalize_wake_engine_openwakeword(self):
+        from xiaohuang.wake_runtime_service import normalize_wake_engine
+
+        self.assertEqual(normalize_wake_engine("openwakeword"), "openwakeword")
+
+    def test_normalize_wake_engine_dash_normalized_to_underscore(self):
+        from xiaohuang.wake_runtime_service import normalize_wake_engine
+
+        self.assertEqual(normalize_wake_engine("open-wakeword"), "open_wakeword")
+
+    def test_normalize_wake_engine_empty_string_defaults_to_stt_text(self):
+        from xiaohuang.wake_runtime_service import normalize_wake_engine
+
+        self.assertEqual(normalize_wake_engine(""), "stt_text")
+
+    def test_select_stt_text_returns_stt_text_plan(self):
+        from xiaohuang.wake_runtime_service import WAKE_ENGINE_STT_TEXT, select_wake_engine_runtime
+
+        plan = select_wake_engine_runtime(self._config(engine="stt_text"))
+        self.assertEqual(plan.engine, WAKE_ENGINE_STT_TEXT)
+        self.assertIsNone(plan.warning)
+        self.assertIsNone(plan.error)
+
+    def test_select_openwakeword_with_ready_deps_returns_openwakeword(self):
+        from xiaohuang.wake_runtime_service import WAKE_ENGINE_OPENWAKEWORD, select_wake_engine_runtime
+
+        plan = select_wake_engine_runtime(
+            self._config(engine="openwakeword"),
+            dependency_status=self._ready_deps(),
+        )
+        self.assertEqual(plan.engine, WAKE_ENGINE_OPENWAKEWORD)
+        self.assertIsNone(plan.error)
+
+    def test_select_openwakeword_missing_deps_fallback_enabled_returns_stt_text(self):
+        from xiaohuang.wake_runtime_service import WAKE_ENGINE_STT_TEXT, select_wake_engine_runtime
+
+        plan = select_wake_engine_runtime(
+            self._config(engine="openwakeword", fallback_enabled=True),
+            dependency_status=self._missing_deps(),
+        )
+        self.assertEqual(plan.engine, WAKE_ENGINE_STT_TEXT)
+        self.assertIsNotNone(plan.warning)
+        self.assertIn("falling back to stt_text", plan.warning or "")
+
+    def test_select_openwakeword_missing_deps_fallback_disabled_returns_error(self):
+        from xiaohuang.wake_runtime_service import WAKE_ENGINE_OPENWAKEWORD, select_wake_engine_runtime
+
+        plan = select_wake_engine_runtime(
+            self._config(engine="openwakeword", fallback_enabled=False),
+            dependency_status=self._missing_deps(),
+        )
+        self.assertEqual(plan.engine, WAKE_ENGINE_OPENWAKEWORD)
+        self.assertIsNotNone(plan.error)
+
+    def test_select_unsupported_engine_fallback_enabled_returns_stt_text_with_warning(self):
+        from xiaohuang.wake_runtime_service import WAKE_ENGINE_STT_TEXT, select_wake_engine_runtime
+
+        plan = select_wake_engine_runtime(
+            self._config(engine="unknown_engine", fallback_enabled=True),
+        )
+        self.assertEqual(plan.engine, WAKE_ENGINE_STT_TEXT)
+        self.assertIsNotNone(plan.warning)
+
+    def test_select_unsupported_engine_fallback_disabled_returns_error(self):
+        from xiaohuang.wake_runtime_service import select_wake_engine_runtime
+
+        plan = select_wake_engine_runtime(
+            self._config(engine="unknown_engine", fallback_enabled=False),
+        )
+        self.assertIsNotNone(plan.error)
+        self.assertNotEqual(plan.engine, "stt_text")
+
+    def test_format_openwakeword_dependency_error_includes_errors(self):
+        from xiaohuang.wake_runtime_service import format_openwakeword_dependency_error
+
+        message = format_openwakeword_dependency_error(self._missing_deps())
+        self.assertIn("openwakeword dependency unavailable", message)
+        self.assertIn("Missing optional dependency: openwakeword", message)
+
+    def test_format_openwakeword_dependency_error_no_errors_fallback_message(self):
+        from xiaohuang.wake_runtime_service import format_openwakeword_dependency_error
+        from xiaohuang.openwakeword_adapter import OpenWakeWordDependencyStatus
+
+        status = OpenWakeWordDependencyStatus(
+            openwakeword_installed=True,
+            numpy_installed=True,
+            sounddevice_installed=True,
+            onnxruntime_available=True,
+            ready_for_realtime_demo=False,
+            errors=[],
+        )
+        message = format_openwakeword_dependency_error(status)
+        self.assertIn("dependency check failed", message)
+
 class AudioCaptureServiceTests(unittest.TestCase):
     def test_build_recording_path_uses_timestamp_and_wav_suffix(self):
         output_dir = Path("data") / "recordings"
