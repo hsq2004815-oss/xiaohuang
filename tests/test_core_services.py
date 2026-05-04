@@ -692,7 +692,7 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         self.assertIn("wake_cooldown_seconds=2.5", log_text)
         self.assertIn("wake_sensitivity=0.5", log_text)
 
-    def test_openwakeword_listener_thread_starts_and_keeps_running_across_cycles(self):
+    def test_openwakeword_listener_thread_starts_continuous_adapter_once(self):
         import threading
         from voice_overlay import (
             _OpenWakeWordBridgeRuntime,
@@ -703,7 +703,7 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         app = FakeOverlayApp()
         logger = FakeLogger()
         stop_event = threading.Event()
-        adapter = LoopingFakeOpenWakeWordAdapter([], stop_event=stop_event, stop_after_runs=2)
+        adapter = LoopingFakeOpenWakeWordAdapter([], stop_event=stop_event)
         bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
 
         handle = _start_openwakeword_listener(
@@ -718,11 +718,14 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         handle.thread.join(timeout=1.0)
         _stop_openwakeword_listener(handle)
 
-        self.assertGreaterEqual(adapter.run_count, 2)
+        self.assertEqual(adapter.run_until_count, 1)
+        self.assertEqual(adapter.run_count, 0)
         self.assertFalse(handle.thread.is_alive())
         self.assertIn("openwakeword_listener_starting", logger.text)
         self.assertIn("openwakeword_listener_running", logger.text)
-        self.assertIn("openwakeword_listener_cycle_done", logger.text)
+        self.assertIn("openwakeword_listener_status", logger.text)
+        self.assertIn("model_labels=hey_jarvis", logger.text)
+        self.assertIn("openwakeword_listener_stopped", logger.text)
 
     def test_openwakeword_listener_accepted_event_enters_command_entry_once(self):
         import threading
@@ -783,6 +786,8 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         self.assertEqual(result.command_text, "打开记事本")
         self.assertEqual(len(record_calls), 1)
         self.assertEqual(bridge.bridge.state().accepted_count, 1)
+        self.assertEqual(adapter.run_until_count, 1)
+        self.assertEqual(adapter.run_count, 0)
         self.assertIn("openwakeword_bridge_decision accepted=true reason=accepted", logger.text)
         self.assertIn("command_record_start source=openwakeword", logger.text)
 
@@ -919,6 +924,7 @@ class FakeOpenWakeWordAdapter:
         self.events = list(events)
         self.stopped = False
         self.run_count = 0
+        self.run_until_count = 0
         self.frames_read = 0
 
     def run_for_duration(self, _duration_seconds, on_event=None, debug=False):
@@ -939,6 +945,47 @@ class FakeOpenWakeWordAdapter:
             cooldown_seconds=2.5,
         )
 
+    def run_until_stopped(
+        self,
+        stop_event,
+        on_event=None,
+        debug=False,
+        on_status=None,
+        status_interval_seconds=5.0,
+    ):
+        from xiaohuang.openwakeword_adapter import OpenWakeWordRuntimeStatus
+        from xiaohuang.wake_engine_service import WakeEventStats
+
+        self.stopped = False
+        self.run_until_count += 1
+        self.frames_read = len(self.events)
+        if on_status is not None:
+            on_status(
+                OpenWakeWordRuntimeStatus(
+                    frames_read=0,
+                    max_label=None,
+                    max_score=None,
+                    raw_detections=0,
+                    coalesced_events=0,
+                    suppressed_detections=0,
+                    model_labels=["hey_jarvis"],
+                    device=0,
+                    sample_rate=16000,
+                    sensitivity=0.5,
+                )
+            )
+        for event in self.events:
+            if stop_event.is_set():
+                break
+            if on_event is not None:
+                on_event(event)
+        return WakeEventStats(
+            raw_detections=len(self.events),
+            coalesced_events=1 if self.events else 0,
+            suppressed_detections=max(0, len(self.events) - 1),
+            cooldown_seconds=2.5,
+        )
+
     def stop(self):
         self.stopped = True
 
@@ -947,22 +994,46 @@ class FakeOpenWakeWordAdapter:
 
 
 class OneShotFakeOpenWakeWordAdapter(FakeOpenWakeWordAdapter):
-    def run_for_duration(self, duration_seconds, on_event=None, debug=False):
-        result = super().run_for_duration(duration_seconds, on_event=on_event, debug=debug)
+    def run_until_stopped(
+        self,
+        stop_event,
+        on_event=None,
+        debug=False,
+        on_status=None,
+        status_interval_seconds=5.0,
+    ):
+        result = super().run_until_stopped(
+            stop_event,
+            on_event=on_event,
+            debug=debug,
+            on_status=on_status,
+            status_interval_seconds=status_interval_seconds,
+        )
         self.events = []
         return result
 
 
 class LoopingFakeOpenWakeWordAdapter(FakeOpenWakeWordAdapter):
-    def __init__(self, events, *, stop_event, stop_after_runs: int):
+    def __init__(self, events, *, stop_event):
         super().__init__(events)
         self.stop_event = stop_event
-        self.stop_after_runs = stop_after_runs
 
-    def run_for_duration(self, duration_seconds, on_event=None, debug=False):
-        result = super().run_for_duration(duration_seconds, on_event=on_event, debug=debug)
-        if self.run_count >= self.stop_after_runs:
-            self.stop_event.set()
+    def run_until_stopped(
+        self,
+        stop_event,
+        on_event=None,
+        debug=False,
+        on_status=None,
+        status_interval_seconds=5.0,
+    ):
+        result = super().run_until_stopped(
+            stop_event,
+            on_event=on_event,
+            debug=debug,
+            on_status=on_status,
+            status_interval_seconds=status_interval_seconds,
+        )
+        self.stop_event.set()
         return result
 
 
@@ -973,6 +1044,17 @@ class FailingOpenWakeWordAdapter(FakeOpenWakeWordAdapter):
 
     def run_for_duration(self, _duration_seconds, on_event=None, debug=False):
         self.run_count += 1
+        raise RuntimeError(self.error)
+
+    def run_until_stopped(
+        self,
+        stop_event,
+        on_event=None,
+        debug=False,
+        on_status=None,
+        status_interval_seconds=5.0,
+    ):
+        self.run_until_count += 1
         raise RuntimeError(self.error)
 
     def status(self):
@@ -1177,6 +1259,66 @@ class V12DOpenWakeWordAdapterTests(unittest.TestCase):
         self.assertEqual(stats.coalesced_events, 2)
         self.assertEqual(stats.suppressed_detections, 0)
         self.assertEqual(len(events), 2)
+
+    def test_adapter_run_until_stopped_uses_one_stream_and_reports_status(self):
+        import threading
+        import numpy as np
+        from xiaohuang.openwakeword_adapter import OpenWakeWordAdapter
+
+        FakeInputStream.instances.clear()
+        stop_event = threading.Event()
+        predictions = [
+            {"hey_jarvis": 0.10},
+            {"hey_jarvis": 0.93},
+            {"hey_jarvis": 0.20},
+        ]
+
+        class StopAfterPredictionModel:
+            model_names = ["hey_jarvis"]
+
+            def __init__(self):
+                self.calls = 0
+
+            def predict(self, _frame):
+                prediction = predictions[min(self.calls, len(predictions) - 1)]
+                self.calls += 1
+                if self.calls >= len(predictions):
+                    stop_event.set()
+                return prediction
+
+        now = {"value": 0.0}
+
+        def time_fn():
+            now["value"] += 1.0
+            return now["value"]
+
+        statuses = []
+        events = []
+        adapter = OpenWakeWordAdapter(
+            wake_phrase="贾维斯",
+            sensitivity=0.5,
+            cooldown_seconds=2.5,
+            model_factory=lambda adapter: StopAfterPredictionModel(),
+            input_stream_factory=FakeInputStream,
+            numpy_module=np,
+            time_fn=time_fn,
+        )
+
+        stats = adapter.run_until_stopped(
+            stop_event,
+            on_event=events.append,
+            on_status=statuses.append,
+            status_interval_seconds=1.0,
+        )
+
+        self.assertEqual(len(FakeInputStream.instances), 1)
+        self.assertTrue(FakeInputStream.instances[0].closed)
+        self.assertEqual(adapter.frames_read, 3)
+        self.assertFalse(adapter.status().running)
+        self.assertEqual(stats.raw_detections, 1)
+        self.assertEqual([event.label for event in events], ["hey_jarvis"])
+        self.assertTrue(any(status.model_labels == ["hey_jarvis"] for status in statuses))
+        self.assertTrue(any(status.max_label == "hey_jarvis" for status in statuses))
 
     def test_adapter_run_for_duration_exception_releases_stream(self):
         import numpy as np

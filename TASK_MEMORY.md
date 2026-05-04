@@ -2,13 +2,22 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2E — openWakeWord overlay listener 修复
-- **最新功能 commit**：V1.2E openWakeWord listener lifecycle fix（见 git log 最新提交）
+- **阶段**：V1.2E — openWakeWord continuous overlay listener 修复
+- **最新功能 commit**：V1.2E continuous openWakeWord listener fix（见 git log 最新提交）
 - **最新文档 commit**：V1.2E README/TASK_MEMORY 最小使用说明（见 git log 最新提交）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
-- **工作区**：当前修复将 openWakeWord 从同步 turn-loop polling 改为 voice_overlay 自己启动后台 listener thread；运行产物均 ignored
+- **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+
+### V1.2E continuous openWakeWord listener 修复记录（2026-05-04）
+
+- blocker 现象：`voice_overlay.py` 能打印 `openwakeword_listener_starting/running`，但随后持续 `frames=11 raw=0`，用户说 “hey jarvis” 无唤醒；独立 `wake_engine_demo.py --duration-seconds 20 --debug` 仍可输出 wake_event。
+- 新根因：overlay listener 每 1 秒反复 `adapter.run_for_duration()`，每轮重开 stream 并重置 coalescer/模型相关上下文，实际只有 10-11 frames，不等价于独立 demo 的连续监听。
+- 修复：`OpenWakeWordAdapter` 新增 `run_until_stopped(stop_event, ...)`，一次 start、一次打开 sounddevice input stream，循环读取直到 stop_event；模型对象保持常驻，stream 在连续监听期间保持打开，finally 释放。
+- `voice_overlay.py` 后台 listener thread 改为调用 `run_until_stopped()`；不再按秒刷 `openwakeword_listener_cycle_done`，改为周期性 `openwakeword_listener_status`，包含 device、sample_rate、sensitivity、model_labels、frames、max_label、max_score 和 raw/coalesced/suppressed。
+- command recording / TTS active 仍由 bridge 拒绝 wake event，但不再通过 `adapter.stop()` 杀掉连续 listener。
+- 单测新增/更新：fake adapter 的 `run_until_stopped` 被调用且 `run_for_duration` 不被 overlay listener 调用；真实 adapter fake stream 验证 `run_until_stopped` 只打开一个 stream 并能上报 model labels / max score；fake event 仍进入 command recorder。
 
 ### V1.2E openWakeWord listener 修复记录（2026-05-04）
 

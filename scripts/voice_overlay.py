@@ -49,6 +49,7 @@ from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
 from xiaohuang.openwakeword_adapter import (
     OpenWakeWordAdapter,
     OpenWakeWordDependencyStatus,
+    OpenWakeWordRuntimeStatus,
     check_openwakeword_dependencies,
 )
 from xiaohuang.reply_pipeline_service import (
@@ -71,6 +72,7 @@ WAKE_ENGINE_STT_TEXT = "stt_text"
 WAKE_ENGINE_OPENWAKEWORD = "openwakeword"
 OPENWAKEWORD_POLL_SECONDS = 1.0
 OPENWAKEWORD_QUEUE_POLL_SECONDS = 0.1
+OPENWAKEWORD_STATUS_INTERVAL_SECONDS = 5.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -209,22 +211,16 @@ class _OpenWakeWordBridgeRuntime:
             return self.bridge.handle_wake_event(event)
 
     def mark_command_started(self) -> None:
-        adapter = None
         with self._lock:
             self.bridge.mark_command_started()
-            adapter = self.active_adapter
-        _stop_adapter_safely(adapter)
 
     def mark_command_finished(self) -> None:
         with self._lock:
             self.bridge.mark_command_finished()
 
     def mark_tts_started(self) -> None:
-        adapter = None
         with self._lock:
             self.bridge.mark_tts_started()
-            adapter = self.active_adapter
-        _stop_adapter_safely(adapter)
 
     def mark_tts_finished(self) -> None:
         with self._lock:
@@ -235,14 +231,11 @@ class _OpenWakeWordBridgeRuntime:
             return self.bridge.state()
 
     def _accept_wake_event(self, event: WakeEvent) -> object:
-        adapter = None
         command_queue = None
         with self._lock:
             self.accepted_event = event
             self.bridge.mark_command_started()
-            adapter = self.active_adapter
             command_queue = self.command_queue
-        _stop_adapter_safely(adapter)
         if command_queue is not None:
             command_queue.put(event)
         return {"accepted": True}
@@ -1080,50 +1073,32 @@ def _run_openwakeword_listener(
     _log_runtime_message(logger, "info", "openwakeword_listener_starting")
     try:
         _log_runtime_message(logger, "info", "openwakeword_listener_running")
-        while not stop_event.is_set():
-            if not _wait_openwakeword_listener_unpaused(bridge_runtime, stop_event):
-                break
-            app.thread_safe_set_state(STATE_WAKE_CHECKING, f"openWakeWord：{runtime_config.wake_phrase}")
-            bridge_runtime.begin_wait(adapter)
-            try:
-                stats = adapter.run_for_duration(
-                    runtime_config.poll_seconds,
-                    on_event=lambda event: _handle_openwakeword_event(event, bridge_runtime, logger, debug),
-                    debug=debug,
-                )
-            except KeyboardInterrupt:
-                raise
-            except Exception as exc:
-                error = _wake_engine_runtime_error(adapter, exc)
-                _log_runtime_message(logger, "error", f"openwakeword_listener_error error={error}")
-                error_queue.put(error)
-                if runtime_config.fallback_enabled:
-                    _log_runtime_message(logger, "warning", f"fallback_to_stt_text reason={error}")
-                else:
-                    stop_event.set()
-                return
-            finally:
-                try:
-                    adapter.stop()
-                finally:
-                    bridge_runtime.end_wait()
-
-            _log_openwakeword_listener_cycle(logger, adapter, stats)
+        app.thread_safe_set_state(STATE_WAKE_CHECKING, f"openWakeWord：{runtime_config.wake_phrase}")
+        bridge_runtime.begin_wait(adapter)
+        try:
+            adapter.run_until_stopped(
+                stop_event,
+                on_event=lambda event: _handle_openwakeword_event(event, bridge_runtime, logger, debug),
+                debug=debug,
+                on_status=lambda status: _log_openwakeword_listener_status(logger, status),
+                status_interval_seconds=OPENWAKEWORD_STATUS_INTERVAL_SECONDS,
+            )
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            error = _wake_engine_runtime_error(adapter, exc)
+            _log_runtime_message(logger, "error", f"openwakeword_listener_error error={error}")
+            error_queue.put(error)
+            if runtime_config.fallback_enabled:
+                _log_runtime_message(logger, "warning", f"fallback_to_stt_text reason={error}")
+            else:
+                stop_event.set()
+            return
+        finally:
+            bridge_runtime.end_wait()
     finally:
         _stop_adapter_safely(adapter)
-
-
-def _wait_openwakeword_listener_unpaused(
-    bridge_runtime: _OpenWakeWordBridgeRuntime,
-    stop_event: threading.Event,
-) -> bool:
-    while not stop_event.is_set():
-        state = bridge_runtime.state()
-        if not state.command_active and not state.tts_active:
-            return True
-        if stop_event.wait(0.05):
-            return False
-    return False
+        _log_runtime_message(logger, "info", "openwakeword_listener_stopped")
 
 
 def _run_openwakeword_turn_from_listener(
@@ -1256,16 +1231,19 @@ def _stop_adapter_safely(adapter) -> None:
         pass
 
 
-def _log_openwakeword_listener_cycle(logger, adapter, stats) -> None:
-    frames = getattr(adapter, "frames_read", "-")
-    raw = getattr(stats, "raw_detections", "-")
-    coalesced = getattr(stats, "coalesced_events", "-")
-    suppressed = getattr(stats, "suppressed_detections", "-")
+def _log_openwakeword_listener_status(logger, status: OpenWakeWordRuntimeStatus) -> None:
+    labels = ",".join(status.model_labels) if status.model_labels else "-"
+    max_label = status.max_label or "-"
+    max_score = "-" if status.max_score is None else f"{status.max_score:.3f}"
     _log_runtime_message(
         logger,
         "info",
-        "openwakeword_listener_cycle_done "
-        f"frames={frames} raw={raw} coalesced={coalesced} suppressed={suppressed}",
+        "openwakeword_listener_status "
+        f"device_index={status.device} sample_rate={status.sample_rate} "
+        f"sensitivity={status.sensitivity} model_labels={labels} "
+        f"frames={status.frames_read} max_label={max_label} max_score={max_score} "
+        f"raw={status.raw_detections} coalesced={status.coalesced_events} "
+        f"suppressed={status.suppressed_detections}",
     )
 
 
@@ -1291,7 +1269,7 @@ def _run_openwakeword_wake_loop_once(
             app.thread_safe_set_state(STATE_WAKE_CHECKING, f"openWakeWord：{runtime_config.wake_phrase}")
             bridge_runtime.begin_wait(adapter)
             try:
-                stats = adapter.run_for_duration(
+                adapter.run_for_duration(
                     runtime_config.poll_seconds,
                     on_event=lambda event: _handle_openwakeword_event(event, bridge_runtime, logger, debug),
                     debug=debug,
@@ -1305,8 +1283,6 @@ def _run_openwakeword_wake_loop_once(
                     adapter.stop()
                 finally:
                     bridge_runtime.end_wait()
-            _log_openwakeword_listener_cycle(logger, adapter, stats)
-
             event = bridge_runtime.accepted_event
             if event is None:
                 continue

@@ -38,6 +38,20 @@ class PredictionScore:
     detected: bool
 
 
+@dataclass(frozen=True)
+class OpenWakeWordRuntimeStatus:
+    frames_read: int
+    max_label: str | None
+    max_score: float | None
+    raw_detections: int
+    coalesced_events: int
+    suppressed_detections: int
+    model_labels: list[str]
+    device: int | None
+    sample_rate: int
+    sensitivity: float
+
+
 def check_openwakeword_dependencies(
     *,
     import_module: Callable[[str], Any] = importlib.import_module,
@@ -171,21 +185,7 @@ class OpenWakeWordAdapter:
         try:
             with self._open_input_stream() as stream:
                 while self._running and self._time_fn() < deadline:
-                    data, overflowed = stream.read(self.chunk_samples)
-                    frame = self._audio_frame_from_data(data)
-                    prediction = self._model.predict(frame)
-                    score = best_prediction_score(prediction, sensitivity=self.sensitivity)
-                    if debug and score is not None:
-                        print(
-                            f"frame label={score.label} "
-                            f"score={score.score:.3f} "
-                            f"detected={_bool_text(score.detected)} "
-                            f"threshold={self.sensitivity:.3f}"
-                        )
-                    if overflowed and debug:
-                        print("audio_overflow=true")
-                    self._handle_prediction_score(score, on_event=on_event, debug=debug)
-                    self._frames_read += 1
+                    self._read_prediction_frame(stream, on_event=on_event, debug=debug)
         except KeyboardInterrupt:
             raise
         except Exception as exc:
@@ -194,6 +194,49 @@ class OpenWakeWordAdapter:
         finally:
             self.stop()
         return self.coalescer.stats()
+
+    def run_until_stopped(
+        self,
+        stop_event,
+        on_event: Callable[[WakeEvent], None] | None = None,
+        debug: bool = False,
+        on_status: Callable[[OpenWakeWordRuntimeStatus], None] | None = None,
+        status_interval_seconds: float = 5.0,
+    ) -> WakeEventStats:
+        self.start()
+        self._frames_read = 0
+        self.coalescer.reset()
+        max_label: str | None = None
+        max_score: float | None = None
+        status_interval = max(0.5, float(status_interval_seconds))
+        next_status_at = self._time_fn()
+        try:
+            with self._open_input_stream() as stream:
+                self._emit_runtime_status(on_status, max_label=max_label, max_score=max_score)
+                next_status_at = self._time_fn() + status_interval
+                while self._running and not stop_event.is_set():
+                    score = self._read_prediction_frame(stream, on_event=on_event, debug=debug)
+                    if score is not None and (max_score is None or score.score > max_score):
+                        max_label = score.label
+                        max_score = score.score
+                    now = self._time_fn()
+                    if on_status is not None and now >= next_status_at:
+                        self._emit_runtime_status(on_status, max_label=max_label, max_score=max_score)
+                        max_label = None
+                        max_score = None
+                        next_status_at = now + status_interval
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            self._error = _summarize_exception(exc)
+            raise
+        finally:
+            self.stop()
+        self._emit_runtime_status(on_status, max_label=max_label, max_score=max_score)
+        return self.coalescer.stats()
+
+    def model_labels(self) -> list[str]:
+        return _extract_model_labels(self._model)
 
     def _load_model(self) -> Any:
         if self._model_factory is not None:
@@ -241,6 +284,55 @@ class OpenWakeWordAdapter:
     def _audio_frame_from_data(self, data: Any) -> Any:
         np = self._numpy_module
         return np.asarray(data).reshape(-1).astype(np.int16)
+
+    def _read_prediction_frame(
+        self,
+        stream,
+        *,
+        on_event: Callable[[WakeEvent], None] | None,
+        debug: bool,
+    ) -> PredictionScore | None:
+        data, overflowed = stream.read(self.chunk_samples)
+        frame = self._audio_frame_from_data(data)
+        prediction = self._model.predict(frame)
+        score = best_prediction_score(prediction, sensitivity=self.sensitivity)
+        if debug and score is not None:
+            print(
+                f"frame label={score.label} "
+                f"score={score.score:.3f} "
+                f"detected={_bool_text(score.detected)} "
+                f"threshold={self.sensitivity:.3f}"
+            )
+        if overflowed and debug:
+            print("audio_overflow=true")
+        self._handle_prediction_score(score, on_event=on_event, debug=debug)
+        self._frames_read += 1
+        return score
+
+    def _emit_runtime_status(
+        self,
+        on_status: Callable[[OpenWakeWordRuntimeStatus], None] | None,
+        *,
+        max_label: str | None,
+        max_score: float | None,
+    ) -> None:
+        if on_status is None:
+            return
+        stats = self.coalescer.stats()
+        on_status(
+            OpenWakeWordRuntimeStatus(
+                frames_read=self._frames_read,
+                max_label=max_label,
+                max_score=max_score,
+                raw_detections=stats.raw_detections,
+                coalesced_events=stats.coalesced_events,
+                suppressed_detections=stats.suppressed_detections,
+                model_labels=self.model_labels(),
+                device=self.device,
+                sample_rate=self.sample_rate,
+                sensitivity=self.sensitivity,
+            )
+        )
 
     def _handle_prediction_score(
         self,
@@ -319,6 +411,32 @@ def _flatten_prediction(prediction: Any) -> dict[str, float]:
         except (TypeError, ValueError):
             continue
     return scores
+
+
+def _extract_model_labels(model: Any) -> list[str]:
+    if model is None:
+        return []
+    for attr in ("wakeword_models", "model_names", "models"):
+        labels = _coerce_label_list(getattr(model, attr, None))
+        if labels:
+            return labels
+    prediction_buffer = getattr(model, "prediction_buffer", None)
+    if isinstance(prediction_buffer, dict):
+        labels = [str(label) for label in prediction_buffer.keys() if str(label)]
+        if labels:
+            return labels
+    return []
+
+
+def _coerce_label_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        return [str(label) for label in value.keys() if str(label)]
+    if isinstance(value, (list, tuple, set)):
+        return [str(label) for label in value if str(label)]
+    text = str(value).strip()
+    return [text] if text else []
 
 
 def _summarize_exception(exc: Exception) -> str:
