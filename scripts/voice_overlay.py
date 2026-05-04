@@ -53,6 +53,12 @@ from xiaohuang.reply_pipeline_service import (
 )
 from xiaohuang.app_config_service import apply_cli_overrides, load_config as load_user_config
 from xiaohuang.audio_capture_service import build_recording_path
+from xiaohuang.command_runtime_service import (
+    CommandRecordResult,
+    call_overlay_transcription as _call_overlay_transcription,
+    record_and_transcribe,
+    record_command_transcribe as _record_command_transcribe,
+)
 from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
 from xiaohuang.tts_service import DEFAULT_TTS_VOICE
 from xiaohuang.vad_recording_service import record_until_silence
@@ -735,13 +741,14 @@ def _run_overlay_loop(
                         _safe_print(f"Session turn {turn_count + 1}/{session_config.max_turns} (follow-up window: {followup_timeout:.1f}s)")
                     app.thread_safe_set_state(STATE_LISTENING, "你还可以继续说")
 
+                    _st_track = _make_latency_track(st)
                     next_text = _record_command_transcribe(
                         options=options,
                         max_seconds=followup_timeout,
-                        stt_mode=STT_MODE_COMMAND,
                         debug=debug,
                         logger=logger,
-                        latency_tracker=st,
+                        on_track_start=lambda name: _st_track(name, start=True),
+                        on_track_end=lambda name: _st_track(name, start=False),
                     )
                     if stop_event.is_set():
                         break
@@ -907,38 +914,33 @@ def _record_openwakeword_command(
     bridge_runtime.mark_command_started()
     try:
         app.thread_safe_set_state(STATE_LISTENING)
-        command_path = build_recording_path_func(options.recording_dir)
-        _track("command_record_ms", start=True)
-        command_result = record_func(
-            command_path,
+        app.thread_safe_set_state(STATE_TRANSCRIBING)
+        result = record_and_transcribe(
             device_id=options.device_id,
             sample_rate=options.sample_rate,
             channels=options.channels,
             max_seconds=options.max_seconds,
             silence_seconds=options.silence_seconds,
+            recording_dir=options.recording_dir,
+            server_url=options.server_url,
+            transcribe_func=request_transcription_func,
+            record_func=record_func,
+            build_recording_path_func=build_recording_path_func,
+            stt_mode=STT_MODE_COMMAND,
+            on_track_start=lambda name: _track(name, start=True),
+            on_track_end=lambda name: _track(name, start=False),
         )
-        _track("command_record_ms", start=False)
-        app.thread_safe_set_state(STATE_TRANSCRIBING)
-        _track("command_stt_ms", start=True)
-        command_response = _call_overlay_transcription(
-            request_transcription_func,
-            command_result.path,
-            options.server_url,
-            STT_MODE_COMMAND,
-        )
-        _track("command_stt_ms", start=False)
     finally:
         bridge_runtime.mark_command_finished()
 
-    command_text = str(command_response.get("text", ""))
     if debug:
-        _safe_print(f"Command transcription: {command_text}")
+        _safe_print(f"Command transcription: {result.command_text}")
     return WakeLoopResult(
         wake_text=event.label,
-        command_text=command_text,
-        command_path=Path(command_result.path),
-        actual_recording_seconds=float(command_result.duration_seconds),
-        stop_reason=str(command_result.stop_reason),
+        command_text=result.command_text,
+        command_path=result.command_path,
+        actual_recording_seconds=result.actual_recording_seconds,
+        stop_reason=result.stop_reason,
     )
 
 
@@ -1000,13 +1002,6 @@ def _run_openwakeword_wake_loop_once(
     raise WakeEngineLoopStopped()
 
 
-def _call_overlay_transcription(func: Callable[..., dict], wav_path: Path, server_url: str, mode: str) -> dict:
-    try:
-        return func(wav_path, server_url, mode=mode)
-    except TypeError:
-        return func(wav_path, server_url)
-
-
 def _generate_reply_pipeline_guarded(
     command_text: str,
     *,
@@ -1038,44 +1033,6 @@ def _generate_reply_pipeline_guarded(
     finally:
         if tts_started and bridge_runtime is not None:
             bridge_runtime.mark_tts_finished()
-
-
-def _record_command_transcribe(
-    *,
-    options,
-    max_seconds: float,
-    stt_mode: str,
-    debug: bool,
-    logger,
-    record_func=record_until_silence,
-    transcribe_func=request_transcription,
-    latency_tracker=None,
-) -> str:
-    _track = _make_latency_track(latency_tracker)
-    try:
-        cmd_path = build_recording_path(options.recording_dir)
-        _track("command_record_ms", start=True)
-        cmd_result = record_func(
-            cmd_path,
-            device_id=options.device_id,
-            sample_rate=options.sample_rate,
-            channels=options.channels,
-            max_seconds=max_seconds,
-            silence_seconds=options.silence_seconds,
-        )
-        _track("command_record_ms", start=False)
-        _track("command_stt_ms", start=True)
-        cmd_response = transcribe_func(cmd_result.path, options.server_url)
-        _track("command_stt_ms", start=False)
-        return str(cmd_response.get("text", ""))
-    except (SttServerUnavailable, SttServerError) as exc:
-        if debug:
-            _safe_print(f"Session command STT failed: {exc}")
-        logger.warning("Session command STT failed: %s", exc)
-        return ""
-    except Exception as exc:
-        logger.warning("Session command recording failed: %s", exc)
-        return ""
 
 
 def _make_latency_track(tracker):

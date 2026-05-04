@@ -5483,7 +5483,7 @@ class V111SessionRecordTests(unittest.TestCase):
             )
             logger = logging.getLogger("test")
             text = _record_command_transcribe(
-                options=opts, max_seconds=1.0, stt_mode=STT_MODE_COMMAND,
+                options=opts, max_seconds=1.0,
                 debug=False, logger=logger, record_func=fake_record,
                 transcribe_func=fake_transcribe,
             )
