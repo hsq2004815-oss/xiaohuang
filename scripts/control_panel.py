@@ -230,7 +230,7 @@ def format_wake_label_note(status: ControlPanelStatus) -> str:
     if status.wake_engine != WAKE_ENGINE_OPENWAKEWORD:
         return "-"
     label = status.wake_model_label or "hey_jarvis"
-    return f"当前 openWakeWord model label 是 {label}；中文“贾维斯”不是当前 openWakeWord 自定义中文模型。"
+    return f'当前 openWakeWord model label 是 {label}；中文"贾维斯"不是当前 openWakeWord 自定义中文模型。'
 
 
 def parse_wake_engine_config_input(
@@ -495,8 +495,8 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
 
     root = tk.Tk()
     root.title("小黄控制面板")
-    root.geometry("760x760")
-    root.minsize(700, 650)
+    root.geometry("760x800")
+    root.minsize(700, 680)
 
     state = {
         "closed": False,
@@ -755,48 +755,68 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
     for col in range(6):
         actions.columnconfigure(col, weight=1)
 
-    wake_config_frame = ttk.LabelFrame(main, text="Wake Engine 配置")
+    wake_config_frame = ttk.LabelFrame(main, text="Wake Engine 配置", padding=(14, 10))
     wake_config_frame.pack(fill="x", pady=(12, 0))
-    ttk.Label(wake_config_frame, text="wake.engine：").grid(row=0, column=0, sticky="w", padx=10, pady=4)
+
+    # --- row 0: engine dropdown | fallback toggle | restart hint ---
+    ttk.Label(wake_config_frame, text="wake.engine：").grid(
+        row=0, column=0, sticky="w", padx=(0, 4), pady=5,
+    )
     ttk.Combobox(
         wake_config_frame,
         textvariable=wake_engine_var,
         values=WAKE_ENGINE_CHOICES,
         state="readonly",
-        width=18,
-    ).grid(row=0, column=1, sticky="w", padx=6, pady=4)
+        width=14,
+    ).grid(row=0, column=1, sticky="w", padx=(0, 16), pady=5)
     ttk.Checkbutton(
         wake_config_frame,
         text="fallback_enabled",
         variable=wake_fallback_var,
-    ).grid(row=0, column=2, sticky="w", padx=6, pady=4)
-
-    ttk.Label(wake_config_frame, text="device_index：").grid(row=1, column=0, sticky="w", padx=10, pady=4)
-    ttk.Entry(wake_config_frame, textvariable=wake_device_var, width=10).grid(row=1, column=1, sticky="w", padx=6, pady=4)
-    ttk.Label(wake_config_frame, text="cooldown_seconds：").grid(row=1, column=2, sticky="w", padx=6, pady=4)
-    ttk.Entry(wake_config_frame, textvariable=wake_cooldown_var, width=10).grid(row=1, column=3, sticky="w", padx=6, pady=4)
-    ttk.Label(wake_config_frame, text="sensitivity：").grid(row=1, column=4, sticky="w", padx=6, pady=4)
-    ttk.Entry(wake_config_frame, textvariable=wake_sensitivity_var, width=10).grid(row=1, column=5, sticky="w", padx=6, pady=4)
-
-    ttk.Button(wake_config_frame, text="保存配置", command=do_save_wake_config).grid(
-        row=2,
-        column=0,
-        columnspan=2,
-        sticky="ew",
-        padx=10,
-        pady=8,
-    )
-    save_restart_button = ttk.Button(wake_config_frame, text="保存并重启小黄", command=do_save_wake_config_and_restart)
-    save_restart_button.grid(row=2, column=2, columnspan=2, sticky="ew", padx=6, pady=8)
-    operation_buttons.append(save_restart_button)
+    ).grid(row=0, column=2, sticky="w", padx=(0, 16), pady=5)
     ttk.Label(
         wake_config_frame,
-        text="修改 wake.engine 后需要重启小黄生效。openWakeWord 当前唤醒模型 label 是 hey_jarvis，不是中文“贾维斯”自定义模型。",
+        text="修改后需重启小黄生效",
         foreground="gray",
-        wraplength=680,
-    ).grid(row=3, column=0, columnspan=6, sticky="w", padx=10, pady=(0, 8))
-    for col in range(6):
-        wake_config_frame.columnconfigure(col, weight=1)
+    ).grid(row=0, column=3, sticky="e", padx=(0, 0), pady=5)
+
+    # --- row 1: device_index | cooldown_seconds | sensitivity ---
+    ttk.Label(wake_config_frame, text="device_index：").grid(
+        row=1, column=0, sticky="w", padx=(0, 4), pady=5,
+    )
+    ttk.Entry(wake_config_frame, textvariable=wake_device_var, width=8).grid(
+        row=1, column=1, sticky="w", padx=(0, 16), pady=5,
+    )
+    ttk.Label(wake_config_frame, text="cooldown_seconds：").grid(
+        row=1, column=2, sticky="w", padx=(0, 4), pady=5,
+    )
+    ttk.Entry(wake_config_frame, textvariable=wake_cooldown_var, width=8).grid(
+        row=1, column=3, sticky="w", padx=(0, 16), pady=5,
+    )
+    ttk.Label(wake_config_frame, text="sensitivity：").grid(
+        row=1, column=4, sticky="w", padx=(0, 4), pady=5,
+    )
+    ttk.Entry(wake_config_frame, textvariable=wake_sensitivity_var, width=8).grid(
+        row=1, column=5, sticky="w", padx=(0, 0), pady=5,
+    )
+
+    # --- row 2: action buttons ---
+    ttk.Button(wake_config_frame, text="保存配置", command=do_save_wake_config).grid(
+        row=2, column=0, columnspan=2, sticky="ew", padx=(0, 8), pady=(10, 6),
+    )
+    save_restart_button = ttk.Button(wake_config_frame, text="保存并重启小黄", command=do_save_wake_config_and_restart)
+    save_restart_button.grid(row=2, column=2, columnspan=2, sticky="ew", padx=(0, 8), pady=(10, 6))
+    operation_buttons.append(save_restart_button)
+
+    # --- row 3: openWakeWord label note ---
+    ttk.Label(
+        wake_config_frame,
+        text='openWakeWord 当前唤醒模型 label 是 hey_jarvis，不是中文"贾维斯"自定义模型。',
+        foreground="gray",
+        wraplength=480,
+    ).grid(row=3, column=0, columnspan=6, sticky="w", padx=(0, 0), pady=(0, 4))
+
+    wake_config_frame.columnconfigure(5, weight=1)
 
     bottom_var = tk.StringVar(value="提示：修改唤醒引擎后需重启小黄生效；关闭此窗口不会停止小黄。")
     ttk.Label(main, textvariable=bottom_var, foreground="gray", wraplength=700).pack(fill="x", pady=(12, 0))
