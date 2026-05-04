@@ -51,6 +51,7 @@ from xiaohuang.reply_pipeline_service import (
     ReplyPipelineResult,
     generate_reply_pipeline_result,
 )
+from xiaohuang.reply_runtime_service import generate_reply_runtime_result
 from xiaohuang.app_config_service import apply_cli_overrides, load_config as load_user_config
 from xiaohuang.audio_capture_service import build_recording_path
 from xiaohuang.command_runtime_service import (
@@ -1012,27 +1013,25 @@ def _generate_reply_pipeline_guarded(
     playback_warn,
     latency_tracker,
 ) -> ReplyPipelineResult:
-    tts_started = False
 
-    def _on_before_tts(text: str) -> None:
-        nonlocal tts_started
-        tts_started = True
+    def _before_tts(text: str) -> None:
         if bridge_runtime is not None:
             bridge_runtime.mark_tts_started()
         app.thread_safe_set_state(STATE_SPEAKING, text)
 
-    try:
-        return generate_reply_pipeline_result(
-            command_text,
-            config=config,
-            on_debug=on_debug,
-            on_before_tts=_on_before_tts,
-            playback_warn=playback_warn,
-            latency_tracker=latency_tracker,
-        )
-    finally:
-        if tts_started and bridge_runtime is not None:
+    def _after_tts() -> None:
+        if bridge_runtime is not None:
             bridge_runtime.mark_tts_finished()
+
+    return generate_reply_runtime_result(
+        command_text,
+        config=config,
+        on_debug=on_debug,
+        playback_warn=playback_warn,
+        latency_tracker=latency_tracker,
+        on_before_tts=_before_tts,
+        on_after_tts=_after_tts,
+    )
 
 
 def _make_latency_track(tracker):

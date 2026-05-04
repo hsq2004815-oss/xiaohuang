@@ -3520,6 +3520,151 @@ class V12FBWakeRuntimeServiceTests(unittest.TestCase):
         message = format_openwakeword_dependency_error(status)
         self.assertIn("dependency check failed", message)
 
+
+class V12FEReplyRuntimeServiceTests(unittest.TestCase):
+    """Tests for src/xiaohuang/reply_runtime_service.py — reply/TTS runtime."""
+
+    def _config(self):
+        from xiaohuang.reply_pipeline_service import ReplyPipelineConfig
+
+        return ReplyPipelineConfig(
+            enable_llm=False,
+            enable_tts=False,
+        )
+
+    def _fake_result(self, text: str = "hello"):
+        from xiaohuang.reply_pipeline_service import ReplyPipelineResult
+
+        return ReplyPipelineResult(
+            reply_text=text,
+            reply_source="rule",
+            source_note=None,
+        )
+
+    def _fake_pipeline(self, return_result=None):
+        def _pipeline(command_text, *, config, on_debug, on_before_tts, playback_warn, latency_tracker):
+            if on_before_tts is not None:
+                on_before_tts("fake tts text")
+            if return_result is not None:
+                return return_result
+            return self._fake_result(f"reply: {command_text}")
+
+        return _pipeline
+
+    def _fake_bridge(self):
+        class FakeBridge:
+            def __init__(self):
+                self.tts_started = False
+                self.tts_finished = False
+
+            def mark_tts_started(self):
+                self.tts_started = True
+
+            def mark_tts_finished(self):
+                self.tts_finished = True
+
+        return FakeBridge()
+
+    def test_generate_reply_runtime_calls_tts_callbacks(self):
+        from xiaohuang.reply_runtime_service import generate_reply_runtime_result
+
+        bridge = self._fake_bridge()
+        tts_text: list[str] = []
+
+        def _before_tts(text):
+            tts_text.append(text)
+            bridge.mark_tts_started()
+
+        def _after_tts():
+            bridge.mark_tts_finished()
+
+        result = generate_reply_runtime_result(
+            "test command",
+            config=self._config(),
+            on_before_tts=_before_tts,
+            on_after_tts=_after_tts,
+            pipeline_func=self._fake_pipeline(),
+        )
+
+        self.assertTrue(bridge.tts_started)
+        self.assertTrue(bridge.tts_finished)
+        self.assertEqual(len(tts_text), 1)
+        self.assertIn("fake tts text", tts_text[0])
+
+    def test_generate_reply_runtime_no_callbacks_no_error(self):
+        from xiaohuang.reply_runtime_service import generate_reply_runtime_result
+
+        result = generate_reply_runtime_result(
+            "test command",
+            config=self._config(),
+            pipeline_func=self._fake_pipeline(),
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("test command", result.reply_text)
+
+    def test_generate_reply_runtime_exception_still_calls_after_tts(self):
+        from xiaohuang.reply_runtime_service import generate_reply_runtime_result
+
+        bridge = self._fake_bridge()
+
+        def _before_tts(text):
+            bridge.mark_tts_started()
+            raise RuntimeError("tts failed")
+
+        def _after_tts():
+            bridge.mark_tts_finished()
+
+        with self.assertRaises(RuntimeError):
+            generate_reply_runtime_result(
+                "test",
+                config=self._config(),
+                on_before_tts=_before_tts,
+                on_after_tts=_after_tts,
+                pipeline_func=self._fake_pipeline(),
+            )
+
+        self.assertTrue(bridge.tts_started)
+        self.assertTrue(bridge.tts_finished)
+
+    def test_generate_reply_runtime_no_tts_no_finished_callback(self):
+        from xiaohuang.reply_runtime_service import generate_reply_runtime_result
+
+        bridge = self._fake_bridge()
+
+        def _after_tts():
+            bridge.mark_tts_finished()
+
+        # Use a pipeline that does NOT call on_before_tts
+        def _no_tts_pipeline(command_text, *, config, on_debug, on_before_tts, playback_warn, latency_tracker):
+            return self._fake_result(f"reply: {command_text}")
+
+        result = generate_reply_runtime_result(
+            "test",
+            config=self._config(),
+            on_after_tts=_after_tts,
+            pipeline_func=_no_tts_pipeline,
+        )
+        self.assertFalse(bridge.tts_finished)
+
+    def test_generate_reply_runtime_passes_debug_callback(self):
+        from xiaohuang.reply_runtime_service import generate_reply_runtime_result
+
+        debug_msgs: list[str] = []
+
+        def _fake_debug_pipeline(command_text, *, config, on_debug, on_before_tts, playback_warn, latency_tracker):
+            if on_debug is not None:
+                on_debug("debug message")
+            return self._fake_result(f"reply: {command_text}")
+
+        generate_reply_runtime_result(
+            "what time is it",
+            config=self._config(),
+            on_debug=lambda msg: debug_msgs.append(msg),
+            pipeline_func=_fake_debug_pipeline,
+        )
+        self.assertEqual(len(debug_msgs), 1)
+
+
 class AudioCaptureServiceTests(unittest.TestCase):
     def test_build_recording_path_uses_timestamp_and_wav_suffix(self):
         output_dir = Path("data") / "recordings"
