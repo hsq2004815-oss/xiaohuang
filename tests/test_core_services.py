@@ -3665,6 +3665,122 @@ class V12FEReplyRuntimeServiceTests(unittest.TestCase):
         self.assertEqual(len(debug_msgs), 1)
 
 
+class V12FFBAssistantRuntimeServiceTests(unittest.TestCase):
+    """Tests for src/xiaohuang/assistant_runtime_service.py."""
+
+    def _callbacks(self):
+        from xiaohuang.assistant_runtime_service import AssistantRuntimeCallbacks
+
+        states: list[tuple[str, str | None]] = []
+        warns: list[str] = []
+        debugs: list[str] = []
+        waits: list[float] = []
+        hides: list[bool] = []
+
+        cb = AssistantRuntimeCallbacks(
+            set_state=lambda s, d=None: states.append((s, d)),
+            log_warn=lambda msg: warns.append(msg),
+            debug_print=lambda msg: debugs.append(msg),
+            wait=lambda s: (waits.append(s), False)[1],
+            hide_overlay=lambda: hides.append(True),
+        )
+        return cb, states, warns, debugs, waits, hides
+
+    def _fake_pipeline_result(self, **kw):
+        from xiaohuang.reply_pipeline_service import ReplyPipelineResult
+
+        return ReplyPipelineResult(
+            reply_text=kw.get("reply_text", "hello"),
+            reply_source=kw.get("reply_source", "rule"),
+            source_note=kw.get("source_note", None),
+            tts_error=kw.get("tts_error", None),
+        )
+
+    def test_handle_single_turn_sets_state_result(self):
+        from xiaohuang.assistant_runtime_service import handle_single_turn_reply_result
+
+        cb, states, _, _, _, _ = self._callbacks()
+        outcome = handle_single_turn_reply_result(
+            callbacks=cb,
+            pipeline_result=self._fake_pipeline_result(reply_text="hi"),
+            command_text="say hi",
+        )
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual(states[0][0], "result")
+        self.assertEqual(states[1][0], "idle")
+
+    def test_handle_single_turn_tts_error_sets_error_state(self):
+        from xiaohuang.assistant_runtime_service import handle_single_turn_reply_result
+
+        cb, states, warns, _, _, _ = self._callbacks()
+        handle_single_turn_reply_result(
+            callbacks=cb,
+            pipeline_result=self._fake_pipeline_result(
+                reply_text="hi", tts_error="tts failed",
+            ),
+            command_text="say hi",
+        )
+        self.assertIn("error", [s[0] for s in states])
+        self.assertIn("tts failed", warns)
+
+    def test_handle_single_turn_cooldown_wait(self):
+        from xiaohuang.assistant_runtime_service import handle_single_turn_reply_result
+
+        cb, _, _, _, waits, _ = self._callbacks()
+        handle_single_turn_reply_result(
+            callbacks=cb,
+            pipeline_result=self._fake_pipeline_result(),
+            command_text="test",
+            post_response_cooldown=3.5,
+        )
+        self.assertGreater(len(waits), 0)
+
+    def test_handle_single_turn_resident_hidden_hides_overlay(self):
+        from xiaohuang.assistant_runtime_service import handle_single_turn_reply_result
+
+        cb, _, _, _, _, hides = self._callbacks()
+        handle_single_turn_reply_result(
+            callbacks=cb,
+            pipeline_result=self._fake_pipeline_result(),
+            command_text="test",
+            resident_hidden=True,
+        )
+        self.assertGreater(len(hides), 0)
+
+    def test_handle_single_turn_resident_visible_no_hide(self):
+        from xiaohuang.assistant_runtime_service import handle_single_turn_reply_result
+
+        cb, _, _, _, _, hides = self._callbacks()
+        cb.hide_overlay = None
+        outcome = handle_single_turn_reply_result(
+            callbacks=cb,
+            pipeline_result=self._fake_pipeline_result(),
+            command_text="test",
+            resident_hidden=True,
+        )
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual(len(hides), 0)
+
+    def test_handle_single_turn_stop_event_fires(self):
+        from xiaohuang.assistant_runtime_service import handle_single_turn_reply_result
+
+        cb, _, _, _, _, _ = self._callbacks()
+        cb.wait = lambda s: True  # stop event fired
+        outcome = handle_single_turn_reply_result(
+            callbacks=cb,
+            pipeline_result=self._fake_pipeline_result(),
+            command_text="test",
+            post_response_cooldown=2.0,
+        )
+        self.assertFalse(outcome.continue_loop)
+
+    def test_assistant_runtime_service_no_tkinter_import(self):
+        import sys
+        from xiaohuang import assistant_runtime_service
+        # module imports shouldn't pull in tkinter transitively from us
+        self.assertNotIn("tkinter", assistant_runtime_service.__dict__)
+
+
 class AudioCaptureServiceTests(unittest.TestCase):
     def test_build_recording_path_uses_timestamp_and_wav_suffix(self):
         output_dir = Path("data") / "recordings"

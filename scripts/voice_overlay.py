@@ -51,6 +51,11 @@ from xiaohuang.reply_pipeline_service import (
     ReplyPipelineResult,
     generate_reply_pipeline_result,
 )
+from xiaohuang.assistant_runtime_service import (
+    AssistantRuntimeCallbacks,
+    AssistantTurnOutcome,
+    handle_single_turn_reply_result,
+)
 from xiaohuang.reply_runtime_service import generate_reply_runtime_result
 from xiaohuang.app_config_service import apply_cli_overrides, load_config as load_user_config
 from xiaohuang.audio_capture_service import build_recording_path
@@ -698,28 +703,27 @@ def _run_overlay_loop(
 
                 if pipeline_result.tts_error:
                     _warn(logger, pipeline_result.tts_error)
-                    if not session_config.enabled:
-                        app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
 
                 if session_config.enabled:
                     if stop_event.wait(0.3):
                         break
                 else:
-                    app.thread_safe_set_state(
-                        STATE_RESULT,
-                        build_reply_result_text(
-                            result.command_text,
-                            pipeline_result.reply_text,
-                            pipeline_result.source_note,
-                            assistant_name=app.assistant_name,
-                        ),
+                    _callbacks = AssistantRuntimeCallbacks(
+                        set_state=lambda s, d=None: app.thread_safe_set_state(s, d),
+                        log_warn=lambda msg: _warn(logger, msg),
+                        debug_print=_safe_print if debug else None,
+                        wait=lambda s: stop_event.wait(s),
+                        hide_overlay=app.hide_overlay if resident_hidden else None,
                     )
-                    if pipeline_result.tts_error:
-                        _warn(logger, pipeline_result.tts_error)
-                        app.thread_safe_set_state(STATE_ERROR, pipeline_result.tts_error)
-                    if debug and post_response_cooldown > 0:
-                        _safe_print(f"Post-response cooldown: {post_response_cooldown:.1f}s")
-                    if stop_event.wait(post_response_cooldown):
+                    _outcome = handle_single_turn_reply_result(
+                        callbacks=_callbacks,
+                        pipeline_result=pipeline_result,
+                        command_text=result.command_text,
+                        assistant_name=app.assistant_name,
+                        post_response_cooldown=post_response_cooldown,
+                        resident_hidden=resident_hidden,
+                    )
+                    if not _outcome.continue_loop:
                         break
 
                 # --- conversation session: listen for follow-up commands ---
