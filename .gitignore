@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.omx/
 models/
 logs/*
 !logs/.gitkeep

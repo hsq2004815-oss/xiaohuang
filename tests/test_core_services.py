@@ -3097,6 +3097,222 @@ class V114DAStatusControlTests(unittest.TestCase):
         self.assertEqual(status.stt_health_status, "unavailable")
 
 
+class V12EBControlPanelWakeEngineTests(unittest.TestCase):
+    def _write_json_config(self, data):
+        import json
+
+        temp_dir = tempfile.TemporaryDirectory()
+        config_path = Path(temp_dir.name) / "config.json"
+        config_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return temp_dir, config_path
+
+    def _read_json_config(self, config_path):
+        import json
+
+        return json.loads(config_path.read_text(encoding="utf-8"))
+
+    def test_config_summary_reads_openwakeword_engine(self):
+        from xiaohuang.status_control_service import load_config_summary
+
+        temp_dir, config_path = self._write_json_config({
+            "wake": {
+                "engine": "openwakeword",
+                "phrases": ["贾维斯"],
+                "fallback_enabled": False,
+                "device_index": 0,
+                "cooldown_seconds": 2.5,
+                "sensitivity": 0.7,
+                "model_name": "hey_jarvis",
+            }
+        })
+        with temp_dir:
+            summary = load_config_summary(config_path)
+
+        self.assertEqual(summary.wake_engine, "openwakeword")
+        self.assertFalse(summary.wake_engine_is_default)
+        self.assertEqual(summary.wake_model_label, "hey_jarvis")
+        self.assertEqual(summary.wake_phrases, ["贾维斯"])
+
+    def test_config_summary_defaults_missing_engine_to_stt_text(self):
+        from xiaohuang.status_control_service import load_config_summary
+
+        temp_dir, config_path = self._write_json_config({"wake": {"phrases": ["贾维斯"]}})
+        with temp_dir:
+            summary = load_config_summary(config_path)
+
+        self.assertEqual(summary.wake_engine, "stt_text")
+        self.assertTrue(summary.wake_engine_is_default)
+
+    def test_config_summary_reads_wake_engine_parameters(self):
+        from xiaohuang.status_control_service import load_config_summary
+
+        temp_dir, config_path = self._write_json_config({
+            "wake": {
+                "engine": "openwakeword",
+                "fallback_enabled": False,
+                "device_index": 3,
+                "cooldown_seconds": 4.0,
+                "sensitivity": 0.25,
+            }
+        })
+        with temp_dir:
+            summary = load_config_summary(config_path)
+
+        self.assertFalse(summary.wake_fallback_enabled)
+        self.assertEqual(summary.wake_device_index, 3)
+        self.assertEqual(summary.wake_cooldown_seconds, 4.0)
+        self.assertEqual(summary.wake_sensitivity, 0.25)
+
+    def test_compute_status_includes_wake_engine_fields(self):
+        from xiaohuang.launch_control_service import HealthCheckResult, ProcessStatus
+        from xiaohuang.status_control_service import ConfigSummary, compute_status
+
+        status = compute_status(
+            ProcessStatus(True, True, 2),
+            HealthCheckResult(True, "ok=True status=ready model_loaded=True"),
+            Path("config.json"),
+            ConfigSummary(
+                "贾维斯测试",
+                ["贾维斯"],
+                "deepseek",
+                True,
+                wake_engine="openwakeword",
+                wake_engine_is_default=False,
+                wake_fallback_enabled=False,
+                wake_device_index=0,
+                wake_cooldown_seconds=2.5,
+                wake_sensitivity=0.6,
+                wake_model_label="hey_jarvis",
+            ),
+        )
+
+        self.assertEqual(status.wake_engine, "openwakeword")
+        self.assertFalse(status.wake_fallback_enabled)
+        self.assertEqual(status.wake_device_index, 0)
+        self.assertEqual(status.wake_model_label, "hey_jarvis")
+
+    def test_save_wake_engine_config_creates_missing_wake_object(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        temp_dir, config_path = self._write_json_config({"assistant": {"display_name": "贾维斯测试"}})
+        with temp_dir:
+            result = save_wake_engine_config(
+                config_path,
+                WakeEngineConfigUpdate("openwakeword", True, 0, 2.5, 0.5),
+            )
+            data = self._read_json_config(config_path)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(data["wake"]["engine"], "openwakeword")
+        self.assertEqual(data["assistant"]["display_name"], "贾维斯测试")
+
+    def test_save_wake_engine_config_writes_openwakeword(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        temp_dir, config_path = self._write_json_config({"wake": {"engine": "stt_text"}})
+        with temp_dir:
+            result = save_wake_engine_config(
+                config_path,
+                WakeEngineConfigUpdate("openwakeword", False, 0, 3.0, 0.8),
+            )
+            data = self._read_json_config(config_path)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(data["wake"]["engine"], "openwakeword")
+        self.assertFalse(data["wake"]["fallback_enabled"])
+        self.assertEqual(data["wake"]["device_index"], 0)
+        self.assertEqual(data["wake"]["cooldown_seconds"], 3.0)
+        self.assertEqual(data["wake"]["sensitivity"], 0.8)
+
+    def test_save_wake_engine_config_writes_stt_text(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        temp_dir, config_path = self._write_json_config({"wake": {"engine": "openwakeword"}})
+        with temp_dir:
+            result = save_wake_engine_config(
+                config_path,
+                WakeEngineConfigUpdate("stt_text", True, 0, 2.5, 0.5),
+            )
+            data = self._read_json_config(config_path)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(data["wake"]["engine"], "stt_text")
+
+    def test_save_wake_engine_config_rejects_invalid_device_index(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        temp_dir, config_path = self._write_json_config({"wake": {}})
+        with temp_dir:
+            result = save_wake_engine_config(
+                config_path,
+                WakeEngineConfigUpdate("stt_text", True, "abc", 2.5, 0.5),
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("device_index", result.message)
+
+    def test_save_wake_engine_config_rejects_invalid_cooldown(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        temp_dir, config_path = self._write_json_config({"wake": {}})
+        with temp_dir:
+            result = save_wake_engine_config(
+                config_path,
+                WakeEngineConfigUpdate("stt_text", True, 0, 0.0, 0.5),
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("cooldown_seconds", result.message)
+
+    def test_save_wake_engine_config_rejects_invalid_sensitivity(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        temp_dir, config_path = self._write_json_config({"wake": {}})
+        with temp_dir:
+            result = save_wake_engine_config(
+                config_path,
+                WakeEngineConfigUpdate("stt_text", True, 0, 2.5, 1.1),
+            )
+
+        self.assertFalse(result.ok)
+        self.assertIn("sensitivity", result.message)
+
+    def test_save_wake_engine_config_preserves_other_fields(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        temp_dir, config_path = self._write_json_config({
+            "wake": {"phrases": ["贾维斯"], "model_name": "hey_jarvis"},
+            "llm": {"provider": "qwen"},
+            "custom": {"keep": True},
+        })
+        with temp_dir:
+            result = save_wake_engine_config(
+                config_path,
+                WakeEngineConfigUpdate("openwakeword", True, 0, 2.5, 0.5),
+            )
+            data = self._read_json_config(config_path)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(data["wake"]["phrases"], ["贾维斯"])
+        self.assertEqual(data["wake"]["model_name"], "hey_jarvis")
+        self.assertEqual(data["llm"]["provider"], "qwen")
+        self.assertTrue(data["custom"]["keep"])
+
+    def test_save_wake_engine_config_missing_file_returns_error(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "missing" / "config.json"
+            result = save_wake_engine_config(
+                config_path,
+                WakeEngineConfigUpdate("stt_text", True, 0, 2.5, 0.5),
+            )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "config_not_found")
+        self.assertFalse(config_path.exists())
+
+
 class AudioCaptureServiceTests(unittest.TestCase):
     def test_build_recording_path_uses_timestamp_and_wav_suffix(self):
         output_dir = Path("data") / "recordings"

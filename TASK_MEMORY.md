@@ -10,6 +10,15 @@
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
 
+### V1.2E-B 控制面板 Wake Engine 配置记录（2026-05-04）
+
+- 控制面板显示当前 `wake.engine`、是否默认 `stt_text`、`fallback_enabled`、`device_index`、`cooldown_seconds`、`sensitivity` 和 openWakeWord label 提示。
+- 控制面板新增最小 Wake Engine 配置区：`stt_text` / `openwakeword` 下拉、fallback 勾选、device/cooldown/sensitivity 输入框。
+- 保存逻辑在 `status_control_service.save_wake_engine_config()`，只改 `wake.engine`、`fallback_enabled`、`device_index`、`cooldown_seconds`、`sensitivity`，保留其他 JSON 字段。
+- 配置文件不存在、非法 device/cooldown/sensitivity 会提示错误，不创建错误路径。
+- 保存后提示需要重启；“保存并重启小黄”复用控制面板现有 `run_restart_operation()`。
+- 本阶段未修改 `voice_overlay.py` / openWakeWord adapter / wake bridge / PowerShell / requirements，也不打开麦克风或启动 openWakeWord。
+
 ### V1.2E continuous openWakeWord listener 修复记录（2026-05-04）
 
 - blocker 现象：`voice_overlay.py` 能打印 `openwakeword_listener_starting/running`，但随后持续 `frames=11 raw=0`，用户说 “hey jarvis” 无唤醒；独立 `wake_engine_demo.py --duration-seconds 20 --debug` 仍可输出 wake_event。

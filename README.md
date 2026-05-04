@@ -242,6 +242,8 @@ V1.1.4D-B 流畅性修复：控制面板周期刷新和手动刷新不再在 Tki
 
 V1.1.4D-B 竞态修复：启动/重启操作完成时，操作 worker 会在后台线程内用短暂 grace window 采集 `final_status`，主线程只用该 operation completion result 决定弹窗；若 `final_status` 已 READY / `can_wake_now=True`，清空最近错误并按成功提示。operation completion pending 期间普通周期刷新不会交叉覆盖操作结果。
 
+V1.2E-B：控制面板现在会显示当前 `wake.engine`、`fallback_enabled`、`device_index`、`cooldown_seconds` 和 `sensitivity`，并可保存 `stt_text` / `openwakeword` 切换。保存后需要重启小黄生效；openWakeWord 当前实际唤醒 label 是 `hey_jarvis`，不是中文“贾维斯”自定义模型。
+
 V1.1.4B 真人验证结果：托盘图标、右键菜单、打开 Settings UI、读取 `config_settings_ui_test.json`、打开 `logs/`、关于/状态、退出托盘均正常。退出托盘不会停止 STT server 或 `voice_overlay.py`，也未影响 wake / session / TTS / LLM router 主链路。
 
 ## V1.2 Wake Engine Design

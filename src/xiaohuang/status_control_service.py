@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Any, Callable, Sequence
 
 from xiaohuang.app_config_service import XiaoHuangConfig, load_config
 from xiaohuang.launch_control_service import (
@@ -33,6 +34,10 @@ PARTIAL = "PARTIAL"
 STOPPING = "STOPPING"
 RESTARTING = "RESTARTING"
 ERROR = "ERROR"
+WAKE_ENGINE_STT_TEXT = "stt_text"
+WAKE_ENGINE_OPENWAKEWORD = "openwakeword"
+WAKE_ENGINE_CHOICES = (WAKE_ENGINE_STT_TEXT, WAKE_ENGINE_OPENWAKEWORD)
+OPENWAKEWORD_DEFAULT_MODEL_LABEL = "hey_jarvis"
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,13 @@ class ConfigSummary:
     wake_phrases: list[str]
     llm_provider: str
     tts_enabled: bool
+    wake_engine: str = WAKE_ENGINE_STT_TEXT
+    wake_engine_is_default: bool = True
+    wake_fallback_enabled: bool = True
+    wake_device_index: int | None = None
+    wake_cooldown_seconds: float = 2.5
+    wake_sensitivity: float = 0.5
+    wake_model_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +73,13 @@ class ControlPanelStatus:
     last_operation_elapsed_seconds: float | None
     last_error: str | None
     can_wake_now: bool
+    wake_engine: str = WAKE_ENGINE_STT_TEXT
+    wake_engine_is_default: bool = True
+    wake_fallback_enabled: bool = True
+    wake_device_index: int | None = None
+    wake_cooldown_seconds: float = 2.5
+    wake_sensitivity: float = 0.5
+    wake_model_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +88,22 @@ class ControlOperationResult:
     title: str
     message: str
     elapsed_seconds: float
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class WakeEngineConfigUpdate:
+    engine: str
+    fallback_enabled: bool
+    device_index: int
+    cooldown_seconds: float
+    sensitivity: float
+
+
+@dataclass(frozen=True)
+class WakeEngineConfigSaveResult:
+    ok: bool
+    message: str
     error: str | None = None
 
 
@@ -229,12 +264,66 @@ def load_config_summary(
     config_loader: Callable[[Path], XiaoHuangConfig] = load_config,
 ) -> ConfigSummary:
     config = config_loader(config_path)
+    wake_engine = _normalize_wake_engine(config.wake.engine)
     return ConfigSummary(
         assistant_display_name=config.assistant.display_name,
         wake_phrases=list(config.wake.phrases),
         llm_provider=config.llm.provider,
         tts_enabled=bool(config.tts.enabled),
+        wake_engine=wake_engine,
+        wake_engine_is_default=not _has_configured_wake_engine(config_path),
+        wake_fallback_enabled=bool(config.wake.fallback_enabled),
+        wake_device_index=config.wake.device_index,
+        wake_cooldown_seconds=float(config.wake.cooldown_seconds),
+        wake_sensitivity=float(config.wake.sensitivity),
+        wake_model_label=_resolve_wake_model_label(wake_engine, config.wake.model_name),
     )
+
+
+def save_wake_engine_config(config_path: Path, update: WakeEngineConfigUpdate) -> WakeEngineConfigSaveResult:
+    error = _validate_wake_engine_update(update)
+    if error:
+        return WakeEngineConfigSaveResult(False, error, error)
+
+    resolved = Path(config_path)
+    if not resolved.exists():
+        message = f"配置文件不存在：{resolved}"
+        return WakeEngineConfigSaveResult(False, message, "config_not_found")
+
+    try:
+        data = json.loads(resolved.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        message = f"配置 JSON 无法解析：{exc}"
+        return WakeEngineConfigSaveResult(False, message, "invalid_json")
+    except Exception as exc:
+        message = f"配置文件读取失败：{exc}"
+        return WakeEngineConfigSaveResult(False, message, "read_failed")
+
+    if not isinstance(data, dict):
+        message = "配置根节点必须是 JSON object。"
+        return WakeEngineConfigSaveResult(False, message, "invalid_root")
+
+    wake_data = data.get("wake")
+    if wake_data is None:
+        wake_data = {}
+        data["wake"] = wake_data
+    elif not isinstance(wake_data, dict):
+        message = "wake 配置必须是 JSON object。"
+        return WakeEngineConfigSaveResult(False, message, "invalid_wake")
+
+    wake_data["engine"] = _normalize_wake_engine(update.engine)
+    wake_data["fallback_enabled"] = bool(update.fallback_enabled)
+    wake_data["device_index"] = int(update.device_index)
+    wake_data["cooldown_seconds"] = float(update.cooldown_seconds)
+    wake_data["sensitivity"] = float(update.sensitivity)
+
+    try:
+        resolved.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except Exception as exc:
+        message = f"配置文件保存失败：{exc}"
+        return WakeEngineConfigSaveResult(False, message, "write_failed")
+
+    return WakeEngineConfigSaveResult(True, "已保存，重启小黄后生效")
 
 
 def compute_status(
@@ -286,6 +375,13 @@ def compute_status(
         last_operation_elapsed_seconds=last_operation_elapsed_seconds,
         last_error=error_summary,
         can_wake_now=can_wake_now,
+        wake_engine=config_summary.wake_engine,
+        wake_engine_is_default=config_summary.wake_engine_is_default,
+        wake_fallback_enabled=config_summary.wake_fallback_enabled,
+        wake_device_index=config_summary.wake_device_index,
+        wake_cooldown_seconds=config_summary.wake_cooldown_seconds,
+        wake_sensitivity=config_summary.wake_sensitivity,
+        wake_model_label=config_summary.wake_model_label,
     )
 
 
@@ -444,3 +540,52 @@ def _summary_bool(summary: str, key: str) -> bool:
     if not match:
         return False
     return match.group(1).lower() in ("true", "1")
+
+
+def _normalize_wake_engine(value: Any) -> str:
+    engine = str(value).strip().lower() if value is not None else ""
+    return engine if engine in WAKE_ENGINE_CHOICES else WAKE_ENGINE_STT_TEXT
+
+
+def _resolve_wake_model_label(wake_engine: str, configured_model_name: str | None) -> str | None:
+    if wake_engine != WAKE_ENGINE_OPENWAKEWORD:
+        return None
+    return configured_model_name or OPENWAKEWORD_DEFAULT_MODEL_LABEL
+
+
+def _has_configured_wake_engine(config_path: Path) -> bool:
+    try:
+        data = json.loads(Path(config_path).read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    wake_data = data.get("wake")
+    if not isinstance(wake_data, dict):
+        return False
+    engine = wake_data.get("engine")
+    return isinstance(engine, str) and bool(engine.strip())
+
+
+def _validate_wake_engine_update(update: WakeEngineConfigUpdate) -> str | None:
+    if _normalize_wake_engine(update.engine) != str(update.engine).strip().lower():
+        return "wake.engine 必须是 stt_text 或 openwakeword。"
+    if not isinstance(update.fallback_enabled, bool):
+        return "fallback_enabled 必须是 true 或 false。"
+    if isinstance(update.device_index, bool) or not isinstance(update.device_index, int):
+        return "device_index 必须是整数。"
+    if update.device_index < 0:
+        return "device_index 必须是非负整数。"
+    try:
+        cooldown_seconds = float(update.cooldown_seconds)
+    except (TypeError, ValueError):
+        return "cooldown_seconds 必须是正数。"
+    if cooldown_seconds <= 0:
+        return "cooldown_seconds 必须是正数。"
+    try:
+        sensitivity = float(update.sensitivity)
+    except (TypeError, ValueError):
+        return "sensitivity 必须是 0 到 1 之间的数字。"
+    if not 0.0 <= sensitivity <= 1.0:
+        return "sensitivity 必须是 0 到 1 之间的数字。"
+    return None

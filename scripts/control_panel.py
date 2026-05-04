@@ -23,10 +23,15 @@ from xiaohuang.status_control_service import (
     ControlOperationResult,
     ControlPanelStatus,
     READY,
+    WAKE_ENGINE_CHOICES,
+    WAKE_ENGINE_OPENWAKEWORD,
+    WAKE_ENGINE_STT_TEXT,
+    WakeEngineConfigUpdate,
     build_status,
     run_restart_operation,
     run_start_operation,
     run_stop_operation,
+    save_wake_engine_config,
     stage_markers,
 )
 
@@ -152,7 +157,7 @@ class StatusRefreshController:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="XiaoHuang status control panel V1.1.4D-A")
+    parser = argparse.ArgumentParser(description="XiaoHuang status and wake engine control panel")
     parser.add_argument(
         "--config",
         default=str(get_default_config_path()),
@@ -199,6 +204,74 @@ def open_log_dir() -> bool:
 
 def _status_line(value: bool, true_text: str = "running", false_text: str = "stopped") -> str:
     return true_text if value else false_text
+
+
+def _format_float(value: float) -> str:
+    return f"{float(value):g}"
+
+
+def format_wake_engine_display(status: ControlPanelStatus) -> str:
+    if status.wake_engine == WAKE_ENGINE_OPENWAKEWORD:
+        return "openWakeWord"
+    suffix = "（默认）" if status.wake_engine_is_default else ""
+    return f"stt_text{suffix}"
+
+
+def format_wake_params(status: ControlPanelStatus) -> str:
+    device = status.wake_device_index if status.wake_device_index is not None else "未配置"
+    return (
+        f"device_index={device}, "
+        f"cooldown_seconds={_format_float(status.wake_cooldown_seconds)}, "
+        f"sensitivity={_format_float(status.wake_sensitivity)}"
+    )
+
+
+def format_wake_label_note(status: ControlPanelStatus) -> str:
+    if status.wake_engine != WAKE_ENGINE_OPENWAKEWORD:
+        return "-"
+    label = status.wake_model_label or "hey_jarvis"
+    return f"当前 openWakeWord model label 是 {label}；中文“贾维斯”不是当前 openWakeWord 自定义中文模型。"
+
+
+def parse_wake_engine_config_input(
+    *,
+    engine: str,
+    fallback_enabled: bool,
+    device_index: str,
+    cooldown_seconds: str,
+    sensitivity: str,
+) -> tuple[WakeEngineConfigUpdate | None, str | None]:
+    normalized_engine = engine.strip().lower()
+    if normalized_engine not in WAKE_ENGINE_CHOICES:
+        return None, "wake.engine 必须是 stt_text 或 openwakeword。"
+    try:
+        parsed_device = int(device_index.strip())
+    except ValueError:
+        return None, "device_index 必须是整数。"
+    if parsed_device < 0:
+        return None, "device_index 必须是非负整数。"
+    try:
+        parsed_cooldown = float(cooldown_seconds.strip())
+    except ValueError:
+        return None, "cooldown_seconds 必须是正数。"
+    if parsed_cooldown <= 0:
+        return None, "cooldown_seconds 必须是正数。"
+    try:
+        parsed_sensitivity = float(sensitivity.strip())
+    except ValueError:
+        return None, "sensitivity 必须是 0 到 1 之间的数字。"
+    if not 0.0 <= parsed_sensitivity <= 1.0:
+        return None, "sensitivity 必须是 0 到 1 之间的数字。"
+    return (
+        WakeEngineConfigUpdate(
+            engine=normalized_engine,
+            fallback_enabled=bool(fallback_enabled),
+            device_index=parsed_device,
+            cooldown_seconds=parsed_cooldown,
+            sensitivity=parsed_sensitivity,
+        ),
+        None,
+    )
 
 
 def is_final_ready_status(status: ControlPanelStatus) -> bool:
@@ -422,8 +495,8 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
 
     root = tk.Tk()
     root.title("小黄控制面板")
-    root.geometry("680x560")
-    root.minsize(620, 500)
+    root.geometry("760x760")
+    root.minsize(700, 650)
 
     state = {
         "closed": False,
@@ -436,6 +509,8 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         "pending_refresh": False,
         "refresh_generation": 0,
         "operation_completion_pending": False,
+        "wake_config_dirty": False,
+        "wake_config_syncing": False,
     }
     operation_buttons: list[ttk.Button] = []
 
@@ -456,6 +531,11 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         ("STT server", "stt"),
         ("Voice overlay", "overlay"),
         ("Health", "health"),
+        ("是否可唤醒", "can_wake"),
+        ("Wake Engine", "wake_engine"),
+        ("Wake fallback", "wake_fallback"),
+        ("Wake 参数", "wake_params"),
+        ("Wake label", "wake_label"),
         ("助手", "assistant"),
         ("唤醒词", "wake"),
         ("LLM provider", "llm"),
@@ -467,7 +547,7 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         ttk.Label(status_frame, text=label + "：").grid(row=row, column=0, sticky="w", padx=10, pady=3)
         var = tk.StringVar(value="-")
         field_vars[key] = var
-        ttk.Label(status_frame, textvariable=var, wraplength=520).grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        ttk.Label(status_frame, textvariable=var, wraplength=620).grid(row=row, column=1, sticky="w", padx=6, pady=3)
     status_frame.columnconfigure(1, weight=1)
 
     stage_frame = ttk.LabelFrame(main, text="启动阶段")
@@ -485,12 +565,39 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
     actions = ttk.LabelFrame(main, text="操作")
     actions.pack(fill="x", pady=(12, 0))
 
+    wake_engine_var = tk.StringVar(value=WAKE_ENGINE_STT_TEXT)
+    wake_fallback_var = tk.BooleanVar(value=True)
+    wake_device_var = tk.StringVar(value="0")
+    wake_cooldown_var = tk.StringVar(value="2.5")
+    wake_sensitivity_var = tk.StringVar(value="0.5")
+
+    def mark_wake_config_dirty(*_args) -> None:
+        if not state["wake_config_syncing"]:
+            state["wake_config_dirty"] = True
+
+    for variable in (wake_engine_var, wake_fallback_var, wake_device_var, wake_cooldown_var, wake_sensitivity_var):
+        variable.trace_add("write", mark_wake_config_dirty)
+
+    def sync_wake_config_fields(status: ControlPanelStatus) -> None:
+        if state["wake_config_dirty"]:
+            return
+        state["wake_config_syncing"] = True
+        try:
+            wake_engine_var.set(status.wake_engine if status.wake_engine in WAKE_ENGINE_CHOICES else WAKE_ENGINE_STT_TEXT)
+            wake_fallback_var.set(bool(status.wake_fallback_enabled))
+            wake_device_var.set(str(status.wake_device_index if status.wake_device_index is not None else 0))
+            wake_cooldown_var.set(_format_float(status.wake_cooldown_seconds))
+            wake_sensitivity_var.set(_format_float(status.wake_sensitivity))
+        finally:
+            state["wake_config_syncing"] = False
+
     def set_buttons_enabled(enabled: bool) -> None:
         state_name = "normal" if enabled else "disabled"
         for button in operation_buttons:
             button.configure(state=state_name)
 
     def render(status: ControlPanelStatus) -> None:
+        sync_wake_config_fields(status)
         title_var.set(status.overall_message)
         if status.can_wake_now:
             hint_var.set("系统已就绪。")
@@ -500,6 +607,11 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         field_vars["stt"].set(_status_line(status.stt_running) + (" / ready" if status.stt_ready else ""))
         field_vars["overlay"].set(_status_line(status.overlay_running))
         field_vars["health"].set(status.stt_health_status + (" / model_loaded" if status.stt_model_loaded else ""))
+        field_vars["can_wake"].set("true" if status.can_wake_now else "false")
+        field_vars["wake_engine"].set(format_wake_engine_display(status))
+        field_vars["wake_fallback"].set(f"fallback_enabled={str(status.wake_fallback_enabled).lower()}")
+        field_vars["wake_params"].set(format_wake_params(status))
+        field_vars["wake_label"].set(format_wake_label_note(status))
         field_vars["assistant"].set(status.assistant_display_name)
         field_vars["wake"].set(", ".join(status.wake_phrases))
         field_vars["llm"].set(status.llm_provider)
@@ -513,7 +625,7 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         bottom_var.set(
             f"最近操作：{status.last_operation or '-'}    最近耗时：{elapsed_text}\n"
             f"最近错误：{error_text}\n"
-            "提示：关闭此窗口不会停止小黄。"
+            "提示：修改唤醒引擎后需重启小黄生效；关闭此窗口不会停止小黄。"
         )
 
     def collect_status(
@@ -598,6 +710,38 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
     def do_restart() -> None:
         run_operation("重启", lambda: run_restart_operation(PROJECT_ROOT, config_path))
 
+    def save_current_wake_config(*, show_popup: bool = True) -> bool:
+        update, error = parse_wake_engine_config_input(
+            engine=wake_engine_var.get(),
+            fallback_enabled=bool(wake_fallback_var.get()),
+            device_index=wake_device_var.get(),
+            cooldown_seconds=wake_cooldown_var.get(),
+            sensitivity=wake_sensitivity_var.get(),
+        )
+        if error or update is None:
+            messagebox.showerror("配置无效", error or "Wake Engine 配置无效。")
+            return False
+        result = save_wake_engine_config(config_path, update)
+        if not result.ok:
+            messagebox.showerror("保存失败", result.message)
+            return False
+        state["wake_config_dirty"] = False
+        request_status_refresh()
+        if show_popup:
+            messagebox.showinfo("配置已保存", result.message)
+        return True
+
+    def do_save_wake_config() -> None:
+        save_current_wake_config(show_popup=True)
+
+    def do_save_wake_config_and_restart() -> None:
+        if state["active_operation"]:
+            messagebox.showinfo("操作进行中", f"正在执行{state['active_operation']}操作，请稍候。")
+            return
+        if save_current_wake_config(show_popup=False):
+            messagebox.showinfo("配置已保存", "已保存，正在重启小黄。")
+            do_restart()
+
     operation_buttons.extend([
         ttk.Button(actions, text="启动小黄", command=do_start),
         ttk.Button(actions, text="停止小黄", command=do_stop),
@@ -611,8 +755,51 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
     for col in range(6):
         actions.columnconfigure(col, weight=1)
 
-    bottom_var = tk.StringVar(value="提示：关闭此窗口不会停止小黄。")
-    ttk.Label(main, textvariable=bottom_var, foreground="gray", wraplength=620).pack(fill="x", pady=(12, 0))
+    wake_config_frame = ttk.LabelFrame(main, text="Wake Engine 配置")
+    wake_config_frame.pack(fill="x", pady=(12, 0))
+    ttk.Label(wake_config_frame, text="wake.engine：").grid(row=0, column=0, sticky="w", padx=10, pady=4)
+    ttk.Combobox(
+        wake_config_frame,
+        textvariable=wake_engine_var,
+        values=WAKE_ENGINE_CHOICES,
+        state="readonly",
+        width=18,
+    ).grid(row=0, column=1, sticky="w", padx=6, pady=4)
+    ttk.Checkbutton(
+        wake_config_frame,
+        text="fallback_enabled",
+        variable=wake_fallback_var,
+    ).grid(row=0, column=2, sticky="w", padx=6, pady=4)
+
+    ttk.Label(wake_config_frame, text="device_index：").grid(row=1, column=0, sticky="w", padx=10, pady=4)
+    ttk.Entry(wake_config_frame, textvariable=wake_device_var, width=10).grid(row=1, column=1, sticky="w", padx=6, pady=4)
+    ttk.Label(wake_config_frame, text="cooldown_seconds：").grid(row=1, column=2, sticky="w", padx=6, pady=4)
+    ttk.Entry(wake_config_frame, textvariable=wake_cooldown_var, width=10).grid(row=1, column=3, sticky="w", padx=6, pady=4)
+    ttk.Label(wake_config_frame, text="sensitivity：").grid(row=1, column=4, sticky="w", padx=6, pady=4)
+    ttk.Entry(wake_config_frame, textvariable=wake_sensitivity_var, width=10).grid(row=1, column=5, sticky="w", padx=6, pady=4)
+
+    ttk.Button(wake_config_frame, text="保存配置", command=do_save_wake_config).grid(
+        row=2,
+        column=0,
+        columnspan=2,
+        sticky="ew",
+        padx=10,
+        pady=8,
+    )
+    save_restart_button = ttk.Button(wake_config_frame, text="保存并重启小黄", command=do_save_wake_config_and_restart)
+    save_restart_button.grid(row=2, column=2, columnspan=2, sticky="ew", padx=6, pady=8)
+    operation_buttons.append(save_restart_button)
+    ttk.Label(
+        wake_config_frame,
+        text="修改 wake.engine 后需要重启小黄生效。openWakeWord 当前唤醒模型 label 是 hey_jarvis，不是中文“贾维斯”自定义模型。",
+        foreground="gray",
+        wraplength=680,
+    ).grid(row=3, column=0, columnspan=6, sticky="w", padx=10, pady=(0, 8))
+    for col in range(6):
+        wake_config_frame.columnconfigure(col, weight=1)
+
+    bottom_var = tk.StringVar(value="提示：修改唤醒引擎后需重启小黄生效；关闭此窗口不会停止小黄。")
+    ttk.Label(main, textvariable=bottom_var, foreground="gray", wraplength=700).pack(fill="x", pady=(12, 0))
 
     def on_close() -> None:
         state["closed"] = True
