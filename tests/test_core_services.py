@@ -526,6 +526,272 @@ class V12DCWakeCommandBridgeTests(unittest.TestCase):
             self.assertIn(f"reason={reason}", result.stdout)
 
 
+class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
+    def _runtime_config(self, *, engine: str = "openwakeword", fallback_enabled: bool = True):
+        from voice_overlay import WakeEngineRuntimeConfig
+
+        return WakeEngineRuntimeConfig(
+            engine=engine,
+            wake_phrase="贾维斯",
+            fallback_enabled=fallback_enabled,
+            device=0,
+            sample_rate=16000,
+            sensitivity=0.5,
+            cooldown_seconds=2.5,
+            model_path=None,
+            model_name="hey_jarvis",
+            poll_seconds=0.1,
+        )
+
+    def _dependency_status(self, *, ready: bool):
+        from xiaohuang.openwakeword_adapter import OpenWakeWordDependencyStatus
+
+        return OpenWakeWordDependencyStatus(
+            openwakeword_installed=ready,
+            numpy_installed=ready,
+            sounddevice_installed=ready,
+            onnxruntime_available=ready,
+            ready_for_realtime_demo=ready,
+            errors=[] if ready else ["Missing optional dependency: openwakeword"],
+        )
+
+    def _wake_event(self):
+        from xiaohuang.wake_engine_service import WakeEvent
+
+        return WakeEvent(
+            engine_type="openwakeword",
+            wake_phrase="贾维斯",
+            label="hey_jarvis",
+            score=0.92,
+            detected_at=10.0,
+        )
+
+    def test_default_wake_config_keeps_stt_text_engine(self):
+        from xiaohuang.app_config_service import get_default_config
+
+        config = get_default_config()
+
+        self.assertEqual(config.wake.engine, "stt_text")
+        self.assertTrue(config.wake.fallback_enabled)
+
+    def test_wake_config_reads_openwakeword_fields(self):
+        from xiaohuang.app_config_service import get_default_config, merge_config_dict
+
+        config = merge_config_dict(
+            get_default_config(),
+            {
+                "wake": {
+                    "engine": "openwakeword",
+                    "fallback_enabled": False,
+                    "sensitivity": 0.6,
+                    "cooldown_seconds": 3.0,
+                    "device_index": 2,
+                    "model_name": "hey_jarvis",
+                }
+            },
+        )
+
+        self.assertEqual(config.wake.engine, "openwakeword")
+        self.assertFalse(config.wake.fallback_enabled)
+        self.assertEqual(config.wake.sensitivity, 0.6)
+        self.assertEqual(config.wake.cooldown_seconds, 3.0)
+        self.assertEqual(config.wake.device_index, 2)
+        self.assertEqual(config.wake.model_name, "hey_jarvis")
+
+    def test_openwakeword_engine_selects_openwakeword_when_dependencies_ready(self):
+        from voice_overlay import WAKE_ENGINE_OPENWAKEWORD, _select_wake_engine_runtime
+
+        plan = _select_wake_engine_runtime(
+            self._runtime_config(engine="openwakeword"),
+            dependency_status=self._dependency_status(ready=True),
+        )
+
+        self.assertEqual(plan.engine, WAKE_ENGINE_OPENWAKEWORD)
+        self.assertIsNone(plan.error)
+
+    def test_openwakeword_dependency_missing_falls_back_when_enabled(self):
+        from voice_overlay import WAKE_ENGINE_STT_TEXT, _select_wake_engine_runtime
+
+        plan = _select_wake_engine_runtime(
+            self._runtime_config(engine="openwakeword", fallback_enabled=True),
+            dependency_status=self._dependency_status(ready=False),
+        )
+
+        self.assertEqual(plan.engine, WAKE_ENGINE_STT_TEXT)
+        self.assertIsNone(plan.error)
+        self.assertIn("falling back to stt_text", plan.warning)
+
+    def test_openwakeword_dependency_missing_errors_when_fallback_disabled(self):
+        from voice_overlay import WAKE_ENGINE_OPENWAKEWORD, _select_wake_engine_runtime
+
+        plan = _select_wake_engine_runtime(
+            self._runtime_config(engine="openwakeword", fallback_enabled=False),
+            dependency_status=self._dependency_status(ready=False),
+        )
+
+        self.assertEqual(plan.engine, WAKE_ENGINE_OPENWAKEWORD)
+        self.assertIn("dependency unavailable", plan.error)
+
+    def test_openwakeword_wake_event_starts_one_command_recording(self):
+        import threading
+        from voice_overlay import _OpenWakeWordBridgeRuntime, _run_openwakeword_wake_loop_once
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = FakeOverlayApp()
+            adapter = FakeOpenWakeWordAdapter([self._wake_event(), self._wake_event()])
+            bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+            recording_path = Path(temp_dir) / "command.wav"
+            record_calls: list[Path] = []
+
+            options = WakeLoopOptions(
+                device_id=0,
+                server_url="http://127.0.0.1:8766",
+                wake_window_seconds=0.1,
+                wake_phrases=["贾维斯"],
+                max_seconds=1.0,
+                silence_seconds=0.1,
+                sample_rate=16000,
+                channels=1,
+                recording_dir=Path(temp_dir),
+            )
+
+            def fake_record(path, **_kwargs):
+                record_calls.append(Path(path))
+                return SimpleNamespace(path=Path(path), duration_seconds=0.4, stop_reason="silence_after_speech")
+
+            result = _run_openwakeword_wake_loop_once(
+                app=app,
+                options=options,
+                runtime_config=self._runtime_config(),
+                bridge_runtime=bridge,
+                logger=FakeLogger(),
+                debug=False,
+                stop_event=threading.Event(),
+                adapter_factory=lambda _config: adapter,
+                record_func=fake_record,
+                build_recording_path_func=lambda _dir: recording_path,
+                request_transcription_func=lambda _path, _url, mode=None: {"text": "打开记事本"},
+            )
+
+        self.assertEqual(result.command_text, "打开记事本")
+        self.assertEqual(len(record_calls), 1)
+        self.assertTrue(adapter.stopped)
+        self.assertEqual(bridge.bridge.state().accepted_count, 1)
+
+    def test_openwakeword_bridge_rejects_command_and_tts_active_events(self):
+        from voice_overlay import _OpenWakeWordBridgeRuntime
+
+        command_bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+        command_bridge.mark_command_started()
+        command_decision = command_bridge.handle_event(self._wake_event())
+
+        tts_bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+        tts_bridge.mark_tts_started()
+        tts_decision = tts_bridge.handle_event(self._wake_event())
+
+        self.assertFalse(command_decision.accepted)
+        self.assertEqual(command_decision.reason, "command_active")
+        self.assertFalse(tts_decision.accepted)
+        self.assertEqual(tts_decision.reason, "tts_active")
+
+    def test_command_recording_error_leaves_wake_engine_stopped_and_command_inactive(self):
+        import threading
+        from voice_overlay import _OpenWakeWordBridgeRuntime, _run_openwakeword_wake_loop_once
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = FakeOverlayApp()
+            adapter = FakeOpenWakeWordAdapter([self._wake_event()])
+            bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+            options = WakeLoopOptions(
+                device_id=0,
+                server_url="http://127.0.0.1:8766",
+                wake_window_seconds=0.1,
+                wake_phrases=["贾维斯"],
+                max_seconds=1.0,
+                silence_seconds=0.1,
+                sample_rate=16000,
+                channels=1,
+                recording_dir=Path(temp_dir),
+            )
+
+            def failing_record(_path, **_kwargs):
+                raise RuntimeError("fake recorder failed")
+
+            with self.assertRaises(RuntimeError):
+                _run_openwakeword_wake_loop_once(
+                    app=app,
+                    options=options,
+                    runtime_config=self._runtime_config(),
+                    bridge_runtime=bridge,
+                    logger=FakeLogger(),
+                    debug=False,
+                    stop_event=threading.Event(),
+                    adapter_factory=lambda _config: adapter,
+                    record_func=failing_record,
+                    build_recording_path_func=lambda _dir: Path(temp_dir) / "command.wav",
+                    request_transcription_func=lambda _path, _url, mode=None: {"text": "不会执行"},
+                )
+
+        self.assertTrue(adapter.stopped)
+        self.assertFalse(bridge.bridge.state().command_active)
+
+
+class FakeOverlayApp:
+    def __init__(self):
+        self.states: list[tuple[str, str | None]] = []
+        self.visible = False
+
+    def thread_safe_set_state(self, state: str, detail: str | None = None) -> None:
+        self.states.append((state, detail))
+
+    def show_overlay(self) -> None:
+        self.visible = True
+
+
+class FakeOpenWakeWordAdapter:
+    def __init__(self, events):
+        self.events = list(events)
+        self.stopped = False
+        self.run_count = 0
+
+    def run_for_duration(self, _duration_seconds, on_event=None, debug=False):
+        from xiaohuang.wake_engine_service import WakeEventStats
+
+        self.stopped = False
+        self.run_count += 1
+        for event in self.events:
+            if self.stopped:
+                break
+            if on_event is not None:
+                on_event(event)
+        return WakeEventStats(
+            raw_detections=len(self.events),
+            coalesced_events=1,
+            suppressed_detections=max(0, len(self.events) - 1),
+            cooldown_seconds=2.5,
+        )
+
+    def stop(self):
+        self.stopped = True
+
+    def status(self):
+        return SimpleNamespace(error=None, running=not self.stopped, ready=not self.stopped, model_loaded=True)
+
+
+class FakeLogger:
+    def info(self, *_args, **_kwargs):
+        pass
+
+    def warning(self, *_args, **_kwargs):
+        pass
+
+    def error(self, *_args, **_kwargs):
+        pass
+
+    def exception(self, *_args, **_kwargs):
+        pass
+
+
 class ManualClock:
     def __init__(self, current: float = 0.0):
         self.current = current

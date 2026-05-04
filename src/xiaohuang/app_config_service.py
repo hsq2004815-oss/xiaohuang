@@ -8,9 +8,16 @@ from typing import Any, Callable
 
 @dataclass(frozen=True)
 class WakeConfig:
+    engine: str = "stt_text"
     phrases: list[str] = field(default_factory=lambda: ["小黄"])
     aliases: list[str] = field(default_factory=list)
     wake_window_seconds: float = 3.0
+    fallback_enabled: bool = True
+    sensitivity: float = 0.5
+    cooldown_seconds: float = 2.5
+    device_index: int | None = None
+    model_path: str | None = None
+    model_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -148,9 +155,16 @@ def apply_cli_overrides(
 ) -> XiaoHuangConfig:
     return XiaoHuangConfig(
         wake=WakeConfig(
+            engine=config.wake.engine,
             phrases=config.wake.phrases,
             aliases=config.wake.aliases,
             wake_window_seconds=_coalesce(args.wake_window_seconds, config.wake.wake_window_seconds),
+            fallback_enabled=config.wake.fallback_enabled,
+            sensitivity=config.wake.sensitivity,
+            cooldown_seconds=config.wake.cooldown_seconds,
+            device_index=config.wake.device_index,
+            model_path=config.wake.model_path,
+            model_name=config.wake.model_name,
         ),
         audio=AudioConfig(
             device_id=_coalesce(args.device, config.audio.device_id),
@@ -197,10 +211,18 @@ def apply_cli_overrides(
 
 def _merge_wake(base: WakeConfig, data: dict[str, Any], *, warn=None) -> WakeConfig:
     phrases = _coerce_phrases(data.get("phrases"), warn=warn)
+    engine = data.get("engine")
     return WakeConfig(
+        engine=str(engine).strip().lower() if engine is not None and str(engine).strip() else base.engine,
         phrases=phrases if phrases else base.phrases,
         aliases=_coerce_aliases(data.get("aliases"), warn=warn),
         wake_window_seconds=_coerce_float(data.get("wake_window_seconds"), base.wake_window_seconds, 0.5, 30.0, warn),
+        fallback_enabled=_coerce_bool(data.get("fallback_enabled"), base.fallback_enabled, warn),
+        sensitivity=_coerce_float(data.get("sensitivity"), base.sensitivity, 0.0, 1.0, warn),
+        cooldown_seconds=_coerce_float(data.get("cooldown_seconds"), base.cooldown_seconds, 0.0, 30.0, warn),
+        device_index=_coerce_optional_int(data.get("device_index"), base.device_index, 0, 99, warn),
+        model_path=_coerce_optional_str(data.get("model_path"), base.model_path),
+        model_name=_coerce_optional_str(data.get("model_name"), base.model_name),
     )
 
 
@@ -310,6 +332,20 @@ def _coerce_int(value: Any, default: int, lo: int, hi: int, warn=None) -> int:
     return default
 
 
+def _coerce_optional_int(value: Any, default: int | None, lo: int, hi: int, warn=None) -> int | None:
+    if value is None:
+        return default
+    try:
+        v = int(value)
+        if lo <= v <= hi:
+            return v
+    except (TypeError, ValueError):
+        pass
+    if warn:
+        warn(f"Expected int in [{lo},{hi}], using default {default}")
+    return default
+
+
 def _coerce_float(value: Any, default: float, lo: float, hi: float, warn=None) -> float:
     try:
         v = float(value)
@@ -320,6 +356,13 @@ def _coerce_float(value: Any, default: float, lo: float, hi: float, warn=None) -
     if warn:
         warn(f"Expected float in [{lo},{hi}], using default {default}")
     return default
+
+
+def _coerce_optional_str(value: Any, default: str | None) -> str | None:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text or default
 
 
 def _coerce_bool(value: Any, default: bool, warn=None) -> bool:

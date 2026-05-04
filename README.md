@@ -261,3 +261,24 @@ V1.2D-B 已在 `scripts/wake_engine_demo.py` 新增 `--safety-check`，支持 `-
 V1.2D-B 真人 safety-check 已通过：device 0、10 秒、2 轮重复运行后 `all_rounds_completed=true`、`microphone_released=true`、`errors=0`；第 2 轮 `frames=123`、`raw_detections=17`、`coalesced_events=3`、`suppressed_detections=14`、`status_after_stop running=false ready=false model_loaded=true error=-`。后续 V1.2D-C 已完成 wake event -> command recorder 模拟桥接设计/验证，仍不直接改正式 `voice_overlay.py` 主链路。
 
 V1.2D-C 已新增 `src/xiaohuang/wake_command_bridge_service.py` 和 `scripts/wake_command_bridge_demo.py`，用 fake `WakeEvent` 与 fake command starter 验证 bridge 状态机：`accepted`、`cooldown`、`command_active`、`tts_active`、`disabled`、`bridge_busy`、`invalid_event`、`recorder_error`。默认 demo 不打开麦克风、不启动 openWakeWord/STT/overlay/LLM/TTS；`events=3`、`interval=0.5`、`cooldown=2.5` 时只会启动一次 fake command starter。本阶段仍不修改 `voice_overlay.py`，不替换 STT 文本唤醒；下一步是 V1.2D-D 只读分析正式 command recorder 接入点。
+
+V1.2E 已把 openWakeWord 以 feature flag 接入 `voice_overlay.py` 主链路。默认 `wake.engine` 仍是 `stt_text`，旧 STT 文本唤醒行为不变；只有显式配置 `wake.engine="openwakeword"` 时才启动 `OpenWakeWordAdapter`。openWakeWord 依赖或运行失败时，`fallback_enabled=true` 会回退到旧 `stt_text` 路径；`fallback_enabled=false` 会显示错误并保持安全状态。
+
+最小 openWakeWord 配置示例：
+
+```json
+{
+  "wake": {
+    "engine": "openwakeword",
+    "phrases": ["贾维斯"],
+    "fallback_enabled": true,
+    "sensitivity": 0.5,
+    "cooldown_seconds": 2.5,
+    "device_index": 0,
+    "model_path": null,
+    "model_name": "hey_jarvis"
+  }
+}
+```
+
+人工验证建议：先用默认/`stt_text` 确认旧“贾维斯”唤醒仍可用；再切到 `openwakeword` 后说 “hey jarvis”，确认进入命令录音、命令结束后能继续等待下一次唤醒，TTS 播放期间不重复自唤醒；需要回滚时改回 `wake.engine="stt_text"`。

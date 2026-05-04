@@ -2,13 +2,24 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2D-C — Wake Command Bridge simulation / 接入前桥接状态机验证
-- **最新功能 commit**：V1.2D-C WakeEvent -> command recorder bridge simulation（见 git log 最新提交）
-- **最新文档 commit**：V1.2D-C 桥接验证记录更新（见 git log 最新提交）
+- **阶段**：V1.2E — openWakeWord behind feature flag 接入 voice_overlay 主链路
+- **最新功能 commit**：V1.2E voice overlay wake engine feature flag（见 git log 最新提交）
+- **最新文档 commit**：V1.2E README/TASK_MEMORY 最小使用说明（见 git log 最新提交）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
-- **工作区**：V1.2D-C bridge/demo/docs/tests 已完成并待提交；运行产物均 ignored
-- **测试**：381 tests OK、compileall OK、wake_command_bridge_demo help/dry-run/default OK、wake_engine_demo help OK、voice_overlay help OK；不跑真实麦克风自动测试
+- **工作区**：V1.2E voice_overlay/config/tests/README 改动已完成并待提交；运行产物均 ignored
+- **测试**：389 tests OK、compileall OK、voice_overlay/wake_engine_demo/wake_command_bridge_demo/control_panel/tray_app help OK；本次不自动跑真实 openWakeWord 主链路
+
+### V1.2E openWakeWord feature flag 接入记录（2026-05-04）
+
+- `wake.engine` 默认仍是 `stt_text`；新增 `openwakeword` 仅在 JSON 显式配置后启用，`fallback_enabled=true` 时依赖/运行失败回退旧 STT 文本唤醒。
+- `app_config_service.WakeConfig` 新增 `engine`、`fallback_enabled`、`sensitivity`、`cooldown_seconds`、`device_index`、`model_path`、`model_name`。
+- `voice_overlay.py` 新增 openWakeWord runtime selection；收到 coalesced `WakeEvent` 后经 `WakeCommandBridge` accepted，先 stop adapter，再进入旧 VAD command recorder。
+- command record 期间标记 `command_active`；TTS pipeline 用 guarded callback 标记 `tts_active`，用于屏蔽 wake event 和自唤醒风险。
+- openWakeWord adapter runtime error 且 fallback 开启时只回退本轮到 `stt_text`；fallback 关闭时显示错误并保持安全状态。
+- 新增 fake 单测覆盖默认旧路径、openwakeword 选择、依赖失败 fallback/error、accepted event 只启动一次 command recorder、command/tts active reject、录音异常后 adapter stopped + command inactive。
+- 未修改 PowerShell、requirements、`E:\DataBase`、secrets/logs/audio/model cache；未下载模型；未训练中文“贾维斯”模型。
+- 人工验证：先测默认/`stt_text` 旧“贾维斯”，再配 `wake.engine=openwakeword` + device 0 后说 “hey jarvis”，最后改回 `stt_text` 回滚。
 
 ### V1.2D-C Wake Command Bridge simulation 记录（2026-05-03）
 
