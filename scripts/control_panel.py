@@ -485,6 +485,16 @@ def should_retry_operation_final_status(
     return final_status is None or not is_final_ready_status(final_status)
 
 
+def _is_config_path_valid(path: Path) -> bool:
+    text = str(path or "").strip()
+    if not text or text == ".":
+        return False
+    resolved = Path(path).resolve()
+    if resolved.is_dir():
+        return False
+    return True
+
+
 def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int:
     try:
         import tkinter as tk
@@ -492,6 +502,9 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
     except ImportError:
         print("Tkinter is not available in this Python environment.")
         return 2
+
+    config_path = config_path.resolve()
+    config_valid = _is_config_path_valid(config_path)
 
     root = tk.Tk()
     root.title("小黄控制面板")
@@ -644,13 +657,18 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         field_vars["wake"].set(", ".join(status.wake_phrases))
         field_vars["llm"].set(status.llm_provider)
         field_vars["tts"].set("enabled" if status.tts_enabled else "disabled")
-        field_vars["config"].set(status.config_path)
+        field_vars["config"].set(str(config_path))
         markers = stage_markers(status)
         for var, (mark, text) in zip(stage_vars, markers):
             var.set(f"[{mark}] {text}")
         error_text = status.last_error or "无"
         elapsed_text = "-" if status.last_operation_elapsed_seconds is None else f"{status.last_operation_elapsed_seconds:.1f}s"
-        dirty_hint = "下方 Wake Engine 配置已修改，请点击保存" if state["wake_config_dirty"] else ""
+        if not config_valid:
+            dirty_hint = "配置文件路径无效，无法保存 Wake Engine 配置"
+        elif state["wake_config_dirty"]:
+            dirty_hint = "下方 Wake Engine 配置已修改，请点击保存"
+        else:
+            dirty_hint = ""
         wake_dirty_var.set(dirty_hint)
         bottom_var.set(
             f"最近操作：{status.last_operation or '-'}    最近耗时：{elapsed_text}\n"
@@ -741,6 +759,9 @@ def run_control_panel(config_path: Path, refresh_interval_seconds: float) -> int
         run_operation("重启", lambda: run_restart_operation(PROJECT_ROOT, config_path))
 
     def save_current_wake_config(*, show_popup: bool = True) -> bool:
+        if not config_valid:
+            messagebox.showerror("无法保存", "配置文件路径无效，无法保存。")
+            return False
         update, error = parse_wake_engine_config_input(
             engine=wake_engine_var.get(),
             fallback_enabled=bool(wake_fallback_var.get()),

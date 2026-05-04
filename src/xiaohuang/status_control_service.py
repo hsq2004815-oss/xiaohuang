@@ -280,10 +280,26 @@ def load_config_summary(
     )
 
 
+def _validate_config_path(path: Path) -> str | None:
+    text = str(path or "").strip()
+    if not text or text == ".":
+        return "配置文件路径无效，无法保存"
+    resolved = Path(path).resolve()
+    if not resolved.is_absolute() and str(resolved) == str(Path.cwd()):
+        return "配置文件路径无效，无法保存"
+    if resolved.is_dir():
+        return f"配置文件路径是目录，不是文件：{resolved}"
+    return None
+
+
 def save_wake_engine_config(config_path: Path, update: WakeEngineConfigUpdate) -> WakeEngineConfigSaveResult:
     error = _validate_wake_engine_update(update)
     if error:
         return WakeEngineConfigSaveResult(False, error, error)
+
+    path_error = _validate_config_path(config_path)
+    if path_error:
+        return WakeEngineConfigSaveResult(False, path_error, "invalid_path")
 
     resolved = Path(config_path)
     if not resolved.exists():

@@ -3312,6 +3312,71 @@ class V12EBControlPanelWakeEngineTests(unittest.TestCase):
         self.assertEqual(result.error, "config_not_found")
         self.assertFalse(config_path.exists())
 
+    def test_validate_config_path_rejects_empty_string(self):
+        from xiaohuang.status_control_service import _validate_config_path
+
+        self.assertIsNotNone(_validate_config_path(Path("")))
+        self.assertIn("无效", _validate_config_path(Path("")) or "")
+
+    def test_validate_config_path_rejects_dot(self):
+        from xiaohuang.status_control_service import _validate_config_path
+
+        self.assertIsNotNone(_validate_config_path(Path(".")))
+        self.assertIn("无效", _validate_config_path(Path(".")) or "")
+
+    def test_validate_config_path_rejects_directory(self):
+        from xiaohuang.status_control_service import _validate_config_path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            error = _validate_config_path(Path(tmp))
+            self.assertIsNotNone(error)
+            self.assertIn("目录", error or "")
+
+    def test_validate_config_path_accepts_valid_file_path(self):
+        from xiaohuang.status_control_service import _validate_config_path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            config_path.write_text("{}", encoding="utf-8")
+            self.assertIsNone(_validate_config_path(config_path))
+
+    def test_save_wake_engine_config_rejects_empty_path(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        result = save_wake_engine_config(
+            Path(""),
+            WakeEngineConfigUpdate("stt_text", True, 0, 2.5, 0.5),
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "invalid_path")
+
+    def test_save_wake_engine_config_rejects_dot_path(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        result = save_wake_engine_config(
+            Path("."),
+            WakeEngineConfigUpdate("stt_text", True, 0, 2.5, 0.5),
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "invalid_path")
+
+    def test_save_wake_engine_config_rejects_directory(self):
+        from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = save_wake_engine_config(
+                Path(tmp),
+                WakeEngineConfigUpdate("stt_text", True, 0, 2.5, 0.5),
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error, "invalid_path")
+
+    def test_config_path_display_uses_resolved_absolute_path(self):
+        import control_panel
+
+        self.assertFalse(control_panel._is_config_path_valid(Path("")))
+        self.assertFalse(control_panel._is_config_path_valid(Path(".")))
+
 
 class V12FBWakeRuntimeServiceTests(unittest.TestCase):
     """Tests for src/xiaohuang/wake_runtime_service.py — pure config/selection logic."""
