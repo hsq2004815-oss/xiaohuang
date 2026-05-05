@@ -12,6 +12,15 @@ from xiaohuang.reply_service import generate_reply
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 TOOL_UNAVAILABLE_REPLY = "我可以先帮你整理任务，但当前版本还不能执行工具。"
+DEFAULT_MAX_REPLY_CHARS = 180
+DEFAULT_LLM_MAX_TOKENS = 768
+
+_DEFAULT_VOICE_PERSONA = (
+    "你是小黄，一个可靠的 Windows 桌面语音助手。"
+    "回答要自然、清楚，默认用 2-3 句说明重点；"
+    "涉及事实、步骤、原因时可以稍微展开，但避免长篇。"
+    "不要声称你已经执行了没有真实执行的操作。"
+)
 
 _PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
     "deepseek": {
@@ -35,6 +44,35 @@ _PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
         "api_key_env": "OPENAI_API_KEY",
     },
 }
+
+def _read_int_env(
+    name: str,
+    default: int,
+    lo: int,
+    hi: int,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> int:
+    source = os.environ if env is None else env
+    raw = source.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+        if lo <= value <= hi:
+            return value
+    except (ValueError, TypeError):
+        pass
+    return default
+
+
+def _get_default_max_reply_chars(env: Mapping[str, str] | None = None) -> int:
+    return _read_int_env("XIAOHUANG_MAX_REPLY_CHARS", DEFAULT_MAX_REPLY_CHARS, 40, 500, env=env)
+
+
+def _get_default_llm_max_tokens(env: Mapping[str, str] | None = None) -> int:
+    return _read_int_env("XIAOHUANG_LLM_MAX_TOKENS", DEFAULT_LLM_MAX_TOKENS, 64, 4096, env=env)
+
 
 _EXECUTION_CLAIM_KEYWORDS = (
     "我已经打开", "我已经下载", "我已经发送", "我已经执行",
@@ -78,16 +116,16 @@ def load_deepseek_config(
     max_tokens_override: int | None = None,
 ) -> LlmReplyConfig:
     source = os.environ if env is None else env
-    max_tokens = max_tokens_override
-    if max_tokens is None:
-        env_value = source.get("DEEPSEEK_MAX_TOKENS")
-        max_tokens = int(env_value) if env_value else None
+    if max_tokens_override is not None:
+        max_tokens = max_tokens_override
+    else:
+        max_tokens = _get_default_llm_max_tokens(env=source)
     return LlmReplyConfig(
         api_key=_empty_to_none(source.get("DEEPSEEK_API_KEY")),
         base_url=(base_url_override or source.get("DEEPSEEK_BASE_URL") or DEFAULT_DEEPSEEK_BASE_URL).rstrip("/"),
         model=model_override or source.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL,
         timeout_seconds=float(timeout_seconds),
-        max_tokens=max_tokens if max_tokens is not None else 256,
+        max_tokens=max_tokens,
     )
 
 
@@ -111,7 +149,9 @@ def load_llm_provider_config(
     model = str(app_llm_config.model or pd["model"]).strip()
     base_url = str(app_llm_config.base_url or pd["base_url"]).strip().rstrip("/")
     timeout = float(app_llm_config.timeout_seconds if app_llm_config.timeout_seconds is not None else 20.0)
-    max_tokens = int(app_llm_config.max_tokens) if app_llm_config.max_tokens is not None else 256
+    resolved_max_tokens = int(app_llm_config.max_tokens) if app_llm_config.max_tokens is not None else 0
+    if resolved_max_tokens <= 0:
+        resolved_max_tokens = _get_default_llm_max_tokens(env=source)
     temperature = float(app_llm_config.temperature) if app_llm_config.temperature is not None else 0.4
 
     return LlmReplyConfig(
@@ -119,7 +159,7 @@ def load_llm_provider_config(
         base_url=base_url,
         model=model,
         timeout_seconds=timeout,
-        max_tokens=max_tokens,
+        max_tokens=resolved_max_tokens,
         temperature=temperature,
         provider=provider,
     )
@@ -134,11 +174,7 @@ def build_openai_compatible_chat_request(
     persona: str | None = None,
     provider: str = "deepseek",
 ) -> dict[str, Any]:
-    system_content = (
-        persona
-        if persona
-        else "你是小黄，一个友好、简洁、可靠的 Windows 桌面语音助手。回答要自然、简短，适合语音播报。"
-    )
+    system_content = persona if persona else _DEFAULT_VOICE_PERSONA
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
@@ -282,11 +318,54 @@ def _extract_reply_text(response: Mapping[str, Any]) -> str:
     return str(first.get("text") or "").strip()
 
 
-def _shorten_reply(text: str, max_length: int = 30) -> str:
+def _shorten_reply(
+    text: str,
+    max_length: int | None = None,
+    max_sentences: int = 3,
+) -> str:
     cleaned = " ".join(str(text or "").split()).strip()
-    if len(cleaned) <= max_length:
+    if not cleaned:
         return cleaned
-    return cleaned[:max_length].rstrip("，。！？、,.!? ") + "。"
+
+    resolved_max = max_length if max_length is not None else _get_default_max_reply_chars()
+    if len(cleaned) <= resolved_max:
+        return cleaned
+
+    sentence_ends = "。！？；.!?;"
+    soft_breaks = "，、, "
+
+    # Find the last sentence-end within resolved_max
+    window = cleaned[:resolved_max]
+    last_sent = _last_index_of_any(window, sentence_ends)
+
+    if last_sent > 0:
+        prefix = cleaned[:last_sent + 1]
+        sent_count = sum(1 for ch in prefix if ch in sentence_ends)
+        if sent_count > max_sentences:
+            count = 0
+            for i, ch in enumerate(prefix):
+                if ch in sentence_ends:
+                    count += 1
+                    if count == max_sentences:
+                        return prefix[:i + 1].rstrip()
+        return prefix.rstrip()
+
+    # No sentence end — try softer boundary
+    last_soft = _last_index_of_any(window, soft_breaks)
+    if last_soft > 0:
+        return window[:last_soft].rstrip(soft_breaks) + "。"
+
+    # Hard truncate
+    return window.rstrip("，。！？、,.!?;； ") + "。"
+
+
+def _last_index_of_any(text: str, chars: str) -> int:
+    idx = -1
+    for ch in chars:
+        pos = text.rfind(ch)
+        if pos > idx:
+            idx = pos
+    return idx
 
 
 def _looks_like_tool_request(text: str) -> bool:

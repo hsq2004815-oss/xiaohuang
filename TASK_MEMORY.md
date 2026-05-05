@@ -2,13 +2,22 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2F-F-D — assistant turn orchestration 迁入 assistant_runtime_service
-- **最新架构 commit**：V1.2F-F-D turn orchestration extraction（见 git log）
+- **阶段**：V1.2G-A — 修复语音回复硬截断策略
+- **最新架构 commit**：V1.2G-A improve voice reply length policy（见 git log）
 - **最新功能 commit**：V1.2E-B 控制面板布局修复（见 git log）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+
+### V1.2G-A 修复语音回复长度策略记录（2026-05-05）
+
+- `llm_reply_service._shorten_reply()` 不再 30 字硬截断，改为完整句末优先截断（默认 180 字、1-3 句）。
+- 新增 `_read_int_env()`、`_get_default_max_reply_chars()`、`_get_default_llm_max_tokens()`。
+- 支持 `XIAOHUANG_MAX_REPLY_CHARS`（默认 180）和 `XIAOHUANG_LLM_MAX_TOKENS`（默认 768）环境变量。
+- 更新 `build_openai_compatible_chat_request()` 默认 persona，鼓励 2-3 句回复。
+- 新增 26 个单测（`tests/test_llm_reply_service.py`）。
+- 未改 wake/command/reply/assistant runtime、voice_overlay.py、PowerShell/requirements。
 
 ### V1.2F-F-D assistant turn orchestration 抽取记录（2026-05-05）
 
