@@ -317,6 +317,12 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("drawer-bridge-status", js)
         self.assertIn("已连接", js)
 
+    def test_html_has_data_action_buttons(self):
+        html = self._read("frontend/control_panel/index.html")
+        for action in ("data-action=\"start\"", "data-action=\"stop\"", "data-action=\"restart\"",
+                       "data-action=\"refresh\"", "data-action=\"save-config\"", "data-action=\"save-restart\""):
+            self.assertIn(action, html, f"Missing data-action: {action}")
+
     def test_html_has_bridge_indicator(self):
         html = self._read("frontend/control_panel/index.html")
         self.assertIn("桌面桥接", html)
@@ -327,6 +333,20 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for text in ("运行中", "已停止", "已就绪", "未检测到", "加载中", "未知"):
             self.assertIn(text, js, f"Missing Chinese status text: {text}")
 
+    def test_js_has_data_action_handling(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("data-action", js)
+        self.assertIn("handleButtonClick", js)
+
+    def test_js_has_immediate_feedback(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("setButtonLoading", js)
+        self.assertIn("正在启动", js)
+
+    def test_js_has_finally_restore(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn(".finally", js)
+
     def test_js_has_action_api_calls(self):
         js = self._read("frontend/control_panel/assets/app.js")
         for method in ("start_xiaohuang", "stop_xiaohuang", "restart_xiaohuang"):
@@ -334,7 +354,6 @@ class V13UIFrontendStructureTests(unittest.TestCase):
 
     def test_js_has_button_recovery(self):
         js = self._read("frontend/control_panel/assets/app.js")
-        # ensure buttons re-enable on error
         self.assertIn("启动小黄", js)
 
     def test_js_no_external_url(self):

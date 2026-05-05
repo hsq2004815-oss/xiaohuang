@@ -23,7 +23,7 @@
       <div class="topbar-right">
         <span class="status-badge" id="top-status">--</span>
         <span class="wake-badge" id="top-wake">--</span>
-        <button class="glass-pill" id="btn-top-refresh" title="刷新状态">↻</button>
+        <button class="glass-pill" id="btn-top-refresh" title="刷新状态" data-action="refresh">↻</button>
       </div>
     </header>
 
@@ -66,10 +66,10 @@
           <div class="glass-card" id="quick-actions">
             <div class="card-header"><h3 class="card-title">快速操作</h3></div>
             <div class="action-row">
-              <button class="glass-pill glass-pill-primary" id="btn-start">启动小黄</button>
-              <button class="glass-pill glass-pill-danger" id="btn-stop" disabled>停止小黄</button>
-              <button class="glass-pill" id="btn-restart" disabled>重启小黄</button>
-              <button class="glass-pill" id="btn-refresh">刷新状态</button>
+              <button class="glass-pill glass-pill-primary" id="btn-start" data-action="start">启动小黄</button>
+              <button class="glass-pill glass-pill-danger" id="btn-stop" disabled data-action="stop">停止小黄</button>
+              <button class="glass-pill" id="btn-restart" disabled data-action="restart">重启小黄</button>
+              <button class="glass-pill" id="btn-refresh" data-action="refresh">刷新状态</button>
             </div>
           </div>
           <div class="glass-card" id="wake-settings">
@@ -96,8 +96,8 @@
               </label>
             </div>
             <div class="action-row">
-              <button class="glass-pill" id="btn-save-config">保存配置</button>
-              <button class="glass-pill glass-pill-primary" id="btn-save-restart">保存并重启</button>
+              <button class="glass-pill" id="btn-save-config" data-action="save-config">保存配置</button>
+              <button class="glass-pill glass-pill-primary" id="btn-save-restart" data-action="save-restart">保存并重启</button>
             </div>
             <p class="hint" id="wake-hint"></p>
           </div>
