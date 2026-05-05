@@ -2,13 +2,22 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2H-C — import 清理收尾完成
-- **最新架构 commit**：V1.2H-C clean up overlay runtime imports（见 git log）
+- **阶段**：V1.3-UI-A — pywebview Web 控制面板原型
+- **最新架构 commit**：V1.3-UI-A pywebview control panel prototype（见 git log）
 - **最新功能 commit**：V1.2E-B 控制面板布局修复（见 git log）
-- **新增**：`src/xiaohuang/overlay_loop_runtime_service.py` + `tests/test_overlay_loop_runtime_service.py`
+- **新增**：`control_panel_web_service.py` + `control_panel_web.py` + frontend HTML/CSS/JS + tests
 - **分支**：`main...origin/main`
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+
+### V1.3-UI-A pywebview Web 控制面板原型（2026-05-05）
+
+- 新增 `control_panel_web_service.py`（161 行）：`ControlPanelWebApi` class，封装 status/start/stop/restart/save/refresh API。
+- 新增 `control_panel_web.py`（82 行）：pywebview 启动器，可选依赖，未安装时友好提示。
+- 新增前端：index.html（102 行）、style.css（226 行，Dark Liquid Glass 风格）、app.js（233 行）。
+- 复用 `status_control_service` 全部启停/保存逻辑。
+- 新增 20 个单测（`tests/test_control_panel_web_service.py`）。
+- 旧 `control_panel.py` 保留不变。未改 voice_overlay、runtime services、PowerShell/requirements。
 
 ### V1.2H-C overlay runtime import 清理收尾（2026-05-05）
 
