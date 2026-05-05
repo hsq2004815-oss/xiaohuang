@@ -205,6 +205,84 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertTrue(js.exists(), f"Missing: {js}")
 
 
+class V13UIFrontendStructureTests(unittest.TestCase):
+    """Structural and content checks for redesigned frontend."""
+
+    def setUp(self):
+        self.root = Path(__file__).resolve().parents[1]
+
+    def _read(self, rel):
+        return (self.root / rel).read_text(encoding="utf-8")
+
+    def test_html_has_app_shell_layout(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("app-shell", html)
+        self.assertIn("sidebar", html)
+        self.assertIn("topbar", html)
+        self.assertIn("main-workspace", html)
+        self.assertIn("diagnostic-drawer", html)
+
+    def test_html_has_glass_card_class(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("glass-card", html)
+
+    def test_html_has_nav_sections(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("Overview", html)
+        self.assertIn("Runtime", html)
+        self.assertIn("Wake & Voice", html)
+        self.assertIn("Models", html)
+        self.assertIn("Tools", html)
+        self.assertIn("Database", html)
+
+    def test_html_no_project_template_keywords(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertNotIn("Create Project", html)
+        self.assertNotIn("Invite", html)
+        self.assertNotIn("Projects</", html)
+
+    def test_html_references_local_assets(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn('href="assets/style.css"', html)
+        self.assertIn('src="assets/app.js"', html)
+        self.assertNotIn("cdn.", html)
+        self.assertNotIn("http://", html)
+        self.assertNotIn("https://", html)
+
+    def test_css_has_glass_tokens(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertIn("--glass-blur-md", css)
+        self.assertIn("--dark-fill", css)
+        self.assertIn("--dark-neon-ring", css)
+        self.assertIn("--accent-cyan", css)
+        self.assertIn("--radius-card", css)
+
+    def test_css_has_layout_classes(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        for cls_name in (".app-shell", ".sidebar", ".topbar", ".main-workspace", ".diagnostic-drawer"):
+            self.assertIn(cls_name, css, f"Missing layout class: {cls_name}")
+
+    def test_css_has_glass_component_classes(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        for cls_name in (".glass-card", ".glass-pill", ".glass-input", ".glass-toggle", ".glass-toast", ".status-badge", ".sidebar-item"):
+            self.assertIn(cls_name, css, f"Missing component class: {cls_name}")
+
+    def test_css_supports_reduced_motion(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertIn("prefers-reduced-motion", css)
+
+    def test_js_has_pywebview_fallback(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("window.pywebview", js)
+        self.assertIn("_mock", js)
+
+    def test_js_no_external_url(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertNotIn("http://", js)
+        self.assertNotIn("https://", js)
+        self.assertNotIn("cdn.", js)
+
+
 def _fake_status():
     from xiaohuang.status_control_service import ControlPanelStatus
     return ControlPanelStatus(

@@ -10,6 +10,15 @@
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
 
+### V1.3-UI-B Web 控制面板 Control Shell 重做（2026-05-05）
+
+- 重做 index.html（157 行）、style.css（261 行）、app.js（223 行）。
+- 新布局：Top Bar + 左侧 Sidebar（10 个导航项） + 主工作区 + 右侧 Diagnostic Drawer。
+- 完整 Liquid Glass token 系统（blur/dark-fill/rim/inset-gloss/neon-ring/caustics）。
+- 组件类：.glass-card、.glass-pill、.glass-pill-primary、.glass-input、.glass-toggle、.glass-toast。
+- reveal 动效（stagger cards 80-140ms）、prefers-reduced-motion 支持。
+- 新增 11 个前端结构测试。未改 Python API/control_panel.py/voice_overlay.py。
+
 ### V1.3-UI-A pywebview Web 控制面板原型（2026-05-05）
 
 - 新增 `control_panel_web_service.py`（161 行）：`ControlPanelWebApi` class，封装 status/start/stop/restart/save/refresh API。
