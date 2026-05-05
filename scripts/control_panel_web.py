@@ -65,9 +65,10 @@ def main() -> int:
     from xiaohuang.control_panel_web_service import ControlPanelWebApi
     api = ControlPanelWebApi(config_path=args.config)
 
+    url = index_path.as_uri()
     window = webview.create_window(
-        title="XiaoHuang Control Center",
-        url=str(index_path),
+        title="小黄控制中心",
+        url=url,
         width=args.width,
         height=args.height,
         js_api=api,

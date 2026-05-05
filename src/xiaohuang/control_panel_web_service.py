@@ -61,7 +61,7 @@ class ControlPanelWebApi:
     def get_status(self) -> dict:
         try:
             path = self._resolve_config_path()
-            status = build_status(path)
+            status = build_status(self._project_root, path)
             return _ok(data=_status_to_dict(status))
         except Exception:
             return _fail(f"获取状态失败: {traceback.format_exc()}", "status_error")

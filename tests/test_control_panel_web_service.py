@@ -55,12 +55,16 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         with patch(
             "xiaohuang.control_panel_web_service.build_status",
             return_value=_fake_status(),
-        ):
+        ) as mock_build:
             api = ControlPanelWebApi(config_path=self.config_path)
             result = api.get_status()
             self.assertTrue(result["ok"])
             self.assertIn("data", result)
             self.assertIn("overall_status", result["data"])
+            # Verify build_status received project_root AND config_path
+            self.assertEqual(mock_build.call_count, 1)
+            args = mock_build.call_args[0]
+            self.assertEqual(len(args), 2, "build_status needs 2 positional args")
 
     def test_get_status_exception_returns_fail(self):
         with patch(
@@ -291,10 +295,19 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         css = self._read("frontend/control_panel/assets/style.css")
         self.assertIn("prefers-reduced-motion", css)
 
-    def test_js_has_pywebview_fallback(self):
+    def test_js_has_pywebviewready_listener(self):
         js = self._read("frontend/control_panel/assets/app.js")
-        self.assertIn("window.pywebview", js)
-        self.assertIn("_mock", js)
+        self.assertIn("pywebviewready", js)
+
+    def test_js_has_bridge_status(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("drawer-bridge-status", js)
+        self.assertIn("已连接", js)
+
+    def test_html_has_bridge_indicator(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("桌面桥接", html)
+        self.assertIn("drawer-bridge-status", html)
 
     def test_js_has_chinese_status_text(self):
         js = self._read("frontend/control_panel/assets/app.js")
