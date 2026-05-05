@@ -683,11 +683,11 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
 
     def test_openwakeword_listener_accepted_event_enters_command_entry_once(self):
         import threading
-        from voice_overlay import (
-            _OpenWakeWordBridgeRuntime,
-            _run_openwakeword_turn_from_listener,
-            _start_openwakeword_listener,
-            _stop_openwakeword_listener,
+        from voice_overlay import _OpenWakeWordBridgeRuntime, _record_openwakeword_command
+        from xiaohuang.overlay_loop_runtime_service import _run_openwakeword_turn_from_listener
+        from xiaohuang.wake_runtime_service import (
+            start_openwakeword_listener,
+            stop_openwakeword_listener,
         )
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -714,7 +714,17 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
                 record_calls.append(Path(path))
                 return SimpleNamespace(path=Path(path), duration_seconds=0.4, stop_reason="silence_after_speech")
 
-            handle = _start_openwakeword_listener(
+            def _build_recording_path(_dir):
+                return recording_path
+
+            def record_oww_cmd(**kwargs):
+                return _record_openwakeword_command(
+                    record_func=fake_record,
+                    build_recording_path_func=_build_recording_path,
+                    **kwargs,
+                )
+
+            handle = start_openwakeword_listener(
                 app=app,
                 runtime_config=self._runtime_config(),
                 bridge_runtime=bridge,
@@ -730,12 +740,11 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
                 logger=logger,
                 debug=False,
                 stop_event=stop_event,
-                record_func=fake_record,
-                build_recording_path_func=lambda _dir: recording_path,
                 request_transcription_func=lambda _path, _url, mode=None: {"text": "打开记事本"},
+                record_openwakeword_command=record_oww_cmd,
             )
             stop_event.set()
-            _stop_openwakeword_listener(handle)
+            stop_openwakeword_listener(handle)
 
         self.assertEqual(result.command_text, "打开记事本")
         self.assertEqual(len(record_calls), 1)

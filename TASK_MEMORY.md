@@ -2,13 +2,23 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2G-B — 清理 voice_overlay.py 遗留死代码
-- **最新架构 commit**：V1.2G-B remove obsolete overlay wake helpers（见 git log）
+- **阶段**：V1.2H-B — overlay loop runtime 迁移完成
+- **最新架构 commit**：V1.2H-B extract overlay loop runtime（见 git log）
 - **最新功能 commit**：V1.2E-B 控制面板布局修复（见 git log）
-- **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
+- **新增**：`src/xiaohuang/overlay_loop_runtime_service.py` + `tests/test_overlay_loop_runtime_service.py`
 - **分支**：`main...origin/main`
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+
+### V1.2H-B overlay loop runtime 迁移记录（2026-05-05）
+
+- 新建 `overlay_loop_runtime_service.py`（338 行）：`OverlayLoopRuntimeConfig` + `run_overlay_runtime()`。
+- 从 voice_overlay.py 迁移 `_run_overlay_loop` 主循环 + OWW listener 调度 + stt_text/OWW 分发 + 回调构建 + error handling + cleanup。
+- voice_overlay.py 从 938 → **688 行**（-250 行），达成"入口 + UI + 组装"目标。
+- 保留 `_record_openwakeword_command`、`VoiceOverlayApp`、`parse_args`、`main` 在 voice_overlay.py。
+- 新增 8 个测试（tests/test_overlay_loop_runtime_service.py）。
+- 新增 import 在 Code Size Policy 建议范围内（338 行，100-500）。
+- 未改 wake/command/reply/assistant runtime、openWakeWord adapter、control_panel/tray、PowerShell。
 
 ### V1.2G-B 清理遗留死代码记录（2026-05-05）
 
