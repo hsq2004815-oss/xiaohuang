@@ -632,52 +632,6 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         self.assertEqual(plan.engine, WAKE_ENGINE_OPENWAKEWORD)
         self.assertIn("dependency unavailable", plan.error)
 
-    def test_openwakeword_wake_event_starts_one_command_recording(self):
-        import threading
-        from voice_overlay import _OpenWakeWordBridgeRuntime, _run_openwakeword_wake_loop_once
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            app = FakeOverlayApp()
-            adapter = FakeOpenWakeWordAdapter([self._wake_event(), self._wake_event()])
-            bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
-            recording_path = Path(temp_dir) / "command.wav"
-            record_calls: list[Path] = []
-
-            options = WakeLoopOptions(
-                device_id=0,
-                server_url="http://127.0.0.1:8766",
-                wake_window_seconds=0.1,
-                wake_phrases=["贾维斯"],
-                max_seconds=1.0,
-                silence_seconds=0.1,
-                sample_rate=16000,
-                channels=1,
-                recording_dir=Path(temp_dir),
-            )
-
-            def fake_record(path, **_kwargs):
-                record_calls.append(Path(path))
-                return SimpleNamespace(path=Path(path), duration_seconds=0.4, stop_reason="silence_after_speech")
-
-            result = _run_openwakeword_wake_loop_once(
-                app=app,
-                options=options,
-                runtime_config=self._runtime_config(),
-                bridge_runtime=bridge,
-                logger=FakeLogger(),
-                debug=False,
-                stop_event=threading.Event(),
-                adapter_factory=lambda _config: adapter,
-                record_func=fake_record,
-                build_recording_path_func=lambda _dir: recording_path,
-                request_transcription_func=lambda _path, _url, mode=None: {"text": "打开记事本"},
-            )
-
-        self.assertEqual(result.command_text, "打开记事本")
-        self.assertEqual(len(record_calls), 1)
-        self.assertTrue(adapter.stopped)
-        self.assertEqual(bridge.bridge.state().accepted_count, 1)
-
     def test_openwakeword_startup_config_logs_required_fields(self):
         from voice_overlay import WAKE_ENGINE_OPENWAKEWORD, _print_wake_engine_runtime_config
 
@@ -865,14 +819,13 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         self.assertIn("openwakeword_listener_error error=fake listener failed", logger.text)
         self.assertNotIn("fallback_to_stt_text", logger.text)
 
-    def test_command_recording_error_leaves_wake_engine_stopped_and_command_inactive(self):
-        import threading
-        from voice_overlay import _OpenWakeWordBridgeRuntime, _run_openwakeword_wake_loop_once
+    def test_command_recording_error_leaves_bridge_clean(self):
+        from voice_overlay import _OpenWakeWordBridgeRuntime, _record_openwakeword_command
 
         with tempfile.TemporaryDirectory() as temp_dir:
             app = FakeOverlayApp()
-            adapter = FakeOpenWakeWordAdapter([self._wake_event()])
             bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5)
+            event = self._wake_event()
             options = WakeLoopOptions(
                 device_id=0,
                 server_url="http://127.0.0.1:8766",
@@ -889,21 +842,18 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
                 raise RuntimeError("fake recorder failed")
 
             with self.assertRaises(RuntimeError):
-                _run_openwakeword_wake_loop_once(
+                _record_openwakeword_command(
+                    event=event,
                     app=app,
                     options=options,
-                    runtime_config=self._runtime_config(),
                     bridge_runtime=bridge,
                     logger=FakeLogger(),
                     debug=False,
-                    stop_event=threading.Event(),
-                    adapter_factory=lambda _config: adapter,
                     record_func=failing_record,
                     build_recording_path_func=lambda _dir: Path(temp_dir) / "command.wav",
-                    request_transcription_func=lambda _path, _url, mode=None: {"text": "不会执行"},
+                    request_transcription_func=lambda _path, _url, mode=None: {"text": "text"},
                 )
 
-        self.assertTrue(adapter.stopped)
         self.assertFalse(bridge.bridge.state().command_active)
 
 
@@ -5209,33 +5159,31 @@ class VoiceOverlayGuardTests(unittest.TestCase):
 
 
 class SourceNoteTests(unittest.TestCase):
+    @staticmethod
+    def _source_note(source):
+        from xiaohuang.reply_pipeline_service import _source_note_for_source
+        return _source_note_for_source(source)
+
     def test_source_note_none_for_rule(self):
-        from voice_overlay import _source_note_for_overlay
-        self.assertIsNone(_source_note_for_overlay("rule"))
+        self.assertIsNone(self._source_note("rule"))
 
     def test_source_note_none_for_llm(self):
-        from voice_overlay import _source_note_for_overlay
-        self.assertIsNone(_source_note_for_overlay("llm"))
+        self.assertIsNone(self._source_note("llm"))
 
     def test_source_note_no_key(self):
-        from voice_overlay import _source_note_for_overlay
-        self.assertIn("未配置 key", _source_note_for_overlay("rule_fallback_no_key"))
+        self.assertIn("未配置 key", self._source_note("rule_fallback_no_key"))
 
     def test_source_note_error(self):
-        from voice_overlay import _source_note_for_overlay
-        self.assertIn("不可用", _source_note_for_overlay("rule_fallback_error"))
+        self.assertIn("不可用", self._source_note("rule_fallback_error"))
 
     def test_source_note_empty(self):
-        from voice_overlay import _source_note_for_overlay
-        self.assertIn("返回为空", _source_note_for_overlay("rule_fallback_empty"))
+        self.assertIn("返回为空", self._source_note("rule_fallback_empty"))
 
     def test_source_note_length(self):
-        from voice_overlay import _source_note_for_overlay
-        self.assertIn("被截断", _source_note_for_overlay("rule_fallback_length"))
+        self.assertIn("被截断", self._source_note("rule_fallback_length"))
 
     def test_source_note_tool_unavailable(self):
-        from voice_overlay import _source_note_for_overlay
-        self.assertIn("不能执行工具", _source_note_for_overlay("tool_unavailable"))
+        self.assertIn("不能执行工具", self._source_note("tool_unavailable"))
 
 
 class V101RequestIdTests(unittest.TestCase):

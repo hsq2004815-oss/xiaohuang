@@ -840,64 +840,6 @@ def _record_openwakeword_command(
     )
 
 
-def _run_openwakeword_wake_loop_once(
-    *,
-    app: VoiceOverlayApp,
-    options: WakeLoopOptions,
-    runtime_config: WakeEngineRuntimeConfig,
-    bridge_runtime: _OpenWakeWordBridgeRuntime,
-    logger,
-    debug: bool,
-    stop_event: threading.Event,
-    latency_tracker=None,
-    resident_hidden: bool = False,
-    request_transcription_func: Callable[..., dict] = request_transcription,
-    adapter_factory: Callable[[WakeEngineRuntimeConfig], object] | None = None,
-    record_func=record_until_silence,
-    build_recording_path_func=build_recording_path,
-) -> WakeLoopResult:
-    adapter = (adapter_factory or _create_openwakeword_adapter)(runtime_config)
-    try:
-        while not stop_event.is_set():
-            app.thread_safe_set_state(STATE_WAKE_CHECKING, f"openWakeWord：{runtime_config.wake_phrase}")
-            bridge_runtime.begin_wait(adapter)
-            try:
-                adapter.run_for_duration(
-                    runtime_config.poll_seconds,
-                    on_event=lambda event: _handle_openwakeword_event(event, bridge_runtime, logger, debug),
-                    debug=debug,
-                )
-            except KeyboardInterrupt:
-                raise
-            except Exception as exc:
-                raise WakeEngineRuntimeError(_wake_engine_runtime_error(adapter, exc)) from exc
-            finally:
-                try:
-                    adapter.stop()
-                finally:
-                    bridge_runtime.end_wait()
-            event = bridge_runtime.accepted_event
-            if event is None:
-                continue
-
-            return _record_openwakeword_command(
-                event=event,
-                app=app,
-                options=options,
-                bridge_runtime=bridge_runtime,
-                logger=logger,
-                debug=debug,
-                latency_tracker=latency_tracker,
-                resident_hidden=resident_hidden,
-                request_transcription_func=request_transcription_func,
-                record_func=record_func,
-                build_recording_path_func=build_recording_path_func,
-            )
-    finally:
-        _stop_adapter_safely(adapter)
-    raise WakeEngineLoopStopped()
-
-
 def _generate_reply_pipeline_guarded(
     command_text: str,
     *,
@@ -990,11 +932,6 @@ def _make_llm_debug_handler(logger, debug_enabled: bool):
             print(f"DeepSeek debug: {msg}".encode(encoding, errors="replace").decode(encoding, errors="replace"))
         logger.info("DeepSeek debug: %s", msg)
     return _log
-
-
-def _source_note_for_overlay(source: str) -> str | None:
-    from xiaohuang.reply_pipeline_service import _source_note_for_source
-    return _source_note_for_source(source)
 
 
 if __name__ == "__main__":

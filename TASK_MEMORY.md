@@ -2,13 +2,22 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2G-A — 修复语音回复硬截断策略
-- **最新架构 commit**：V1.2G-A improve voice reply length policy（见 git log）
+- **阶段**：V1.2G-B — 清理 voice_overlay.py 遗留死代码
+- **最新架构 commit**：V1.2G-B remove obsolete overlay wake helpers（见 git log）
 - **最新功能 commit**：V1.2E-B 控制面板布局修复（见 git log）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+
+### V1.2G-B 清理遗留死代码记录（2026-05-05）
+
+- 删除 `_run_openwakeword_wake_loop_once`（旧 OWW polling 版本，~55 行），生产已通过 `_start_openwakeword_listener` 走连续 listener。
+- 删除 `_source_note_for_overlay`（~5 行），生产改用 `reply_pipeline_service._source_note_for_source`。
+- 删除冗余测试 `test_openwakeword_wake_event_starts_one_command_recording`（功能已被新 listener 测试覆盖）。
+- 改写 `test_command_recording_error` 测 `_record_openwakeword_command` 直接路径。
+- 改写 `SourceNoteTests` 测 `reply_pipeline_service._source_note_for_source`。
+- voice_overlay.py 1001 → 938 行（-63 行）。482 tests OK。
 
 ### V1.2G-A 修复语音回复长度策略记录（2026-05-05）
 
