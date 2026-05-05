@@ -18,6 +18,7 @@ from xiaohuang.overlay_state_service import (
     STATE_ERROR,
     STATE_IDLE,
     STATE_LISTENING,
+    STATE_REPLYING,
     STATE_RESULT,
     build_reply_result_text,
 )
@@ -39,6 +40,17 @@ class AssistantRuntimeCallbacks:
 class AssistantTurnOutcome:
     continue_loop: bool
     error: str | None = None
+
+
+@dataclass
+class AssistantTurnCallbacks:
+    """Callbacks for run_assistant_turn_from_command — per-turn reply orchestration."""
+    set_state: Callable[[str, str | None], None]
+    log_info: Callable[[str], None]
+    log_warning: Callable[[str], None]
+    wait_seconds: Callable[[float], bool]
+    generate_reply: Callable[[str, Any], "ReplyPipelineResult"]
+    debug_print: Callable[[str], None] | None = None
 
 
 @dataclass
@@ -231,6 +243,70 @@ def run_session_followup_loop(
         no_speech_retries=no_speech_retries,
         should_continue_main_loop=not stop_requested,
     )
+
+
+def run_assistant_turn_from_command(
+    *,
+    command_text: str,
+    turn_tracker,
+    callbacks: AssistantTurnCallbacks,
+    session_config: ConversationSessionConfig,
+    session_callbacks: AssistantSessionCallbacks,
+    single_turn_callbacks: AssistantRuntimeCallbacks,
+    assistant_name: str = "小黄",
+    enable_tts: bool = False,
+    post_response_cooldown: float = 0,
+    resident_hidden: bool = False,
+    debug: bool = False,
+) -> bool:
+    """Process one assistant turn from command_text. Returns True to continue main loop."""
+    _cb = callbacks
+
+    if not command_text or not command_text.strip():
+        return True
+
+    _cb.log_info(f"Overlay command transcription: {command_text}")
+    _cb.set_state(STATE_REPLYING)
+
+    pipeline_result = _cb.generate_reply(command_text, turn_tracker)
+
+    if debug:
+        _emit_debug(_cb.debug_print, f"XiaoHuang reply: {pipeline_result.reply_text}")
+        _emit_debug(_cb.debug_print, f"Reply source: {pipeline_result.reply_source}")
+        turn_tracker.end("turn_total_ms")
+        summary = turn_tracker.summary_ms()
+        if summary:
+            _emit_debug(_cb.debug_print,
+                format_latency_summary(summary, turn=1, source=pipeline_result.reply_source))
+    turn_tracker.end("turn_total_ms")
+    _cb.log_info(format_latency_summary(turn_tracker.summary_ms(), turn=1, source=pipeline_result.reply_source))
+    _cb.log_info(f"Overlay reply: {pipeline_result.reply_text} (source={pipeline_result.reply_source})")
+
+    if pipeline_result.tts_error:
+        _cb.log_warning(pipeline_result.tts_error)
+
+    if session_config.enabled:
+        if _cb.wait_seconds(0.3):
+            return False
+        outcome = run_session_followup_loop(
+            session_config=session_config,
+            callbacks=session_callbacks,
+            session_start_time=time.perf_counter(),
+            enable_tts=enable_tts,
+            post_response_cooldown=post_response_cooldown,
+            debug=debug,
+        )
+        return outcome.should_continue_main_loop
+
+    turn_outcome = handle_single_turn_reply_result(
+        callbacks=single_turn_callbacks,
+        pipeline_result=pipeline_result,
+        command_text=command_text,
+        assistant_name=assistant_name,
+        post_response_cooldown=post_response_cooldown,
+        resident_hidden=resident_hidden,
+    )
+    return turn_outcome.continue_loop
 
 
 def _emit_debug(debug_print: Callable[[str], None] | None, message: str) -> None:

@@ -46,9 +46,8 @@ from xiaohuang.reply_pipeline_service import (
 from xiaohuang.assistant_runtime_service import (
     AssistantRuntimeCallbacks,
     AssistantSessionCallbacks,
-    AssistantTurnOutcome,
-    handle_single_turn_reply_result,
-    run_session_followup_loop,
+    AssistantTurnCallbacks,
+    run_assistant_turn_from_command,
 )
 from xiaohuang.reply_runtime_service import generate_reply_runtime_result
 from xiaohuang.app_config_service import apply_cli_overrides, load_config as load_user_config
@@ -624,6 +623,66 @@ def _run_overlay_loop(
                 app.thread_safe_set_state(STATE_ERROR, str(exc))
                 return
 
+    pipeline_config = ReplyPipelineConfig(
+        enable_llm=enable_llm,
+        enable_tts=enable_tts,
+        llm_config=llm_config,
+        tts_voice=tts_voice,
+        tts_output_dir=tts_output_dir,
+        persona=persona,
+    )
+
+    _turn_callbacks = AssistantTurnCallbacks(
+        set_state=lambda s, d=None: app.thread_safe_set_state(s, d),
+        log_info=lambda msg: logger.info(msg),
+        log_warning=lambda msg: _warn(logger, msg),
+        wait_seconds=lambda s: stop_event.wait(s),
+        generate_reply=lambda text, lt: _generate_reply_pipeline_guarded(
+            text,
+            config=pipeline_config,
+            app=app,
+            bridge_runtime=openwakeword_bridge,
+            on_debug=_make_llm_debug_handler(logger, debug),
+            playback_warn=lambda m: _playback_warning(logger, m),
+            latency_tracker=lt,
+        ),
+        debug_print=_safe_print if debug else None,
+    )
+
+    _session_callbacks = AssistantSessionCallbacks(
+        set_state=lambda s, d=None: app.thread_safe_set_state(s, d),
+        log_info=lambda msg: logger.info(msg),
+        wait_seconds=lambda s: stop_event.wait(s),
+        record_followup=lambda max_s, lt: _record_command_transcribe(
+            options=options,
+            max_seconds=max_s,
+            debug=debug,
+            logger=logger,
+            on_track_start=lambda name: _make_latency_track(lt)(name, start=True),
+            on_track_end=lambda name: _make_latency_track(lt)(name, start=False),
+        ),
+        generate_reply=lambda text, lt: _generate_reply_pipeline_guarded(
+            text,
+            config=pipeline_config,
+            app=app,
+            bridge_runtime=openwakeword_bridge,
+            on_debug=_make_llm_debug_handler(logger, debug),
+            playback_warn=lambda m: _playback_warning(logger, m),
+            latency_tracker=lt,
+        ),
+        debug_print=_safe_print if debug else None,
+        log_warning=lambda msg: _warn(logger, msg),
+        hide_overlay=app.hide_overlay if resident_hidden else None,
+    )
+
+    _single_turn_callbacks = AssistantRuntimeCallbacks(
+        set_state=lambda s, d=None: app.thread_safe_set_state(s, d),
+        log_warn=lambda msg: _warn(logger, msg),
+        debug_print=_safe_print if debug else None,
+        wait=lambda s: stop_event.wait(s),
+        hide_overlay=app.hide_overlay if resident_hidden else None,
+    )
+
     try:
         while not stop_event.is_set():
             try:
@@ -663,97 +722,20 @@ def _run_overlay_loop(
                     result = _run_stt_text_turn(turn_tracker)
                 if stop_event.is_set():
                     break
-                logger.info("Overlay command transcription: %s", result.command_text)
-                app.thread_safe_set_state(STATE_REPLYING)
-
-                pipeline_config = ReplyPipelineConfig(
-                    enable_llm=enable_llm,
+                if not run_assistant_turn_from_command(
+                    command_text=result.command_text,
+                    turn_tracker=turn_tracker,
+                    callbacks=_turn_callbacks,
+                    session_config=session_config,
+                    session_callbacks=_session_callbacks,
+                    single_turn_callbacks=_single_turn_callbacks,
+                    assistant_name=app.assistant_name,
                     enable_tts=enable_tts,
-                    llm_config=llm_config,
-                    tts_voice=tts_voice,
-                    tts_output_dir=tts_output_dir,
-                    persona=persona,
-                )
-                pipeline_result = _generate_reply_pipeline_guarded(
-                    result.command_text,
-                    config=pipeline_config,
-                    app=app,
-                    bridge_runtime=openwakeword_bridge,
-                    on_debug=_make_llm_debug_handler(logger, debug),
-                    playback_warn=lambda message: _playback_warning(logger, message),
-                    latency_tracker=turn_tracker,
-                )
-
-                if debug:
-                    _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
-                    _safe_print(f"Reply source: {pipeline_result.reply_source}")
-                    turn_tracker.end("turn_total_ms")
-                    summary = turn_tracker.summary_ms()
-                    if summary:
-                        _safe_print(format_latency_summary(summary, turn=1, source=pipeline_result.reply_source))
-                turn_tracker.end("turn_total_ms")
-                logger.info(format_latency_summary(turn_tracker.summary_ms(), turn=1, source=pipeline_result.reply_source))
-                logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
-
-                if pipeline_result.tts_error:
-                    _warn(logger, pipeline_result.tts_error)
-
-                if session_config.enabled:
-                    if stop_event.wait(0.3):
-                        break
-                    _session_callbacks = AssistantSessionCallbacks(
-                        set_state=lambda s, d=None: app.thread_safe_set_state(s, d),
-                        log_info=lambda msg: logger.info(msg),
-                        wait_seconds=lambda s: stop_event.wait(s),
-                        record_followup=lambda max_s, lt: _record_command_transcribe(
-                            options=options,
-                            max_seconds=max_s,
-                            debug=debug,
-                            logger=logger,
-                            on_track_start=lambda name: _make_latency_track(lt)(name, start=True),
-                            on_track_end=lambda name: _make_latency_track(lt)(name, start=False),
-                        ),
-                        generate_reply=lambda text, lt: _generate_reply_pipeline_guarded(
-                            text,
-                            config=pipeline_config,
-                            app=app,
-                            bridge_runtime=openwakeword_bridge,
-                            on_debug=_make_llm_debug_handler(logger, debug),
-                            playback_warn=lambda m: _playback_warning(logger, m),
-                            latency_tracker=lt,
-                        ),
-                        debug_print=_safe_print if debug else None,
-                        log_warning=lambda msg: _warn(logger, msg),
-                        hide_overlay=app.hide_overlay if resident_hidden else None,
-                    )
-                    _session_outcome = run_session_followup_loop(
-                        session_config=session_config,
-                        callbacks=_session_callbacks,
-                        session_start_time=time.perf_counter(),
-                        enable_tts=enable_tts,
-                        post_response_cooldown=post_response_cooldown,
-                        debug=debug,
-                    )
-                    if not _session_outcome.should_continue_main_loop:
-                        break
-                else:
-                    _callbacks = AssistantRuntimeCallbacks(
-                        set_state=lambda s, d=None: app.thread_safe_set_state(s, d),
-                        log_warn=lambda msg: _warn(logger, msg),
-                        debug_print=_safe_print if debug else None,
-                        wait=lambda s: stop_event.wait(s),
-                        hide_overlay=app.hide_overlay if resident_hidden else None,
-                    )
-                    _outcome = handle_single_turn_reply_result(
-                        callbacks=_callbacks,
-                        pipeline_result=pipeline_result,
-                        command_text=result.command_text,
-                        assistant_name=app.assistant_name,
-                        post_response_cooldown=post_response_cooldown,
-                        resident_hidden=resident_hidden,
-                    )
-                    if not _outcome.continue_loop:
-                        break
+                    post_response_cooldown=post_response_cooldown,
+                    resident_hidden=resident_hidden,
+                    debug=debug,
+                ):
+                    break
             except (SttServerUnavailable, SttServerError) as exc:
                 if stop_event.is_set():
                     break

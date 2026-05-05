@@ -2,13 +2,21 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2F-F-C — session follow-up loop 迁入 assistant_runtime_service
-- **最新架构 commit**：V1.2F-F-C session follow-up extraction（见 git log）
+- **阶段**：V1.2F-F-D — assistant turn orchestration 迁入 assistant_runtime_service
+- **最新架构 commit**：V1.2F-F-D turn orchestration extraction（见 git log）
 - **最新功能 commit**：V1.2E-B 控制面板布局修复（见 git log）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+
+### V1.2F-F-D assistant turn orchestration 抽取记录（2026-05-05）
+
+- `assistant_runtime_service.py` 新增 `AssistantTurnCallbacks`、`run_assistant_turn_from_command()`。
+- `voice_overlay.py` 的 inline turn 编排（reply 生成 + session/non-session 分发，~90 行）改为调用 `run_assistant_turn_from_command()`。
+- pipeline_config + AssistantSessionCallbacks + AssistantRuntimeCallbacks 提升到 while 循环外构造，每轮复用。
+- 新增 9 个单测（tests/test_assistant_runtime_service.py）：空 command、非 session reply、session 分发、tts_error、debug、no tkinter 等。
+- 未迁移 _run_overlay_loop 整体、主 while、wake 路径、UI。
 
 ### V1.2F-F-C session follow-up loop 抽取记录（2026-05-05）
 
