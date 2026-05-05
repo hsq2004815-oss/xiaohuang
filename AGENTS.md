@@ -2,15 +2,23 @@
 
 ## Current Phase
 
-This repository is XiaoHuang **V1.1.3A** — User Config Foundation（用户配置中控层）.
+This repository is XiaoHuang **V1.2F** — runtime service extraction phase.
 
-The project has evolved from V0.9.1 (minimal single-turn audio pipeline prototype) to V1.1.3A (configurable desktop voice assistant with centralized config layer).
+The project has evolved from V0.9.1 (minimal single-turn audio pipeline prototype) through V1.1.x (config foundation, LLM router, Settings UI, tray launcher, control panel) and V1.2A-E (wake engine abstraction, openWakeWord integration) to V1.2F, which is extracting runtime services from `voice_overlay.py` into focused, testable modules.
 
 Current pipeline:
 
 ```text
-config.json / secrets.ps1 → STT server → voice_overlay → wake detection (STT text match) → VAD recording → STT transcription → DeepSeek reply or rule fallback → optional edge-tts → conversation session follow-up
+config.json / secrets.ps1 → STT server → voice_overlay → wake detection (stt_text or openwakeword) → VAD recording → STT transcription → DeepSeek reply or rule fallback → optional edge-tts → conversation session follow-up
 ```
+
+Extracted runtime services:
+- `wake_runtime_service.py` — wake engine selection, openWakeWord listener lifecycle
+- `command_runtime_service.py` — command recording + STT transcription
+- `reply_runtime_service.py` — reply pipeline wrapping (LLM/TTS callbacks)
+- `assistant_runtime_service.py` — turn orchestration, session follow-up loop, single-turn reply handling
+
+`voice_overlay.py` is still being slimmed down toward its final role: entry + UI + runtime assembly only.
 
 ## Development Rules
 
@@ -32,7 +40,11 @@ config.json / secrets.ps1 → STT server → voice_overlay → wake detection (S
 - `app_config_service.py`：配置中控层，`XiaoHuangConfig` dataclass，`load_config` / `merge_config_dict` / `apply_cli_overrides`
 - `llm_reply_service.py`：LLM 请求构建和回复生成，接收可选 `persona` 参数
 - `reply_pipeline_service.py`：回复管道编排
-- `voice_overlay.py`：Tkinter 悬浮窗入口，组装配置链路
+- `voice_overlay.py`：Tkinter 悬浮窗入口，组装配置链路（最终目标：入口 + UI + 运行时组装）
+- `wake_runtime_service.py`：唤醒引擎选择 + openWakeWord listener 生命周期
+- `command_runtime_service.py`：命令录音 + STT 转写
+- `reply_runtime_service.py`：reply pipeline + TTS 回调包装
+- `assistant_runtime_service.py`：turn 编排 + session follow-up loop
 - 保持旧 `config_service.load_config`（返回 dict）和新 `app_config_service.load_config`（返回 dataclass）的导入区分
 - 禁止两个不同类型变量都叫 `config`
 
@@ -45,6 +57,44 @@ CLI explicit args  >  config.json  >  built-in defaults
 - `store_true` 开关：`_or_config(cli, config)` — True 覆盖 config，False 回退 config
 - 标量值：`_coalesce(cli, config)` — 第一个非 None 值生效
 - PowerShell：用 `$PSBoundParameters.ContainsKey()` 判断是否显式传参
+
+## Code Size and Responsibility Policy
+
+1. 普通 service 文件建议控制在 100–500 行。
+2. 超过 500 行时，开发者必须主动检查职责是否开始混合。
+3. 超过 600 行时，必须在提交说明中解释为什么暂不拆分，或者拆出独立 service。
+4. 超过 900 行时，原则上必须拆分，除非它属于 UI 布局、测试集合、自动生成内容、协议常量集合等特殊文件。
+5. 不为了行数机械拆分，只按稳定职责边界拆分。
+6. 新功能优先新建独立 service，不继续塞进 `voice_overlay.py`。
+7. `voice_overlay.py` 的最终目标是入口 + UI + 运行时组装，不承载 wake / command / reply / session / tool 业务逻辑。
+8. 每个 service 只负责一个清晰领域，例如 `wake_runtime`、`command_runtime`、`reply_runtime`、`session_runtime`、`tool_router`、`status_service`。
+9. 拆分后必须保持可测试：新 service 要能被单元测试直接调用，不依赖 Tkinter 窗口或真实麦克风。
+10. 不允许出现新的"万能 manager / runtime / controller"文件替代 `voice_overlay.py` 变成新的大泥球。
+
+## Pre-commit Architecture Check
+
+Before reporting completion, the agent must check changed Python files:
+- If a normal service file exceeds 500 lines, mention it in the report.
+- If a normal service file exceeds 600 lines, explain why it is acceptable or propose a split.
+- If `voice_overlay.py` grows because of new business logic, stop and propose a separate service instead.
+- Tests may be long, but new feature tests should prefer a dedicated `test_*.py` file instead of continuing to grow `test_core_services.py`.
+
+## Hard Boundaries
+
+Do not add these:
+
+- Multi-turn memory / conversation history persistence
+- Tool execution (browser, QQ, WeChat, opencode, opencli, crawlers, file system)
+- Offline TTS
+- FunASR KWS / openWakeWord Chinese "贾维斯" model training
+- No new "god object" manager/runtime/controller to replace `voice_overlay.py`
+
+Already completed and should not be re-done from scratch:
+- LLM Provider Router (deepseek/qwen/doubao/openai_compatible) — V1.1.3B ✅
+- Settings UI (graphical config editor) — V1.1.3C ✅
+- System tray / launch control — V1.1.4 ✅
+- Wake Engine Abstraction + openWakeWord integration — V1.2A-E ✅
+- Status control panel — V1.1.4D ✅
 
 ## Verification
 
@@ -65,23 +115,6 @@ For config-layer changes, also run real smoke tests that verify:
 - CLI flags only override when explicitly passed
 - API key is not stored in config dataclass
 - Persona flows through to LLM request builder
-
-## Hard Boundaries (V1.1.3A)
-
-Do not add these in V1.1.3A:
-
-- LLM Provider Router (multi-provider switching) → V1.1.3B
-- Settings UI (graphical config editor) → V1.1.3C
-- HUD / system tray / installer → V1.1.4+
-- Wake Engine Abstraction (real KWS models) → V1.2
-- Multi-turn memory / conversation history persistence
-- Tool execution (browser, QQ, WeChat, opencode, opencli, crawlers, file system)
-- Offline TTS
-- FunASR KWS / openWakeWord training
-
-Current wake is STT text matching, not real KWS. Do not train or add real wake models unless explicitly requested.
-
-Do not modify `E:\DataBase` from this repository work. Database files are read-only context.
 
 ## Environment
 
