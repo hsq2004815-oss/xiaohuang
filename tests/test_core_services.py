@@ -528,7 +528,7 @@ class V12DCWakeCommandBridgeTests(unittest.TestCase):
 
 class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
     def _runtime_config(self, *, engine: str = "openwakeword", fallback_enabled: bool = True):
-        from voice_overlay import WakeEngineRuntimeConfig
+        from xiaohuang.wake_runtime_service import WakeEngineRuntimeConfig
 
         return WakeEngineRuntimeConfig(
             engine=engine,
@@ -599,7 +599,7 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         self.assertEqual(config.wake.model_name, "hey_jarvis")
 
     def test_openwakeword_engine_selects_openwakeword_when_dependencies_ready(self):
-        from voice_overlay import WAKE_ENGINE_OPENWAKEWORD, _select_wake_engine_runtime
+        from xiaohuang.wake_runtime_service import WAKE_ENGINE_OPENWAKEWORD, select_wake_engine_runtime as _select_wake_engine_runtime
 
         plan = _select_wake_engine_runtime(
             self._runtime_config(engine="openwakeword"),
@@ -610,7 +610,7 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         self.assertIsNone(plan.error)
 
     def test_openwakeword_dependency_missing_falls_back_when_enabled(self):
-        from voice_overlay import WAKE_ENGINE_STT_TEXT, _select_wake_engine_runtime
+        from xiaohuang.wake_runtime_service import WAKE_ENGINE_STT_TEXT, select_wake_engine_runtime as _select_wake_engine_runtime
 
         plan = _select_wake_engine_runtime(
             self._runtime_config(engine="openwakeword", fallback_enabled=True),
@@ -622,7 +622,7 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         self.assertIn("falling back to stt_text", plan.warning)
 
     def test_openwakeword_dependency_missing_errors_when_fallback_disabled(self):
-        from voice_overlay import WAKE_ENGINE_OPENWAKEWORD, _select_wake_engine_runtime
+        from xiaohuang.wake_runtime_service import WAKE_ENGINE_OPENWAKEWORD, select_wake_engine_runtime as _select_wake_engine_runtime
 
         plan = _select_wake_engine_runtime(
             self._runtime_config(engine="openwakeword", fallback_enabled=False),
@@ -648,10 +648,10 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
 
     def test_openwakeword_listener_thread_starts_continuous_adapter_once(self):
         import threading
-        from voice_overlay import (
-            _OpenWakeWordBridgeRuntime,
-            _start_openwakeword_listener,
-            _stop_openwakeword_listener,
+        from xiaohuang.wake_runtime_service import (
+            OpenWakeWordBridgeRuntime as _OpenWakeWordBridgeRuntime,
+            start_openwakeword_listener as _start_openwakeword_listener,
+            stop_openwakeword_listener as _stop_openwakeword_listener,
         )
 
         app = FakeOverlayApp()
@@ -683,7 +683,8 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
 
     def test_openwakeword_listener_accepted_event_enters_command_entry_once(self):
         import threading
-        from voice_overlay import _OpenWakeWordBridgeRuntime, _record_openwakeword_command
+        from xiaohuang.wake_runtime_service import OpenWakeWordBridgeRuntime as _OpenWakeWordBridgeRuntime
+        from voice_overlay import _record_openwakeword_command
         from xiaohuang.overlay_loop_runtime_service import _run_openwakeword_turn_from_listener
         from xiaohuang.wake_runtime_service import (
             start_openwakeword_listener,
@@ -756,7 +757,7 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
 
     def test_openwakeword_bridge_rejects_command_and_tts_active_events(self):
         import queue
-        from voice_overlay import _OpenWakeWordBridgeRuntime
+        from xiaohuang.wake_runtime_service import OpenWakeWordBridgeRuntime as _OpenWakeWordBridgeRuntime
 
         command_queue = queue.Queue()
         command_bridge = _OpenWakeWordBridgeRuntime(cooldown_seconds=2.5, command_queue=command_queue)
@@ -777,7 +778,10 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
 
     def test_openwakeword_listener_error_logs_and_fallbacks_when_enabled(self):
         import threading
-        from voice_overlay import _OpenWakeWordBridgeRuntime, _start_openwakeword_listener
+        from xiaohuang.wake_runtime_service import (
+            OpenWakeWordBridgeRuntime as _OpenWakeWordBridgeRuntime,
+            start_openwakeword_listener as _start_openwakeword_listener,
+        )
 
         app = FakeOverlayApp()
         logger = FakeLogger()
@@ -804,7 +808,10 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
 
     def test_openwakeword_listener_error_safely_stops_when_fallback_disabled(self):
         import threading
-        from voice_overlay import _OpenWakeWordBridgeRuntime, _start_openwakeword_listener
+        from xiaohuang.wake_runtime_service import (
+            OpenWakeWordBridgeRuntime as _OpenWakeWordBridgeRuntime,
+            start_openwakeword_listener as _start_openwakeword_listener,
+        )
 
         app = FakeOverlayApp()
         logger = FakeLogger()
@@ -829,7 +836,8 @@ class V12EOpenWakeWordOverlayIntegrationTests(unittest.TestCase):
         self.assertNotIn("fallback_to_stt_text", logger.text)
 
     def test_command_recording_error_leaves_bridge_clean(self):
-        from voice_overlay import _OpenWakeWordBridgeRuntime, _record_openwakeword_command
+        from xiaohuang.wake_runtime_service import OpenWakeWordBridgeRuntime as _OpenWakeWordBridgeRuntime
+        from voice_overlay import _record_openwakeword_command
 
         with tempfile.TemporaryDirectory() as temp_dir:
             app = FakeOverlayApp()
