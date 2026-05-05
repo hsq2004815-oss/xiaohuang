@@ -252,9 +252,9 @@ class V13UIFrontendStructureTests(unittest.TestCase):
     def test_css_has_glass_tokens(self):
         css = self._read("frontend/control_panel/assets/style.css")
         self.assertIn("--glass-blur-md", css)
-        self.assertIn("--dark-fill", css)
-        self.assertIn("--dark-neon-ring", css)
-        self.assertIn("--accent-cyan", css)
+        self.assertIn("--fill-card", css)
+        self.assertIn("--neon-ring", css)
+        self.assertIn("--accent-blue", css)
         self.assertIn("--radius-card", css)
 
     def test_css_has_layout_classes(self):
@@ -266,6 +266,13 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         css = self._read("frontend/control_panel/assets/style.css")
         for cls_name in (".glass-card", ".glass-pill", ".glass-input", ".glass-toggle", ".glass-toast", ".status-badge", ".sidebar-item"):
             self.assertIn(cls_name, css, f"Missing component class: {cls_name}")
+
+    def test_css_no_dark_theme_tokens(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertNotIn("--dark-fill", css)
+        self.assertNotIn("--dark-neon-ring", css)
+        self.assertNotIn("--dark-shadow-deep", css)
+        self.assertNotIn("--dark-rim", css)
 
     def test_css_supports_reduced_motion(self):
         css = self._read("frontend/control_panel/assets/style.css")
