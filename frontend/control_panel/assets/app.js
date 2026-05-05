@@ -19,7 +19,7 @@
   function call(method) {
     var args = Array.prototype.slice.call(arguments, 1);
     if (api) return api[method].apply(api, args);
-    return Promise.resolve({ ok: false, error: '桌面桥接未就绪', _mock: true });
+    return Promise.resolve({ ok: false, error: '桌面桥接未连接', _mock: true });
   }
 
   /* ─── Diagnostic drawer ─── */
@@ -48,7 +48,7 @@
 
     if (!d) {
       if (isMock) setStatusBadge('预览模式', 'off');
-      else setStatusBadge('加载失败', 'error');
+      else setStatusBadge(STATUS_TEXT.loading, 'off');
       return;
     }
 
@@ -58,8 +58,8 @@
     setWakeBadge((d.wake_engine || 'stt_text') + ' wake');
 
     // Neon status cards
-    setCard('card-stt', d.stt_running ? '运行中' : '未检测到', d.stt_running ? 'ok' : 'err');
-    setCard('card-overlay', d.overlay_running ? '运行中' : '未检测到', d.overlay_running ? 'ok' : 'err');
+    setCard('card-stt', d.stt_running ? STATUS_TEXT.running : STATUS_TEXT.notDetected, d.stt_running ? 'ok' : 'err');
+    setCard('card-overlay', d.overlay_running ? STATUS_TEXT.running : STATUS_TEXT.notDetected, d.overlay_running ? 'ok' : 'err');
     setCard('card-wake', d.wake_engine || 'stt_text', d.can_wake_now ? 'ok' : 'off');
     setCard('card-assistant', d.assistant_display_name || '小黄', 'ok');
 
@@ -78,15 +78,15 @@
 
     // Runtime detail
     var rows = [
-      ['STT Server Running', d.stt_running],
-      ['STT Ready', d.stt_ready],
-      ['Model Loaded', d.stt_model_loaded],
-      ['Health Status', d.stt_health_status],
-      ['Can Wake', d.can_wake_now],
-      ['TTS Enabled', d.tts_enabled],
-      ['LLM Provider', d.llm_provider],
-      ['Config Path', d.config_path],
-      ['Last Error', d.last_error || '无'],
+      ['STT 服务运行', d.stt_running],
+      ['STT 就绪', d.stt_ready],
+      ['模型已加载', d.stt_model_loaded],
+      ['健康状态', d.stt_health_status],
+      ['可唤醒', d.can_wake_now],
+      ['TTS 启用', d.tts_enabled],
+      ['LLM 提供方', d.llm_provider],
+      ['配置文件路径', d.config_path],
+      ['最近错误', d.last_error || '无'],
     ];
     $('runtime-detail').innerHTML = rows.map(function (r) {
       return '<div class="event-row"><span class="event-label">' + r[0] + '</span><span class="event-val">' + (r[1] !== undefined ? (r[1] ? '✓' : '✗') : '--') + '</span></div>';
@@ -94,15 +94,15 @@
 
     // Wake & Voice detail
     $('wake-voice-detail').innerHTML = [
-      ['Engine', d.wake_engine],['Fallback', d.wake_fallback_enabled],['Device', d.wake_device_index],
-      ['Cooldown', (d.wake_cooldown_seconds || 0) + 's'],['Sensitivity', d.wake_sensitivity],
-      ['Model Label', d.wake_model_label || '--'],['Phrases', (d.wake_phrases || []).join(', ')],
+      ['引擎', d.wake_engine],['兜底唤醒', d.wake_fallback_enabled],['设备', d.wake_device_index],
+      ['冷却时间', (d.wake_cooldown_seconds || 0) + 's'],['灵敏度', d.wake_sensitivity],
+      ['模型标签', d.wake_model_label || '--'],['唤醒词', (d.wake_phrases || []).join(', ')],
     ].map(function (r) { return '<div class="event-row"><span class="event-label">' + r[0] + '</span><span class="event-val">' + (r[1] !== undefined ? r[1] : '--') + '</span></div>'; }).join('');
 
     // Recent events
     var ev = [
-      ['Overall', d.overall_message || os],['Last Op', d.last_operation || '无'],
-      ['Last Op Time', d.last_operation_elapsed_seconds ? d.last_operation_elapsed_seconds + 's' : '--'],
+      ['总体状态', d.overall_message || os],['上次操作', d.last_operation || '无'],
+      ['操作耗时', d.last_operation_elapsed_seconds ? d.last_operation_elapsed_seconds + 's' : '--'],
     ];
     $('events-list').innerHTML = ev.map(function (r) {
       return '<div class="event-row"><span class="event-label">' + r[0] + '</span><span class="event-val">' + r[1] + '</span></div>';
@@ -130,6 +130,12 @@
     el.textContent = text || '--';
     el.className = 'card-value' + (cls ? ' ' + cls : '');
   }
+
+  var STATUS_TEXT = {
+    running: '运行中', stopped: '已停止', ready: '已就绪',
+    unknown: '未知', error: '错误', loading: '加载中...',
+    notDetected: '未检测到',
+  };
 
   /* ─── Sidebar navigation ─── */
   function initNav() {

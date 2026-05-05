@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>XiaoHuang Control Center</title>
+  <title>小黄控制中心</title>
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -13,12 +13,12 @@
       <div class="topbar-left">
         <span class="topbar-logo">XH</span>
         <div>
-          <div class="topbar-title">XiaoHuang Control Center</div>
+          <div class="topbar-title">小黄控制中心</div>
           <div class="topbar-sub">本地桌面 AI 助手控制中心</div>
         </div>
       </div>
       <div class="topbar-center">
-        <input class="glass-input" type="text" placeholder="搜索模块 / 配置 / 日志..." disabled>
+        <input class="glass-input" type="text" placeholder="搜索状态、配置或日志..." disabled>
       </div>
       <div class="topbar-right">
         <span class="status-badge" id="top-status">--</span>
@@ -30,40 +30,41 @@
     <!-- Left Sidebar -->
     <nav class="sidebar" id="sidebar">
       <div class="sidebar-section">
-        <div class="sidebar-label">Core</div>
-        <a class="sidebar-item active" data-section="overview">Overview</a>
-        <a class="sidebar-item" data-section="runtime">Runtime</a>
-        <a class="sidebar-item" data-section="wake">Wake & Voice</a>
-        <a class="sidebar-item" data-section="models">Models</a>
+        <div class="sidebar-label">核心</div>
+        <a class="sidebar-item active" data-section="overview">总览</a>
+        <a class="sidebar-item" data-section="runtime">运行状态</a>
+        <a class="sidebar-item" data-section="wake">唤醒与语音</a>
+        <a class="sidebar-item" data-section="models">模型</a>
       </div>
       <div class="sidebar-section">
-        <div class="sidebar-label">Capabilities</div>
-        <a class="sidebar-item" data-section="tools">Tools</a>
-        <a class="sidebar-item" data-section="automation">Automation</a>
-        <a class="sidebar-item" data-section="database">Database</a>
+        <div class="sidebar-label">能力</div>
+        <a class="sidebar-item" data-section="tools">工具</a>
+        <a class="sidebar-item" data-section="automation">自动化</a>
+        <a class="sidebar-item" data-section="database">数据库</a>
       </div>
       <div class="sidebar-section">
-        <div class="sidebar-label">System</div>
-        <a class="sidebar-item" data-section="logs">Logs</a>
-        <a class="sidebar-item" data-section="settings">Settings</a>
-        <a class="sidebar-item" data-section="developer">Developer</a>
+        <div class="sidebar-label">系统</div>
+        <a class="sidebar-item" data-section="logs">日志</a>
+        <a class="sidebar-item" data-section="settings">设置</a>
+        <a class="sidebar-item" data-section="developer">开发者</a>
       </div>
     </nav>
 
     <!-- Main Workspace -->
     <main class="main-workspace" id="main-workspace">
-      <!-- Overview section (default) -->
+      <!-- 总览 -->
       <section class="content-section active" id="section-overview">
-        <h2 class="section-title">Overview</h2>
+        <h2 class="section-title">总览</h2>
         <div class="card-grid-4" id="status-cards">
-          <div class="glass-card neon-card"><div class="card-label">STT Server</div><div class="card-value" id="card-stt">--</div></div>
-          <div class="glass-card neon-card"><div class="card-label">Voice Overlay</div><div class="card-value" id="card-overlay">--</div></div>
-          <div class="glass-card neon-card"><div class="card-label">Wake Engine</div><div class="card-value" id="card-wake">--</div></div>
-          <div class="glass-card neon-card"><div class="card-label">Assistant</div><div class="card-value" id="card-assistant">--</div></div>
+          <div class="glass-card neon-card"><div class="card-label">STT 服务</div><div class="card-value" id="card-stt">--</div></div>
+          <div class="glass-card neon-card"><div class="card-label">语音悬浮窗</div><div class="card-value" id="card-overlay">--</div></div>
+          <div class="glass-card neon-card"><div class="card-label">唤醒引擎</div><div class="card-value" id="card-wake">--</div></div>
+          <div class="glass-card neon-card"><div class="card-label">助手</div><div class="card-value" id="card-assistant">--</div></div>
         </div>
+
         <div class="card-grid-2">
           <div class="glass-card" id="quick-actions">
-            <h3 class="card-title">Quick Actions</h3>
+            <div class="card-header"><h3 class="card-title">快速操作</h3></div>
             <div class="action-row">
               <button class="glass-pill glass-pill-primary" id="btn-start">启动小黄</button>
               <button class="glass-pill glass-pill-danger" id="btn-stop" disabled>停止小黄</button>
@@ -72,21 +73,27 @@
             </div>
           </div>
           <div class="glass-card" id="wake-settings">
-            <h3 class="card-title">Wake Engine Settings</h3>
-            <div class="form-row">
-              <label>Engine
+            <div class="card-header"><h3 class="card-title">唤醒引擎设置</h3></div>
+            <div class="form-grid">
+              <label class="form-field">引擎
                 <select id="wake-engine" class="glass-input">
                   <option value="stt_text">stt_text</option>
                   <option value="openwakeword">openwakeword</option>
                 </select>
               </label>
-              <label class="toggle-label">
-                <span>Fallback</span>
+              <label class="form-field">设备
+                <input type="number" id="wake-device" class="glass-input" min="0" max="99" placeholder="0">
+              </label>
+              <label class="form-field">冷却时间 (秒)
+                <input type="number" id="wake-cooldown" class="glass-input" min="0" max="30" step="0.5" placeholder="2.5">
+              </label>
+              <label class="form-field">灵敏度
+                <input type="number" id="wake-sensitivity" class="glass-input" min="0" max="1" step="0.05" placeholder="0.5">
+              </label>
+              <label class="form-field toggle-field">
+                <span>兜底唤醒</span>
                 <input type="checkbox" id="wake-fallback" class="glass-toggle" checked>
               </label>
-              <label>Device <input type="number" id="wake-device" class="glass-input" min="0" max="99"></label>
-              <label>Cooldown <input type="number" id="wake-cooldown" class="glass-input" min="0" max="30" step="0.5"></label>
-              <label>Sensitivity <input type="number" id="wake-sensitivity" class="glass-input" min="0" max="1" step="0.05"></label>
             </div>
             <div class="action-row">
               <button class="glass-pill" id="btn-save-config">保存配置</button>
@@ -95,60 +102,61 @@
             <p class="hint" id="wake-hint"></p>
           </div>
         </div>
+
         <div class="glass-card" id="recent-events">
-          <h3 class="card-title">Recent Events</h3>
+          <div class="card-header"><h3 class="card-title">最近事件</h3></div>
           <div id="events-list">--</div>
         </div>
       </section>
 
-      <!-- Runtime section -->
+      <!-- 运行状态 -->
       <section class="content-section" id="section-runtime">
-        <h2 class="section-title">Runtime</h2>
+        <h2 class="section-title">运行状态</h2>
         <div class="glass-card"><div class="card-body" id="runtime-detail">加载中...</div></div>
       </section>
 
-      <!-- Wake & Voice section -->
+      <!-- 唤醒与语音 -->
       <section class="content-section" id="section-wake">
-        <h2 class="section-title">Wake & Voice</h2>
+        <h2 class="section-title">唤醒与语音</h2>
         <div class="glass-card" id="wake-voice-detail"><div class="card-body">加载中...</div></div>
       </section>
 
-      <!-- Placeholder sections -->
-      <section class="content-section" id="section-models"><h2 class="section-title">Models</h2><div class="glass-card"><div class="card-body">Coming soon — model management, download status, runtime selection</div></div></section>
-      <section class="content-section" id="section-tools"><h2 class="section-title">Tools</h2><div class="glass-card"><div class="card-body">Coming soon — tool configuration, permissions, execution log</div></div></section>
-      <section class="content-section" id="section-automation"><h2 class="section-title">Automation</h2><div class="glass-card"><div class="card-body">Coming soon — scheduled tasks, triggers, macros</div></div></section>
-      <section class="content-section" id="section-database"><h2 class="section-title">Database</h2><div class="glass-card"><div class="card-body">Coming soon — knowledge base management, memory, search</div></div></section>
-      <section class="content-section" id="section-logs"><h2 class="section-title">Logs</h2><div class="glass-card"><div class="card-body">Coming soon — full log viewer, search, export</div></div></section>
-      <section class="content-section" id="section-settings"><h2 class="section-title">Settings</h2><div class="glass-card"><div class="card-body">Coming soon — global preferences, key bindings, themes</div></div></section>
-      <section class="content-section" id="section-developer"><h2 class="section-title">Developer</h2><div class="glass-card"><div class="card-body">Coming soon — API test, code asset index, debug tools</div></div></section>
+      <!-- 占位 -->
+      <section class="content-section" id="section-models"><h2 class="section-title">模型</h2><div class="glass-card"><div class="card-body">即将推出 — 模型管理、下载状态、运行时选择</div></div></section>
+      <section class="content-section" id="section-tools"><h2 class="section-title">工具</h2><div class="glass-card"><div class="card-body">即将推出 — 工具配置、权限管理、执行日志</div></div></section>
+      <section class="content-section" id="section-automation"><h2 class="section-title">自动化</h2><div class="glass-card"><div class="card-body">即将推出 — 计划任务、触发器、宏</div></div></section>
+      <section class="content-section" id="section-database"><h2 class="section-title">数据库</h2><div class="glass-card"><div class="card-body">即将推出 — 知识库管理、记忆、搜索</div></div></section>
+      <section class="content-section" id="section-logs"><h2 class="section-title">日志</h2><div class="glass-card"><div class="card-body">即将推出 — 完整日志查看、搜索、导出</div></div></section>
+      <section class="content-section" id="section-settings"><h2 class="section-title">设置</h2><div class="glass-card"><div class="card-body">即将推出 — 全局偏好、快捷键、主题</div></div></section>
+      <section class="content-section" id="section-developer"><h2 class="section-title">开发者</h2><div class="glass-card"><div class="card-body">即将推出 — API 测试、代码资源索引、调试工具</div></div></section>
     </main>
 
     <!-- Right Diagnostic Drawer -->
     <aside class="diagnostic-drawer glass-card" id="drawer">
-      <h3 class="drawer-title">Diagnostics</h3>
+      <h3 class="drawer-title">诊断信息</h3>
       <div class="drawer-section">
-        <div class="drawer-label">Config Path</div>
+        <div class="drawer-label">配置文件</div>
         <div class="drawer-value" id="drawer-config-path">--</div>
       </div>
       <div class="drawer-section">
-        <div class="drawer-label">Logs Directory</div>
+        <div class="drawer-label">日志目录</div>
         <div class="drawer-value" id="drawer-logs-path">--</div>
       </div>
       <div class="drawer-section">
-        <div class="drawer-label">Last Error</div>
+        <div class="drawer-label">最近错误</div>
         <div class="drawer-value" id="drawer-last-error">无</div>
       </div>
       <div class="drawer-section">
-        <div class="drawer-label">Last Operation</div>
+        <div class="drawer-label">最近操作</div>
         <div class="drawer-value" id="drawer-last-op">--</div>
       </div>
       <div class="drawer-section">
-        <div class="drawer-label">Operation History</div>
+        <div class="drawer-label">操作历史</div>
         <div id="drawer-history"></div>
       </div>
     </aside>
 
-    <!-- Toast container -->
+    <!-- Toast -->
     <div class="toast-container" id="toast-container"></div>
   </div>
 

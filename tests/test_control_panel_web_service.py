@@ -226,14 +226,27 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         html = self._read("frontend/control_panel/index.html")
         self.assertIn("glass-card", html)
 
-    def test_html_has_nav_sections(self):
+    def test_html_has_localized_nav(self):
         html = self._read("frontend/control_panel/index.html")
-        self.assertIn("Overview", html)
-        self.assertIn("Runtime", html)
-        self.assertIn("Wake & Voice", html)
-        self.assertIn("Models", html)
-        self.assertIn("Tools", html)
-        self.assertIn("Database", html)
+        for text in ("总览", "运行状态", "唤醒与语音", "模型", "工具", "数据库", "核心", "能力", "系统", "开发者"):
+            self.assertIn(text, html, f"Missing localized text: {text}")
+
+    def test_html_no_english_nav_labels(self):
+        html = self._read("frontend/control_panel/index.html")
+        for text in ("Overview</", "Runtime</", "Wake &amp; Voice</", "Diagnostics</", "Quick Actions</", "Wake Engine Settings</", "Recent Events</"):
+            self.assertNotIn(text, html, f"English label should be removed: {text}")
+        self.assertNotIn(">Overview<", html)
+        self.assertNotIn(">Runtime<", html)
+        self.assertNotIn(">Core<", html)
+        self.assertNotIn(">Capabilities<", html)
+        self.assertNotIn(">System<", html)
+
+    def test_html_has_localized_main_content(self):
+        html = self._read("frontend/control_panel/index.html")
+        for text in ("小黄控制中心", "快速操作", "唤醒引擎设置", "最近事件", "诊断信息",
+                     "配置文件", "日志目录", "最近错误", "最近操作", "操作历史",
+                     "兜底唤醒", "冷却时间", "灵敏度", "保存配置", "保存并重启"):
+            self.assertIn(text, html, f"Missing localized content: {text}")
 
     def test_html_no_project_template_keywords(self):
         html = self._read("frontend/control_panel/index.html")
@@ -282,6 +295,11 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         js = self._read("frontend/control_panel/assets/app.js")
         self.assertIn("window.pywebview", js)
         self.assertIn("_mock", js)
+
+    def test_js_has_chinese_status_text(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        for text in ("运行中", "已停止", "已就绪", "未检测到", "加载中", "未知"):
+            self.assertIn(text, js, f"Missing Chinese status text: {text}")
 
     def test_js_no_external_url(self):
         js = self._read("frontend/control_panel/assets/app.js")

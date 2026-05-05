@@ -62,7 +62,7 @@
 /* ─── Reset ─── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{
-  font-family:"Microsoft YaHei UI","Segoe UI",system-ui,sans-serif;
+  font-family:system-ui,"Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Segoe UI",sans-serif;
   background:
     radial-gradient(ellipse at 30% 0%,rgba(139,92,246,0.04) 0%,transparent 55%),
     radial-gradient(ellipse at 65% 90%,rgba(86,136,238,0.05) 0%,transparent 55%),
@@ -128,7 +128,7 @@ body{
 .sidebar-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);padding:0 10px 8px}
 .sidebar-item{
   display:block;padding:8px 12px;border-radius:var(--radius-field);font-size:13px;color:var(--text-secondary);
-  cursor:pointer;transition:all .18s var(--ease-reveal);text-decoration:none;margin-bottom:2px
+  cursor:pointer;transition:all .18s var(--ease-reveal);text-decoration:none;margin-bottom:2px;letter-spacing:0.02em
 }
 .sidebar-item:hover{background:rgba(0,0,0,0.04);color:var(--text-primary)}
 .sidebar-item.active{
@@ -143,7 +143,7 @@ body{
 }
 .content-section{display:none}
 .content-section.active{display:block}
-.section-title{font-size:20px;font-weight:700;margin-bottom:20px;letter-spacing:-0.3px;color:var(--text-primary)}
+.section-title{font-size:20px;font-weight:700;margin:0 0 20px 0;letter-spacing:0;color:var(--text-primary)}
 
 /* ─── Glass Card ─── */
 .glass-card{
@@ -158,13 +158,14 @@ body{
 @media(max-width:1100px){.card-grid-4{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:800px){.card-grid-2{grid-template-columns:1fr}}
 
-.neon-card{padding:18px 20px}
+.neon-card{padding:20px 22px}
 .neon-card:hover{box-shadow:var(--neon-ring),var(--shadow-elevated)}
 .card-label{font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px}
 .card-value{font-size:22px;font-weight:700;color:var(--text-primary)}
 .card-value.ok{color:#166534}.card-value.warn{color:#92400e}.card-value.err{color:#991b1b}.card-value.off{color:var(--text-muted)}
 
-.card-title{font-size:13px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--rim)}
+.card-header{padding-bottom:10px;margin-bottom:14px;border-bottom:1px solid var(--rim)}
+.card-title{font-size:13px;font-weight:600;color:var(--text-secondary);letter-spacing:0.03em;margin:0}
 .card-body{font-size:13px;line-height:1.7;color:var(--text-secondary)}
 
 /* ─── Glass Pill Button ─── */
@@ -203,10 +204,11 @@ select.glass-input{cursor:pointer}
 .glass-toggle:checked::after{transform:translateX(18px)}
 
 /* ─── Form ─── */
-.form-row{display:flex;flex-wrap:wrap;gap:12px 18px;margin-bottom:14px}
-.form-row label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-secondary)}
-.toggle-label{flex-direction:row!important;align-items:center;gap:8px;cursor:pointer}
-.action-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px 18px;margin-bottom:14px}
+.form-field{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary)}
+.toggle-field{flex-direction:row!important;align-items:center;gap:8px;cursor:pointer;justify-content:flex-start}
+.action-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.action-row .glass-pill{flex:0 1 auto;min-width:88px}
 .hint{font-size:11px;color:var(--text-muted);margin-top:10px}
 
 /* ─── Diagnostic Drawer ─── */
@@ -216,10 +218,10 @@ select.glass-input{cursor:pointer}
   background:rgba(255,255,255,0.44);border-left:1px solid var(--rim);
   box-shadow:-2px 0 16px rgba(15,23,42,0.03)
 }
-.drawer-title{font-size:14px;font-weight:700;margin-bottom:18px;color:var(--accent-blue)}
-.drawer-section{margin-bottom:16px}
-.drawer-label{font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:2px}
-.drawer-value{font-size:12px;color:var(--text-secondary);word-break:break-all;line-height:1.5}
+.drawer-title{font-size:14px;font-weight:700;margin:0 0 20px 0;padding-bottom:12px;border-bottom:1px solid var(--rim);color:var(--accent-blue);letter-spacing:0.02em}
+.drawer-section{margin-bottom:18px}
+.drawer-label{font-size:11px;letter-spacing:0.03em;color:var(--text-muted);margin-bottom:3px}
+.drawer-value{font-size:12px;color:var(--text-secondary);word-break:break-all;line-height:1.6}
 #drawer-history{font-size:11px;color:var(--text-muted);max-height:220px;overflow-y:auto}
 .drawer-entry{padding:4px 0;border-bottom:1px solid var(--rim);font-size:11px}
 .drawer-entry .ts{color:var(--text-muted);margin-right:4px}
