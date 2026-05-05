@@ -250,20 +250,26 @@ class V12HBOverlayLoopRuntimeTests(unittest.TestCase):
             "xiaohuang.overlay_loop_runtime_service.run_wake_loop_once",
             side_effect=side_effects,
         ):
-            run_overlay_runtime(
-                app=app,
-                stop_event=stop_event,
-                logger=logger,
-                options=options,
-                runtime_config=rt_config,
-                pipeline_config=pipeline_config,
-                record_openwakeword_command=lambda **kw: _fake_wake_result(),
-                make_llm_debug_handler=lambda logger, debug: None,
-                playback_warning=lambda msg: None,
-                log_warning=lambda msg: None,
-            )
+            # After exception handler sets error state it calls
+            # stop_event.wait(2.0).  Return True so the loop exits
+            # instead of spinning on StopIteration from exhausted side_effects.
+            with patch.object(
+                stop_event, "wait",
+                side_effect=lambda timeout=None: timeout is not None and timeout >= 1.0,
+            ):
+                run_overlay_runtime(
+                    app=app,
+                    stop_event=stop_event,
+                    logger=logger,
+                    options=options,
+                    runtime_config=rt_config,
+                    pipeline_config=pipeline_config,
+                    record_openwakeword_command=lambda **kw: _fake_wake_result(),
+                    make_llm_debug_handler=lambda logger, debug: None,
+                    playback_warning=lambda msg: None,
+                    log_warning=lambda msg: None,
+                )
 
-        # Should have at least one error state
         error_states = [s for s in app.states if s[0] == "error"]
         self.assertGreater(len(error_states), 0)
 
@@ -289,18 +295,25 @@ class V12HBOverlayLoopRuntimeTests(unittest.TestCase):
             "xiaohuang.overlay_loop_runtime_service.run_wake_loop_once",
             side_effect=side_effects,
         ):
-            run_overlay_runtime(
-                app=app,
-                stop_event=stop_event,
-                logger=logger,
-                options=options,
-                runtime_config=rt_config,
-                pipeline_config=pipeline_config,
-                record_openwakeword_command=lambda **kw: _fake_wake_result(),
-                make_llm_debug_handler=lambda logger, debug: None,
-                playback_warning=lambda msg: None,
-                log_warning=lambda msg: None,
-            )
+            # After exception handler sets error state it calls
+            # stop_event.wait(2.0).  Return True so the loop exits
+            # instead of spinning on StopIteration from exhausted side_effects.
+            with patch.object(
+                stop_event, "wait",
+                side_effect=lambda timeout=None: timeout is not None and timeout >= 1.0,
+            ):
+                run_overlay_runtime(
+                    app=app,
+                    stop_event=stop_event,
+                    logger=logger,
+                    options=options,
+                    runtime_config=rt_config,
+                    pipeline_config=pipeline_config,
+                    record_openwakeword_command=lambda **kw: _fake_wake_result(),
+                    make_llm_debug_handler=lambda logger, debug: None,
+                    playback_warning=lambda msg: None,
+                    log_warning=lambda msg: None,
+                )
 
         error_states = [s for s in app.states if s[0] == "error"]
         self.assertGreater(len(error_states), 0)
