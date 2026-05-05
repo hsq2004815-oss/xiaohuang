@@ -49,7 +49,10 @@ def _status_to_dict(s: ControlPanelStatus) -> dict:
 
 class ControlPanelWebApi:
     def __init__(self, config_path: str | Path | None = None) -> None:
-        self._config_path = Path(config_path) if config_path else None
+        if config_path is not None and str(config_path).strip():
+            self._config_path = Path(config_path)
+        else:
+            self._config_path = None
         self._project_root = get_project_root()
 
     def _resolve_config_path(self) -> Path:

@@ -205,27 +205,27 @@
     $('btn-start').disabled = true; $('btn-start').textContent = '启动中...';
     call('start_xiaohuang').then(function (r) {
       if (r && r.ok) { toast('启动成功', 'ok'); drawerLog('启动小黄', true); }
-      else { toast((r && r.error) || '启动失败', 'err'); drawerLog('启动小黄', false, (r && r.error)); }
-      setTimeout(refreshStatus, 3000);
-    }).catch(function (e) { toast('启动出错', 'err'); });
+      else { toast((r && r.error) || '启动失败', 'err'); drawerLog('启动小黄', false, (r && r.error)); refreshStatus(); }
+      $('btn-start').textContent = '启动小黄';
+    }).catch(function (e) { toast('启动出错', 'err'); $('btn-start').disabled = false; $('btn-start').textContent = '启动小黄'; });
   }
 
   function doStop() {
     $('btn-stop').disabled = true; $('btn-stop').textContent = '停止中...';
     call('stop_xiaohuang').then(function (r) {
       if (r && r.ok) { toast('已停止', 'ok'); drawerLog('停止小黄', true); }
-      else { toast((r && r.error) || '停止失败', 'err'); drawerLog('停止小黄', false, (r && r.error)); }
-      setTimeout(refreshStatus, 2000);
-    }).catch(function (e) { toast('停止出错', 'err'); });
+      else { toast((r && r.error) || '停止失败', 'err'); drawerLog('停止小黄', false, (r && r.error)); refreshStatus(); }
+      $('btn-stop').textContent = '停止小黄';
+    }).catch(function (e) { toast('停止出错', 'err'); $('btn-stop').disabled = false; $('btn-stop').textContent = '停止小黄'; });
   }
 
   function doRestart() {
     $('btn-restart').disabled = true; $('btn-restart').textContent = '重启中...';
     call('restart_xiaohuang').then(function (r) {
-      if (r && r.ok) { toast('重启成功', 'ok'); drawerLog('重启小黄', true); }
-      else { toast((r && r.error) || '重启失败', 'err'); drawerLog('重启小黄', false, (r && r.error)); }
-      setTimeout(refreshStatus, 5000);
-    }).catch(function (e) { toast('重启出错', 'err'); });
+      if (r && r.ok) { toast('重启成功', 'ok'); drawerLog('重启小黄', true); setTimeout(refreshStatus, 5000); }
+      else { toast((r && r.error) || '重启失败', 'err'); drawerLog('重启小黄', false, (r && r.error)); refreshStatus(); }
+      $('btn-restart').textContent = '重启小黄';
+    }).catch(function (e) { toast('重启出错', 'err'); $('btn-restart').disabled = false; $('btn-restart').textContent = '重启小黄'; });
   }
 
   function doSaveConfig() {

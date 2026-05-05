@@ -115,14 +115,17 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
     # start / stop / restart
     # ------------------------------------------------------------------
 
-    def test_start_returns_ok(self):
+    def test_start_calls_run_start_operation_with_correct_args(self):
         with patch(
             "xiaohuang.control_panel_web_service.run_start_operation",
             return_value=_fake_op_result(True, "started"),
-        ):
+        ) as mock_start:
             api = ControlPanelWebApi(config_path=self.config_path)
             result = api.start_xiaohuang()
             self.assertTrue(result["ok"])
+            mock_start.assert_called_once()
+            args = mock_start.call_args[0]
+            self.assertGreater(len(args), 0, "run_start_operation needs project_root")
 
     def test_start_exception_returns_fail(self):
         with patch(
@@ -134,23 +137,25 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertIn("start_error", result["code"])
 
-    def test_stop_returns_ok(self):
+    def test_stop_calls_run_stop_operation(self):
         with patch(
             "xiaohuang.control_panel_web_service.run_stop_operation",
             return_value=_fake_op_result(True, "stopped"),
-        ):
+        ) as mock_stop:
             api = ControlPanelWebApi(config_path=self.config_path)
             result = api.stop_xiaohuang()
             self.assertTrue(result["ok"])
+            mock_stop.assert_called_once()
 
-    def test_restart_returns_ok(self):
+    def test_restart_calls_run_restart_operation(self):
         with patch(
             "xiaohuang.control_panel_web_service.run_restart_operation",
             return_value=_fake_op_result(True, "restarted"),
-        ):
+        ) as mock_restart:
             api = ControlPanelWebApi(config_path=self.config_path)
             result = api.restart_xiaohuang()
             self.assertTrue(result["ok"])
+            mock_restart.assert_called_once()
 
     def test_restart_exception_returns_fail(self):
         with patch(
@@ -160,6 +165,14 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
             api = ControlPanelWebApi(config_path=self.config_path)
             result = api.restart_xiaohuang()
             self.assertFalse(result["ok"])
+
+    def test_construct_with_none_config_path_does_not_crash(self):
+        api = ControlPanelWebApi(config_path=None)
+        self.assertIsNotNone(api._project_root)
+
+    def test_construct_with_empty_config_path_does_not_crash(self):
+        api = ControlPanelWebApi(config_path="")
+        self.assertIsNotNone(api._project_root)
 
     # ------------------------------------------------------------------
     # refresh / get_config_summary / log paths
@@ -313,6 +326,16 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         js = self._read("frontend/control_panel/assets/app.js")
         for text in ("运行中", "已停止", "已就绪", "未检测到", "加载中", "未知"):
             self.assertIn(text, js, f"Missing Chinese status text: {text}")
+
+    def test_js_has_action_api_calls(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        for method in ("start_xiaohuang", "stop_xiaohuang", "restart_xiaohuang"):
+            self.assertIn(method, js, f"Missing API call: {method}")
+
+    def test_js_has_button_recovery(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        # ensure buttons re-enable on error
+        self.assertIn("启动小黄", js)
 
     def test_js_no_external_url(self):
         js = self._read("frontend/control_panel/assets/app.js")
