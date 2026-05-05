@@ -141,6 +141,19 @@ def _print_wake_engine_runtime_config(
 
 
 class VoiceOverlayApp:
+    _W = 560
+    _H = 180
+    _BAR_COUNT = 10
+    _BAR_W = 3
+    _BAR_GAP = 4
+    _ANIM_MS = 80
+    _CORE_CX = 430
+    _CORE_R = 52
+    _PANEL_X0 = 16
+    _PANEL_Y0 = 14
+    _PANEL_X1 = 320
+    _FOLD = 20
+
     def __init__(
         self,
         root,
@@ -157,6 +170,8 @@ class VoiceOverlayApp:
         self.assistant_name = title or "小黄"
         self.wake_phrase = wake_phrase or "小黄"
         self.state = STATE_IDLE
+        self._title_text = ""
+        self._sub_text = ""
         self.phase = 0.0
         self.closed = False
         self._after_ids: set[str] = set()
@@ -169,49 +184,30 @@ class VoiceOverlayApp:
             except Exception:
                 pass
 
+    # ── UI construction ────────────────────────────────────────
+
     def _build_ui(self, title: str = "小黄") -> None:
         self.root.title(title)
-        self.root.geometry("360x120+80+80")
+        self.root.geometry(f"{self._W}x{self._H}+100+100")
         self.root.attributes("-topmost", True)
         self.root.resizable(False, False)
         try:
             self.root.overrideredirect(True)
         except Exception:
             pass
-
-        import tkinter as tk
-
-        self.frame = tk.Frame(self.root, bg="#101418", bd=1, relief="solid")
-        self.frame.pack(fill="both", expand=True)
-        self.title_label = tk.Label(
-            self.frame,
-            text="",
-            bg="#101418",
-            fg="#f5f7fa",
-            font=("Microsoft YaHei UI", 16, "bold"),
-            anchor="w",
+        # Transparent: use a unique dark key color for the canvas background.
+        self._tk = tk
+        try:
+            self.root.wm_attributes("-transparentcolor", "#010101")
+        except Exception:
+            pass
+        self.canvas = self._tk.Canvas(
+            self.root, width=self._W, height=self._H,
+            bg="#010101", highlightthickness=0, bd=0,
         )
-        self.title_label.pack(fill="x", padx=18, pady=(14, 2))
-        self.subtitle_label = tk.Label(
-            self.frame,
-            text="",
-            bg="#101418",
-            fg="#aeb7c2",
-            font=("Microsoft YaHei UI", 10),
-            anchor="w",
-            wraplength=320,
-            justify="left",
-        )
-        self.subtitle_label.pack(fill="x", padx=18)
-        self.canvas = tk.Canvas(self.frame, width=320, height=34, bg="#101418", highlightthickness=0)
-        self.canvas.pack(fill="x", padx=18, pady=(4, 10))
-
-        self.frame.bind("<ButtonPress-1>", self._start_move)
-        self.frame.bind("<B1-Motion>", self._move)
-        self.title_label.bind("<ButtonPress-1>", self._start_move)
-        self.title_label.bind("<B1-Motion>", self._move)
-        self.subtitle_label.bind("<ButtonPress-1>", self._start_move)
-        self.subtitle_label.bind("<B1-Motion>", self._move)
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.bind("<ButtonPress-1>", self._start_move)
+        self.canvas.bind("<B1-Motion>", self._move)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.root.bind("<Escape>", lambda _event: self.close())
 
@@ -224,24 +220,22 @@ class VoiceOverlayApp:
             x = self.root.winfo_x() + event.x - self._drag_x
             y = self.root.winfo_y() + event.y - self._drag_y
             self.root.geometry(f"+{x}+{y}")
-        except tk.TclError:
+        except self._tk.TclError:
             pass
+
+    # ── State management ───────────────────────────────────────
 
     def set_state(self, state: str, detail: str | None = None) -> None:
         if self.closed:
             return
         status = get_overlay_status_text(
-            state,
-            detail,
+            state, detail,
             assistant_name=self.assistant_name,
             wake_phrase=self.wake_phrase,
         )
         self.state = status.state
-        try:
-            self.title_label.configure(text=status.title)
-            self.subtitle_label.configure(text=status.subtitle)
-        except tk.TclError:
-            self.closed = True
+        self._title_text = status.title
+        self._sub_text = status.subtitle
 
     def thread_safe_set_state(self, state: str, detail: str | None = None) -> None:
         self._safe_after(0, lambda: self.set_state(state, detail))
@@ -250,17 +244,16 @@ class VoiceOverlayApp:
         if self.closed:
             return
         self.state = status.state
-        try:
-            self.title_label.configure(text=status.title)
-            self.subtitle_label.configure(text=status.subtitle)
-        except tk.TclError:
-            self.closed = True
+        self._title_text = status.title
+        self._sub_text = status.subtitle
 
     def thread_safe_show_status(self, status) -> None:
         self._safe_after(0, lambda: self.show_status(status))
 
     def schedule_idle(self, delay_ms: int = 3500) -> None:
         self._safe_after(delay_ms, lambda: self.set_state(STATE_IDLE))
+
+    # ── Window visibility ──────────────────────────────────────
 
     def show_overlay(self) -> None:
         def _show() -> None:
@@ -291,28 +284,182 @@ class VoiceOverlayApp:
         except Exception:
             pass
 
+    # ── Animation loop ─────────────────────────────────────────
+
     def _animate(self) -> None:
         if self.closed:
             return
         try:
             self.canvas.delete("all")
-        except tk.TclError:
+        except self._tk.TclError:
             self.closed = True
             return
-        amplitude = self._amplitude_for_state()
-        color = self._color_for_state()
-        for index in range(8):
-            x = 18 + index * 36
-            height = 6 + amplitude * (0.35 + 0.65 * abs(math.sin(self.phase + index * 0.7)))
-            y1 = 18 - height / 2
-            y2 = 18 + height / 2
-            try:
-                self.canvas.create_rectangle(x, y1, x + 14, y2, fill=color, outline="")
-            except tk.TclError:
-                self.closed = True
-                return
-        self.phase += 0.28
-        self._safe_after(90, self._animate)
+        self._draw_hud()
+        self.phase += 0.25
+        self._safe_after(self._ANIM_MS, self._animate)
+
+    def _draw_hud(self) -> None:
+        c = self._palette()
+        self._draw_backdrop(c)
+        self._draw_panel(c)
+        self._draw_core(c)
+
+    # ── Backdrop ───────────────────────────────────────────────
+
+    def _draw_backdrop(self, c: dict) -> None:
+        r = 12
+        x0, y0, x1, y1 = 2, 2, self._W - 2, self._H - 2
+        self._rounded_rect(x0, y0, x1, y1, r, fill="#060c14", outline=c["primary"])
+
+    # ── Left panel ─────────────────────────────────────────────
+
+    def _draw_panel(self, c: dict) -> None:
+        x0, y0 = self._PANEL_X0, self._PANEL_Y0
+        x1 = self._PANEL_X1
+        y1 = self._H - self._PANEL_Y0
+        fold = self._FOLD
+        # Folded-corner tech frame
+        pts = (
+            x0, y0, x1 - fold, y0,
+            x1, y0 + fold,
+            x1, y1, x0, y1,
+        )
+        self.canvas.create_line(*pts, x0, y0, fill=c["primary"], width=1.5)
+        # Title text
+        self.canvas.create_text(
+            x0 + 22, y0 + 26,
+            text=self._title_text, fill=c["primary"],
+            font=("Microsoft YaHei UI", 18, "bold"), anchor="w",
+        )
+        # Subtitle text
+        self.canvas.create_text(
+            x0 + 22, y0 + 58,
+            text=self._sub_text, fill=c["secondary"],
+            font=("Microsoft YaHei UI", 11), anchor="w",
+        )
+        # Corner ornaments
+        self._draw_node(x0, y0, c["accent"])
+        self._draw_node(x1, y1, c["accent"])
+        # Fold marker
+        self.canvas.create_line(
+            x1 - fold, y0 + 2, x1 - 2, y0 + fold, fill=c["primary"], width=1,
+        )
+        # Decorative short lines on frame
+        for i in range(3):
+            lx = x0 + 60 + i * 70
+            self.canvas.create_line(lx, y0, lx + 12, y0, fill=c["primary"], width=1.5)
+
+    # ── Right circular core ────────────────────────────────────
+
+    def _draw_core(self, c: dict) -> None:
+        cx, cy = self._CORE_CX, self._H // 2
+        r = self._CORE_R
+        # Outer rings
+        for offset, alpha in ((0, 1.0), (8, 0.45), (16, 0.25)):
+            rr = r - offset
+            self.canvas.create_oval(
+                cx - rr, cy - rr, cx + rr, cy + rr,
+                outline=c["primary"], width=1,
+            )
+        # Segmented middle ring arcs (4 segments)
+        a = self.phase * 0.35
+        rr = r - 4
+        for k in range(4):
+            start = int(a * 57.3 + k * 90) % 360
+            self.canvas.create_arc(
+                cx - rr, cy - rr, cx + rr, cy + rr,
+                start=start, extent=60, style="arc",
+                outline=c["primary"], width=1,
+            )
+        # Rotating dot on middle ring
+        angle = self.phase * 0.45
+        dot_r = r - 4
+        dot_x = cx + dot_r * math.cos(angle)
+        dot_y = cy + dot_r * math.sin(angle)
+        self.canvas.create_oval(
+            dot_x - 3, dot_y - 3, dot_x + 3, dot_y + 3,
+            fill=c["accent"], outline="",
+        )
+        # Crosshair in center (small)
+        ch = 9
+        self.canvas.create_line(cx - ch, cy, cx + ch, cy, fill=c["secondary"], width=1)
+        self.canvas.create_line(cx, cy - ch, cx, cy + ch, fill=c["secondary"], width=1)
+        # Waveform bars
+        self._draw_waveform(cx, cy, c["primary"])
+
+    # ── Waveform ───────────────────────────────────────────────
+
+    def _draw_waveform(self, cx: int, cy: int, color: str) -> None:
+        amp = self._amplitude_for_state()
+        n = self._BAR_COUNT
+        total_w = n * (self._BAR_W + self._BAR_GAP) - self._BAR_GAP
+        x0 = cx - total_w // 2
+        for i in range(n):
+            offset = 0.35 + 0.65 * abs(math.sin(self.phase * 1.8 + i * 0.65))
+            h = 3 + amp * offset
+            x = x0 + i * (self._BAR_W + self._BAR_GAP)
+            y1 = int(cy - h / 2)
+            y2 = int(cy + h / 2)
+            self.canvas.create_rectangle(
+                x, y1, x + self._BAR_W, y2, fill=color, outline="",
+            )
+
+    # ── Palette ────────────────────────────────────────────────
+
+    def _palette(self) -> dict:
+        s = self.state
+        if s == STATE_ERROR:
+            return {"primary": "#ff5252", "secondary": "#ff8a80", "accent": "#ff1744", "bg": "#0a0004"}
+        if s == STATE_SPEAKING:
+            return {"primary": "#b388ff", "secondary": "#7c4dff", "accent": "#e040fb", "bg": "#060012"}
+        if s == STATE_REPLYING:
+            return {"primary": "#448aff", "secondary": "#82b1ff", "accent": "#2962ff", "bg": "#000814"}
+        if s == STATE_TRANSCRIBING:
+            return {"primary": "#18ffff", "secondary": "#00b8d4", "accent": "#7c4dff", "bg": "#001014"}
+        if s == STATE_RESULT:
+            return {"primary": "#00e676", "secondary": "#69f0ae", "accent": "#00c853", "bg": "#000e04"}
+        if s in (STATE_WAKE_DETECTED, STATE_LISTENING):
+            return {"primary": "#00e5ff", "secondary": "#00b8d4", "accent": "#00e676", "bg": "#001014"}
+        if s == STATE_WAKE_CHECKING:
+            return {"primary": "#40c4ff", "secondary": "#80deea", "accent": "#00b0ff", "bg": "#000a14"}
+        # idle default
+        return {"primary": "#4dd0e1", "secondary": "#80cbc4", "accent": "#00bcd4", "bg": "#00080e"}
+
+    def _amplitude_for_state(self) -> float:
+        s = self.state
+        if s in (STATE_WAKE_DETECTED, STATE_LISTENING):
+            return 28.0
+        if s == STATE_SPEAKING:
+            return 26.0
+        if s in (STATE_TRANSCRIBING, STATE_REPLYING):
+            return 18.0
+        if s == STATE_ERROR:
+            return 12.0
+        if s == STATE_WAKE_CHECKING:
+            return 7.0
+        return 6.0
+
+    # ── Drawing helpers ────────────────────────────────────────
+
+    def _rounded_rect(self, x0: int, y0: int, x1: int, y1: int, r: int, *, fill: str = "", outline: str = "") -> None:
+        d = r * 2
+        c = self.canvas
+        for sx, sy in [(x0, y0), (x1-d, y0), (x1-d, y1-d), (x0, y1-d)]:
+            c.create_arc(sx, sy, sx + d, sy + d, start=90, extent=90,
+                         style="arc" if not fill else "pieslice",
+                         outline=outline, fill=fill if fill else "", width=1)
+        c.create_line(x0 + r, y0, x1 - r, y0, fill=outline, width=1)
+        c.create_line(x0 + r, y1, x1 - r, y1, fill=outline, width=1)
+        c.create_line(x0, y0 + r, x0, y1 - r, fill=outline, width=1)
+        c.create_line(x1, y0 + r, x1, y1 - r, fill=outline, width=1)
+        if fill:
+            c.create_rectangle(x0 + r, y0 + 1, x1 - r + 1, y1, fill=fill, outline="")
+            c.create_rectangle(x0 + 1, y0 + r, x1 + 1, y1 - r + 1, fill=fill, outline="")
+
+    def _draw_node(self, x: int, y: int, color: str) -> None:
+        self.canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill=color, outline="")
+
+    # ── Lifecycle ──────────────────────────────────────────────
 
     def close(self) -> None:
         if self.closed:
@@ -333,38 +480,15 @@ class VoiceOverlayApp:
     def _safe_after(self, delay_ms: int, callback) -> None:
         if self.closed:
             return
+        def _wrapper() -> None:
+            self._after_ids.discard(after_id)
+            callback()
         try:
-            after_id = self.root.after(delay_ms, callback)
+            after_id = self.root.after(delay_ms, _wrapper)
             self._after_ids.add(after_id)
         except Exception:
             self.stop_event.set()
             self.closed = True
-
-    def _amplitude_for_state(self) -> float:
-        if self.state in (STATE_WAKE_DETECTED, STATE_LISTENING):
-            return 24.0
-        if self.state in (STATE_TRANSCRIBING, STATE_REPLYING):
-            return 16.0
-        if self.state == STATE_SPEAKING:
-            return 22.0
-        if self.state == STATE_ERROR:
-            return 8.0
-        return 8.0
-
-    def _color_for_state(self) -> str:
-        if self.state == STATE_ERROR:
-            return "#ff6b6b"
-        if self.state == STATE_RESULT:
-            return "#6ee7b7"
-        if self.state == STATE_SPEAKING:
-            return "#a78bfa"
-        if self.state == STATE_REPLYING:
-            return "#facc15"
-        if self.state == STATE_TRANSCRIBING:
-            return "#facc15"
-        if self.state in (STATE_WAKE_DETECTED, STATE_LISTENING):
-            return "#38bdf8"
-        return "#64748b"
 
 
 def main() -> int:
