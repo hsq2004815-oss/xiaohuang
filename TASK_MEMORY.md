@@ -2,13 +2,19 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2H-B — overlay loop runtime 迁移完成
-- **最新架构 commit**：V1.2H-B extract overlay loop runtime（见 git log）
+- **阶段**：V1.2H-C — import 清理收尾完成
+- **最新架构 commit**：V1.2H-C clean up overlay runtime imports（见 git log）
 - **最新功能 commit**：V1.2E-B 控制面板布局修复（见 git log）
 - **新增**：`src/xiaohuang/overlay_loop_runtime_service.py` + `tests/test_overlay_loop_runtime_service.py`
 - **分支**：`main...origin/main`
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+
+### V1.2H-C overlay runtime import 清理收尾（2026-05-05）
+
+- voice_overlay.py 清理 30+ 未使用 import（688 → **648 行**），overlay_loop_runtime_service.py 清理 8 个未使用 import（338 → **330 行**）。
+- 保留 tests 引用的 WAKE_ENGINE_*、_select_wake_engine_runtime、_print_wake_engine_runtime_config、_OpenWakeWordBridgeRuntime 等 re-export。
+- compileall / --help 通过。无行为改动。
 
 ### V1.2H-B overlay loop runtime 迁移记录（2026-05-05）
 

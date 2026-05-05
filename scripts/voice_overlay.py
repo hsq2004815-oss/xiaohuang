@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import queue
-from dataclasses import dataclass
 import math
 import sys
 import threading
-import time
 import tkinter as tk
 from pathlib import Path
 from typing import Callable
@@ -16,10 +13,6 @@ SRC_DIR = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from xiaohuang.config_service import load_config
-from xiaohuang.latency_metrics_service import (
-    LatencyTracker,
-    format_latency_summary,
-)
 from xiaohuang.conversation_session_service import ConversationSessionConfig
 from xiaohuang.logging_service import configure_logging
 from xiaohuang.llm_reply_service import load_llm_provider_config
@@ -38,63 +31,30 @@ from xiaohuang.overlay_state_service import (
     get_overlay_status_text,
 )
 from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
-from xiaohuang.reply_pipeline_service import (
-    ReplyPipelineConfig,
-    ReplyPipelineResult,
-    generate_reply_pipeline_result,
-)
-from xiaohuang.assistant_runtime_service import (
-    AssistantRuntimeCallbacks,
-    AssistantSessionCallbacks,
-    AssistantTurnCallbacks,
-    run_assistant_turn_from_command,
-)
+from xiaohuang.reply_pipeline_service import ReplyPipelineConfig
 from xiaohuang.overlay_loop_runtime_service import (
     OverlayLoopRuntimeConfig,
     run_overlay_runtime,
 )
-from xiaohuang.reply_runtime_service import generate_reply_runtime_result
 from xiaohuang.app_config_service import apply_cli_overrides, load_config as load_user_config
 from xiaohuang.audio_capture_service import build_recording_path
-from xiaohuang.command_runtime_service import (
-    CommandRecordResult,
-    call_overlay_transcription as _call_overlay_transcription,
-    record_and_transcribe,
-    record_command_transcribe as _record_command_transcribe,
-)
+from xiaohuang.command_runtime_service import record_and_transcribe
 from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
 from xiaohuang.tts_service import DEFAULT_TTS_VOICE
 from xiaohuang.vad_recording_service import record_until_silence
-from xiaohuang.wake_command_bridge_service import WakeCommandBridge, WakeCommandBridgeConfig
 from xiaohuang.wake_engine_service import WakeEvent
-from xiaohuang.wake_loop_service import STT_MODE_COMMAND, STT_MODE_WAKE_CHECK, WakeLoopOptions, WakeLoopResult, run_wake_loop_once
+from xiaohuang.wake_loop_service import STT_MODE_COMMAND, WakeLoopOptions, WakeLoopResult
 from xiaohuang.wake_runtime_service import (
-    OPENWAKEWORD_QUEUE_POLL_SECONDS,
-    OPENWAKEWORD_STATUS_INTERVAL_SECONDS,
     WAKE_ENGINE_OPENWAKEWORD,
     WAKE_ENGINE_STT_TEXT,
-    WakeEngineLoopStopped,
     WakeEngineRuntimeConfig,
-    WakeEngineRuntimeError,
     WakeEngineRuntimePlan,
     OpenWakeWordBridgeRuntime,
     OpenWakeWordBridgeRuntime as _OpenWakeWordBridgeRuntime,
-    OpenWakeWordListenerHandle,
     build_wake_engine_runtime_config as _build_wake_engine_runtime_config,
-    create_openwakeword_adapter as _create_openwakeword_adapter,
-    format_openwakeword_dependency_error as _format_openwakeword_dependency_error,
-    handle_openwakeword_event as _handle_openwakeword_event,
-    log_openwakeword_listener_status as _log_openwakeword_listener_status,
-    normalize_wake_engine as _normalize_wake_engine,
-    run_openwakeword_listener as _run_openwakeword_listener,
     select_wake_engine_runtime as _select_wake_engine_runtime,
-    start_openwakeword_listener as _start_openwakeword_listener,
-    stop_adapter_safely as _stop_adapter_safely,
-    stop_openwakeword_listener as _stop_openwakeword_listener,
-    wait_for_openwakeword_event as _wait_for_openwakeword_event,
-    wake_engine_runtime_error as _wake_engine_runtime_error,
 )
-from xiaohuang.wake_word_service import DEFAULT_WAKE_ALIASES, WakeMatchResult, parse_wake_phrases
+from xiaohuang.wake_word_service import WakeMatchResult, parse_wake_phrases
 
 
 def parse_args() -> argparse.Namespace:

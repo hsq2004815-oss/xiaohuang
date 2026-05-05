@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import sys
 import threading
 from dataclasses import dataclass
 from typing import Callable
@@ -30,7 +29,6 @@ from xiaohuang.stt_client_service import (
     request_transcription,
 )
 from xiaohuang.wake_loop_service import (
-    STT_MODE_COMMAND,
     STT_MODE_WAKE_CHECK,
     WakeLoopOptions,
     WakeLoopResult,
@@ -47,15 +45,9 @@ from xiaohuang.wake_runtime_service import (
     WakeEngineRuntimeError,
     _log_runtime_message,
     _safe_print,
-    create_openwakeword_adapter,
-    handle_openwakeword_event,
-    log_openwakeword_listener_status,
-    run_openwakeword_listener,
     start_openwakeword_listener,
-    stop_adapter_safely,
     stop_openwakeword_listener,
     wait_for_openwakeword_event,
-    wake_engine_runtime_error,
 )
 
 
