@@ -5938,7 +5938,7 @@ class V111SessionRecordTests(unittest.TestCase):
         import tempfile, logging
         from types import SimpleNamespace
         from pathlib import Path
-        from voice_overlay import _record_command_transcribe
+        from xiaohuang.command_runtime_service import record_command_transcribe as _record_command_transcribe
         from xiaohuang.wake_loop_service import STT_MODE_COMMAND
 
         modes: list[str] = []
