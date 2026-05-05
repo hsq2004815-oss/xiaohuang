@@ -1,14 +1,29 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING, Any, Callable
 
+from xiaohuang.conversation_session_service import (
+    SESSION_EXIT_REPLY,
+    ConversationSessionConfig,
+    get_followup_timeout_seconds,
+    get_session_end_reason,
+    is_session_exit_text,
+    should_continue_session,
+    should_exit_for_no_speech,
+)
+from xiaohuang.latency_metrics_service import LatencyTracker, format_latency_summary
 from xiaohuang.overlay_state_service import (
     STATE_ERROR,
     STATE_IDLE,
+    STATE_LISTENING,
     STATE_RESULT,
     build_reply_result_text,
 )
+
+if TYPE_CHECKING:
+    from xiaohuang.reply_pipeline_service import ReplyPipelineResult
 
 
 @dataclass
@@ -24,6 +39,26 @@ class AssistantRuntimeCallbacks:
 class AssistantTurnOutcome:
     continue_loop: bool
     error: str | None = None
+
+
+@dataclass
+class AssistantSessionCallbacks:
+    set_state: Callable[[str, str | None], None]
+    log_info: Callable[[str], None]
+    wait_seconds: Callable[[float], bool]
+    record_followup: Callable[[float, Any], str]
+    generate_reply: Callable[[str, Any], "ReplyPipelineResult"]
+    debug_print: Callable[[str], None] | None = None
+    log_warning: Callable[[str], None] | None = None
+    hide_overlay: Callable[[], None] | None = None
+
+
+@dataclass(frozen=True)
+class AssistantSessionOutcome:
+    completed_turns: int
+    end_reason: str
+    no_speech_retries: int
+    should_continue_main_loop: bool
 
 
 def handle_single_turn_reply_result(
@@ -66,3 +101,143 @@ def handle_single_turn_reply_result(
     _wait(0.5)
 
     return AssistantTurnOutcome(continue_loop=True)
+
+
+def run_session_followup_loop(
+    *,
+    session_config: ConversationSessionConfig,
+    callbacks: AssistantSessionCallbacks,
+    initial_turn_count: int = 1,
+    session_start_time: float,
+    enable_tts: bool = False,
+    post_response_cooldown: float = 0,
+    debug: bool = False,
+    now_func=time.perf_counter,
+) -> AssistantSessionOutcome:
+    _cb = callbacks
+
+    turn_count = initial_turn_count
+    no_speech_retries = 0
+    exit_phrase_detected = False
+    stop_requested_in_loop = False
+
+    while (
+        should_continue_session(
+            turn_count,
+            session_config,
+            elapsed_seconds=now_func() - session_start_time,
+            no_speech_retries=no_speech_retries,
+        )
+    ):
+        followup_timeout = get_followup_timeout_seconds(session_config)
+        st = LatencyTracker()
+        st.start("turn_total_ms")
+
+        if debug:
+            _emit_debug(_cb.debug_print,
+                f"Session turn {turn_count + 1}/{session_config.max_turns} "
+                f"(follow-up window: {followup_timeout:.1f}s)"
+            )
+
+        _cb.set_state(STATE_LISTENING, "你还可以继续说")
+
+        next_text = _cb.record_followup(followup_timeout, st)
+
+        if _cb.wait_seconds(0):
+            stop_requested_in_loop = True
+            break
+
+        if not next_text:
+            no_speech_retries += 1
+            if debug:
+                _emit_debug(_cb.debug_print,
+                    f"Session no speech retry {no_speech_retries}/{session_config.max_no_speech_retries + 1}"
+                )
+            if should_exit_for_no_speech(no_speech_retries, session_config):
+                _cb.log_info("Session ended: no_speech")
+                break
+            continue
+
+        if debug:
+            _emit_debug(_cb.debug_print, f"Session command: {next_text}")
+
+        no_speech_retries = 0
+
+        if is_session_exit_text(next_text):
+            if debug:
+                _emit_debug(_cb.debug_print, "Session exit phrase detected")
+            pipeline_result = _cb.generate_reply(next_text, st)
+            _emit_print(_cb.debug_print, f"XiaoHuang: {pipeline_result.reply_text}")
+            _cb.log_info(f"Overlay reply: {pipeline_result.reply_text} (source={pipeline_result.reply_source})")
+            st.end("turn_total_ms")
+            _cb.log_info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
+            _cb.set_state(
+                STATE_RESULT,
+                build_reply_result_text(
+                    next_text,
+                    pipeline_result.reply_text,
+                    getattr(pipeline_result, "source_note", None),
+                    assistant_name="小黄",
+                ),
+            )
+            exit_phrase_detected = True
+            turn_count += 1
+            if _cb.wait_seconds(post_response_cooldown):
+                stop_requested_in_loop = True
+                break
+            break
+
+        pipeline_result = _cb.generate_reply(next_text, st)
+        _emit_print(_cb.debug_print, f"XiaoHuang reply: {pipeline_result.reply_text}")
+        _emit_print(_cb.debug_print, f"Reply source: {pipeline_result.reply_source}")
+        st.end("turn_total_ms")
+        _cb.log_info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
+        _cb.log_info(f"Overlay reply: {pipeline_result.reply_text} (source={pipeline_result.reply_source})")
+        if pipeline_result.tts_error:
+            if _cb.log_warning is not None:
+                _cb.log_warning(pipeline_result.tts_error)
+        if _cb.wait_seconds(0.3):
+            stop_requested_in_loop = True
+            break
+        turn_count += 1
+
+    reason = get_session_end_reason(
+        turn_count=turn_count,
+        config=session_config,
+        elapsed_seconds=now_func() - session_start_time,
+        no_speech_retries=no_speech_retries,
+        exit_phrase_detected=exit_phrase_detected,
+        stop_event_set=stop_requested_in_loop,
+    )
+    if reason:
+        session_elapsed = now_func() - session_start_time
+        _cb.log_info(
+            f"Session ended: reason={reason} completed_turns={turn_count} max_turns={session_config.max_turns} "
+            f"elapsed_seconds={session_elapsed:.1f} max_session_seconds={session_config.max_session_seconds} "
+            f"no_speech_retries={no_speech_retries} max_no_speech_retries={session_config.max_no_speech_retries}"
+        )
+
+    cooldown_wait = 0.5 if post_response_cooldown > 0 else 0
+    stop_requested = _cb.wait_seconds(cooldown_wait)
+    if not stop_requested:
+        _cb.set_state(STATE_IDLE)
+        if _cb.hide_overlay is not None:
+            _cb.hide_overlay()
+        _cb.wait_seconds(0.5)
+
+    return AssistantSessionOutcome(
+        completed_turns=turn_count,
+        end_reason=reason or "unknown",
+        no_speech_retries=no_speech_retries,
+        should_continue_main_loop=not stop_requested,
+    )
+
+
+def _emit_debug(debug_print: Callable[[str], None] | None, message: str) -> None:
+    if debug_print is not None:
+        debug_print(message)
+
+
+def _emit_print(debug_print: Callable[[str], None] | None, message: str) -> None:
+    if debug_print is not None:
+        debug_print(message)

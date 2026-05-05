@@ -3781,6 +3781,255 @@ class V12FFBAssistantRuntimeServiceTests(unittest.TestCase):
         self.assertNotIn("tkinter", assistant_runtime_service.__dict__)
 
 
+class V12FFCSessionFollowupLoopTests(unittest.TestCase):
+    """Tests for run_session_followup_loop in assistant_runtime_service."""
+
+    def _session_callbacks(self):
+        from xiaohuang.assistant_runtime_service import AssistantSessionCallbacks
+
+        states: list[tuple[str, str | None]] = []
+        infos: list[str] = []
+        warnings: list[str] = []
+        waits: list[float] = []
+        hides: list[bool] = []
+        records: list[tuple[float, object]] = []
+        replies: list[tuple[str, object]] = []
+
+        def record_followup(max_seconds, lt):
+            records.append((max_seconds, lt))
+            return _next_record_text.pop(0) if _next_record_text else ""
+
+        def generate_reply(text, lt):
+            replies.append((text, lt))
+            from xiaohuang.reply_pipeline_service import ReplyPipelineResult
+            return _next_reply_result.pop(0) if _next_reply_result else ReplyPipelineResult(
+                reply_text=f"reply: {text}", reply_source="rule", source_note=None,
+            )
+
+        _next_record_text: list[str] = []
+        _next_reply_result: list[object] = []
+
+        cb = AssistantSessionCallbacks(
+            set_state=lambda s, d=None: states.append((s, d)),
+            log_info=lambda msg: infos.append(msg),
+            wait_seconds=lambda s: (waits.append(s), False)[1],
+            record_followup=record_followup,
+            generate_reply=generate_reply,
+            debug_print=None,
+            log_warning=lambda msg: warnings.append(msg),
+            hide_overlay=lambda: hides.append(True),
+        )
+        return cb, states, infos, warnings, waits, hides, records, replies, _next_record_text, _next_reply_result
+
+    def _session_config(self, **kw):
+        from xiaohuang.conversation_session_service import ConversationSessionConfig
+        defaults = dict(enabled=True, max_turns=5, followup_timeout_seconds=8.0,
+                        max_session_seconds=300.0, max_no_speech_retries=3)
+        defaults.update(kw)
+        return ConversationSessionConfig(**defaults)
+
+    def test_normal_followup_one_turn_then_exit(self):
+        from xiaohuang.assistant_runtime_service import run_session_followup_loop
+
+        cb, states, infos, _, waits, hides, records, replies, next_texts, next_results = self._session_callbacks()
+        next_texts.append("继续说的话")
+        next_texts.append("退出")
+        _now = [0.0]
+        def fake_now():
+            _now[0] += 0.5
+            return _now[0]
+
+        outcome = run_session_followup_loop(
+            session_config=self._session_config(max_turns=5),
+            callbacks=cb,
+            session_start_time=0.0,
+            debug=False,
+            now_func=fake_now,
+        )
+        self.assertEqual(outcome.end_reason, "exit_phrase")
+        # initial=1 + followup "继续说的话" + exit "退出" = 3
+        self.assertEqual(outcome.completed_turns, 3)
+        self.assertTrue(outcome.should_continue_main_loop)
+        # States: listening (turn2), listening (turn3/exit), result (exit reply), idle
+        self.assertEqual(states[0][0], "listening")
+        self.assertEqual(states[1][0], "listening")
+        self.assertEqual(states[2][0], "result")
+        self.assertEqual(states[3][0], "idle")
+
+    def test_no_speech_increments_retries(self):
+        from xiaohuang.assistant_runtime_service import run_session_followup_loop
+
+        cb, states, infos, _, _, _, _, _, next_texts, _ = self._session_callbacks()
+        next_texts.append("")  # no speech
+        next_texts.append("")  # no speech
+        next_texts.append("")  # no speech
+        next_texts.append("")  # no speech (exceeds max)
+        _now = [0.0]
+        def fake_now():
+            _now[0] += 0.5
+            return _now[0]
+
+        outcome = run_session_followup_loop(
+            session_config=self._session_config(max_no_speech_retries=2),
+            callbacks=cb,
+            session_start_time=0.0,
+            debug=False,
+            now_func=fake_now,
+        )
+        self.assertEqual(outcome.end_reason, "no_speech")
+        # max_no_speech_retries=2, exits at 2
+        self.assertEqual(outcome.no_speech_retries, 2)
+        self.assertTrue(any("no_speech" in msg for msg in infos))
+
+    def test_max_turns_ends_session(self):
+        from xiaohuang.assistant_runtime_service import run_session_followup_loop
+
+        cb, states, infos, _, _, _, _, _, next_texts, _ = self._session_callbacks()
+        next_texts.append("turn 2")
+        next_texts.append("turn 3")
+        next_texts.append("turn 4")
+        next_texts.append("turn 5")
+        _now = [0.0]
+        def fake_now():
+            _now[0] += 0.5
+            return _now[0]
+
+        outcome = run_session_followup_loop(
+            session_config=self._session_config(max_turns=4),
+            callbacks=cb,
+            session_start_time=0.0,
+            debug=False,
+            now_func=fake_now,
+        )
+        self.assertEqual(outcome.end_reason, "max_turns")
+        self.assertEqual(outcome.completed_turns, 4)
+
+    def test_stop_requested_during_cooldown_returns_false(self):
+        from xiaohuang.assistant_runtime_service import run_session_followup_loop
+
+        cb, states, infos, _, waits, _, _, _, next_texts, _ = self._session_callbacks()
+        next_texts.append("退出")
+        cb.wait_seconds = lambda s: True
+        _now = [0.0]
+        def fake_now():
+            _now[0] += 0.5
+            return _now[0]
+
+        outcome = run_session_followup_loop(
+            session_config=self._session_config(max_turns=5),
+            callbacks=cb,
+            session_start_time=0.0,
+            post_response_cooldown=2.0,
+            debug=False,
+            now_func=fake_now,
+        )
+        self.assertFalse(outcome.should_continue_main_loop)
+
+    def test_session_config_disabled_no_followup(self):
+        from xiaohuang.assistant_runtime_service import run_session_followup_loop
+
+        cb, states, infos, _, _, _, records, _, next_texts, _ = self._session_callbacks()
+        _now = [0.0]
+        def fake_now():
+            _now[0] += 0.5
+            return _now[0]
+
+        outcome = run_session_followup_loop(
+            session_config=self._session_config(enabled=False),
+            callbacks=cb,
+            session_start_time=0.0,
+            debug=False,
+            now_func=fake_now,
+        )
+        # should_continue_session returns False immediately for disabled
+        self.assertEqual(outcome.completed_turns, 1)
+        self.assertEqual(len(records), 0)
+
+    def test_tts_error_logs_warning(self):
+        from xiaohuang.assistant_runtime_service import run_session_followup_loop
+        from xiaohuang.reply_pipeline_service import ReplyPipelineResult
+
+        cb, states, infos, warnings, _, _, _, replies, next_texts, next_results = self._session_callbacks()
+        next_texts.append("hello")
+        next_results.append(ReplyPipelineResult(
+            reply_text="hi there", reply_source="llm", source_note=None,
+            tts_error="tts playback failed",
+        ))
+        _now = [0.0]
+        def fake_now():
+            _now[0] += 0.5
+            return _now[0]
+
+        outcome = run_session_followup_loop(
+            session_config=self._session_config(max_turns=2),
+            callbacks=cb,
+            session_start_time=0.0,
+            debug=False,
+            now_func=fake_now,
+        )
+        self.assertTrue(any("tts playback failed" in w for w in warnings))
+
+    def test_state_transitions_order(self):
+        from xiaohuang.assistant_runtime_service import run_session_followup_loop
+
+        cb, states, infos, _, _, _, _, _, next_texts, _ = self._session_callbacks()
+        next_texts.append("followup text")
+        next_texts.append("退出")
+        _now = [0.0]
+        def fake_now():
+            _now[0] += 0.5
+            return _now[0]
+
+        outcome = run_session_followup_loop(
+            session_config=self._session_config(max_turns=5),
+            callbacks=cb,
+            session_start_time=0.0,
+            debug=False,
+            now_func=fake_now,
+        )
+        state_names = [s[0] for s in states]
+        # followup 1: listening, followup 2 (exit): listening → result, end: idle
+        self.assertEqual(state_names[0], "listening")
+        self.assertEqual(state_names[1], "listening")
+        self.assertEqual(state_names[2], "result")
+        self.assertEqual(state_names[3], "idle")
+
+    def test_session_end_reason_stop_event(self):
+        from xiaohuang.assistant_runtime_service import run_session_followup_loop
+
+        cb, states, infos, _, waits, _, _, _, next_texts, _ = self._session_callbacks()
+        next_texts.append("hello")
+        next_texts.append("stop_event_text")
+        # wait_seconds returns True during post-record wait for first followup
+        call_count = [0]
+        def wait_once(s):
+            call_count[0] += 1
+            if call_count[0] == 1 and s == 0:
+                return True  # stop during post-record wait for turn 2
+            return False
+        cb.wait_seconds = wait_once
+        _now = [0.0]
+        def fake_now():
+            _now[0] += 0.5
+            return _now[0]
+
+        outcome = run_session_followup_loop(
+            session_config=self._session_config(max_turns=5),
+            callbacks=cb,
+            session_start_time=0.0,
+            debug=False,
+            now_func=fake_now,
+        )
+        # inner loop breaks, end-reason reports stop_event
+        # should_continue_main_loop depends on cooldown wait (which returns False)
+        self.assertEqual(outcome.end_reason, "stop_event")
+
+    def test_session_followup_loop_no_tkinter(self):
+        import sys
+        from xiaohuang import assistant_runtime_service
+        self.assertNotIn("tkinter", assistant_runtime_service.__dict__)
+
+
 class AudioCaptureServiceTests(unittest.TestCase):
     def test_build_recording_path_uses_timestamp_and_wav_suffix(self):
         output_dir = Path("data") / "recordings"

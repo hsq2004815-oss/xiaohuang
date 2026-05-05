@@ -20,15 +20,7 @@ from xiaohuang.latency_metrics_service import (
     LatencyTracker,
     format_latency_summary,
 )
-from xiaohuang.conversation_session_service import (
-    SESSION_EXIT_REPLY,
-    ConversationSessionConfig,
-    get_followup_timeout_seconds,
-    get_session_end_reason,
-    is_session_exit_text,
-    should_continue_session,
-    should_exit_for_no_speech,
-)
+from xiaohuang.conversation_session_service import ConversationSessionConfig
 from xiaohuang.logging_service import configure_logging
 from xiaohuang.llm_reply_service import load_llm_provider_config
 from xiaohuang.overlay_state_service import (
@@ -53,8 +45,10 @@ from xiaohuang.reply_pipeline_service import (
 )
 from xiaohuang.assistant_runtime_service import (
     AssistantRuntimeCallbacks,
+    AssistantSessionCallbacks,
     AssistantTurnOutcome,
     handle_single_turn_reply_result,
+    run_session_followup_loop,
 )
 from xiaohuang.reply_runtime_service import generate_reply_runtime_result
 from xiaohuang.app_config_service import apply_cli_overrides, load_config as load_user_config
@@ -707,6 +701,41 @@ def _run_overlay_loop(
                 if session_config.enabled:
                     if stop_event.wait(0.3):
                         break
+                    _session_callbacks = AssistantSessionCallbacks(
+                        set_state=lambda s, d=None: app.thread_safe_set_state(s, d),
+                        log_info=lambda msg: logger.info(msg),
+                        wait_seconds=lambda s: stop_event.wait(s),
+                        record_followup=lambda max_s, lt: _record_command_transcribe(
+                            options=options,
+                            max_seconds=max_s,
+                            debug=debug,
+                            logger=logger,
+                            on_track_start=lambda name: _make_latency_track(lt)(name, start=True),
+                            on_track_end=lambda name: _make_latency_track(lt)(name, start=False),
+                        ),
+                        generate_reply=lambda text, lt: _generate_reply_pipeline_guarded(
+                            text,
+                            config=pipeline_config,
+                            app=app,
+                            bridge_runtime=openwakeword_bridge,
+                            on_debug=_make_llm_debug_handler(logger, debug),
+                            playback_warn=lambda m: _playback_warning(logger, m),
+                            latency_tracker=lt,
+                        ),
+                        debug_print=_safe_print if debug else None,
+                        log_warning=lambda msg: _warn(logger, msg),
+                        hide_overlay=app.hide_overlay if resident_hidden else None,
+                    )
+                    _session_outcome = run_session_followup_loop(
+                        session_config=session_config,
+                        callbacks=_session_callbacks,
+                        session_start_time=time.perf_counter(),
+                        enable_tts=enable_tts,
+                        post_response_cooldown=post_response_cooldown,
+                        debug=debug,
+                    )
+                    if not _session_outcome.should_continue_main_loop:
+                        break
                 else:
                     _callbacks = AssistantRuntimeCallbacks(
                         set_state=lambda s, d=None: app.thread_safe_set_state(s, d),
@@ -725,126 +754,6 @@ def _run_overlay_loop(
                     )
                     if not _outcome.continue_loop:
                         break
-
-                # --- conversation session: listen for follow-up commands ---
-                turn_count = 1
-                session_started = time.perf_counter()
-                no_speech_retries = 0
-                exit_phrase_detected = False
-                while (
-                    should_continue_session(
-                        turn_count, session_config,
-                        elapsed_seconds=time.perf_counter() - session_started,
-                        no_speech_retries=no_speech_retries,
-                    )
-                    and not stop_event.is_set()
-                ):
-                    followup_timeout = get_followup_timeout_seconds(session_config)
-                    st = LatencyTracker()
-                    st.start("turn_total_ms")
-                    if debug:
-                        _safe_print(f"Session turn {turn_count + 1}/{session_config.max_turns} (follow-up window: {followup_timeout:.1f}s)")
-                    app.thread_safe_set_state(STATE_LISTENING, "你还可以继续说")
-
-                    _st_track = _make_latency_track(st)
-                    next_text = _record_command_transcribe(
-                        options=options,
-                        max_seconds=followup_timeout,
-                        debug=debug,
-                        logger=logger,
-                        on_track_start=lambda name: _st_track(name, start=True),
-                        on_track_end=lambda name: _st_track(name, start=False),
-                    )
-                    if stop_event.is_set():
-                        break
-                    if not next_text:
-                        no_speech_retries += 1
-                        if debug:
-                            _safe_print(f"Session no speech retry {no_speech_retries}/{session_config.max_no_speech_retries + 1}")
-                        if should_exit_for_no_speech(no_speech_retries, session_config):
-                            logger.info("Session ended: no_speech")
-                            break
-                        continue
-                    if debug:
-                        _safe_print(f"Session command: {next_text}")
-
-                    no_speech_retries = 0
-
-                    if is_session_exit_text(next_text):
-                        if debug:
-                            _safe_print("Session exit phrase detected")
-                        pipeline_result = ReplyPipelineResult(
-                            reply_text=SESSION_EXIT_REPLY, reply_source="session_exit", source_note=None,
-                        )
-                        if enable_tts and not stop_event.is_set():
-                            pipeline_result = _generate_reply_pipeline_guarded(
-                                next_text, config=pipeline_config,
-                                app=app,
-                                bridge_runtime=openwakeword_bridge,
-                                on_debug=_make_llm_debug_handler(logger, debug),
-                                playback_warn=lambda m: _playback_warning(logger, m),
-                                latency_tracker=st,
-                            )
-                        _safe_print(f"XiaoHuang: {pipeline_result.reply_text}")
-                        logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
-                        st.end("turn_total_ms")
-                        logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
-                        app.thread_safe_set_state(
-                            STATE_RESULT,
-                            build_reply_result_text(
-                                next_text,
-                                pipeline_result.reply_text,
-                                pipeline_result.source_note,
-                                assistant_name=app.assistant_name,
-                            ),
-                        )
-                        exit_phrase_detected = True
-                        turn_count += 1
-                        if stop_event.wait(post_response_cooldown):
-                            break
-                        break
-
-                    pipeline_result = _generate_reply_pipeline_guarded(
-                        next_text, config=pipeline_config,
-                        app=app,
-                        bridge_runtime=openwakeword_bridge,
-                        on_debug=_make_llm_debug_handler(logger, debug),
-                        playback_warn=lambda m: _playback_warning(logger, m),
-                        latency_tracker=st,
-                    )
-                    _safe_print(f"XiaoHuang reply: {pipeline_result.reply_text}")
-                    _safe_print(f"Reply source: {pipeline_result.reply_source}")
-                    st.end("turn_total_ms")
-                    logger.info(format_latency_summary(st.summary_ms(), turn=turn_count + 1, source=pipeline_result.reply_source))
-                    logger.info("Overlay reply: %s (source=%s)", pipeline_result.reply_text, pipeline_result.reply_source)
-                    if pipeline_result.tts_error:
-                        _warn(logger, pipeline_result.tts_error)
-                    if stop_event.wait(0.3):
-                        break
-                    turn_count += 1
-
-                # --- end session, return to standby ---
-                reason = get_session_end_reason(
-                    turn_count=turn_count, config=session_config,
-                    elapsed_seconds=time.perf_counter() - session_started,
-                    no_speech_retries=no_speech_retries,
-                    exit_phrase_detected=exit_phrase_detected,
-                    stop_event_set=stop_event.is_set(),
-                )
-                if reason:
-                    logger.info(
-                        "Session ended: reason=%s completed_turns=%s max_turns=%s elapsed_seconds=%.1f "
-                        "max_session_seconds=%.1f no_speech_retries=%s max_no_speech_retries=%s",
-                        reason, turn_count, session_config.max_turns,
-                        time.perf_counter() - session_started, session_config.max_session_seconds,
-                        no_speech_retries, session_config.max_no_speech_retries,
-                    )
-                if stop_event.wait(0.5 if post_response_cooldown > 0 else 0):
-                    break
-                app.thread_safe_set_state(STATE_IDLE)
-                if resident_hidden:
-                    app.hide_overlay()
-                stop_event.wait(0.5)
             except (SttServerUnavailable, SttServerError) as exc:
                 if stop_event.is_set():
                     break

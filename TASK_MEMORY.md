@@ -2,13 +2,21 @@
 
 ## 当前最新状态
 
-- **阶段**：V1.2F-C — openWakeWord listener 生命周期迁入 wake_runtime_service
-- **最新架构 commit**：V1.2F-C wake_runtime_service 扩展（见 git log）
+- **阶段**：V1.2F-F-C — session follow-up loop 迁入 assistant_runtime_service
+- **最新架构 commit**：V1.2F-F-C session follow-up extraction（见 git log）
 - **最新功能 commit**：V1.2E-B 控制面板布局修复（见 git log）
 - **新增**：`scripts/settings_ui.py` + `src/xiaohuang/settings_config_file_service.py`（V1.1.3C Settings UI）
 - **分支**：`main...origin/main`
 - **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
 - **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+
+### V1.2F-F-C session follow-up loop 抽取记录（2026-05-05）
+
+- `assistant_runtime_service.py` 新增 `AssistantSessionCallbacks`、`AssistantSessionOutcome`、`run_session_followup_loop()`。
+- `voice_overlay.py` 的 inline session follow-up loop（~120 行）改为调用 `run_session_followup_loop()`。
+- session 行为不变：no_speech retry、exit phrase、max_turns、max_session_seconds、stop_event 退出。
+- 新增 9 个单测覆盖正常 followup、no_speech、max_turns、exit phrase、stop event、tts error、state 顺序、disabled config、no tkinter。
+- 未迁移 `_run_overlay_loop` 整体、主 while 循环、UI、wake 路径、openWakeWord listener。
 
 ### V1.2E-B 控制面板 Wake Engine 配置记录（2026-05-04）
 
