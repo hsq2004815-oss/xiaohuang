@@ -24,7 +24,9 @@ $PythonExe = "F:\for_xiaohuang\conda310\python.exe"
 $LogDir = Join-Path $ProjectRoot "logs"
 
 # load env
-. "$ProjectRoot\scripts\run_env.ps1"
+$env:PYTHONPATH = "$ProjectRoot\src"
+$env:MODELSCOPE_CACHE = "F:\for_xiaohuang\models\modelscope"
+$env:HF_HOME = "F:\for_xiaohuang\models\huggingface"
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
