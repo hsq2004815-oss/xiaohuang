@@ -20,6 +20,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "model_name": "iic/SenseVoiceSmall",
         "language": "zh",
         "use_itn": True,
+        "device": "cpu",
     },
     "logging": {
         "directory": "logs",
@@ -100,4 +101,3 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
         else:
             merged[key] = value
     return merged
-

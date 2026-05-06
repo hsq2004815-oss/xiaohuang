@@ -28,6 +28,15 @@ class AudioConfig:
 
 
 @dataclass(frozen=True)
+class SttConfig:
+    engine: str = "funasr"
+    model_name: str = "iic/SenseVoiceSmall"
+    language: str = "auto"
+    use_itn: bool = True
+    device: str = "cpu"
+
+
+@dataclass(frozen=True)
 class LlmConfig:
     enabled: bool = True
     provider: str = "deepseek"
@@ -84,6 +93,7 @@ class AssistantConfig:
 class XiaoHuangConfig:
     wake: WakeConfig = field(default_factory=WakeConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    stt: SttConfig = field(default_factory=SttConfig)
     llm: LlmConfig = field(default_factory=LlmConfig)
     tts: TtsConfig = field(default_factory=TtsConfig)
     conversation: ConversationConfig = field(default_factory=ConversationConfig)
@@ -140,6 +150,7 @@ def merge_config_dict(
     return XiaoHuangConfig(
         wake=_merge_wake(base.wake, sections.get("wake", {}), warn=warn),
         audio=_merge_audio(base.audio, sections.get("audio", {}), warn=warn),
+        stt=_merge_stt(base.stt, sections.get("stt", {}), warn=warn),
         llm=_merge_llm(base.llm, sections.get("llm", {}), warn=warn),
         tts=_merge_tts(base.tts, sections.get("tts", {}), warn=warn),
         conversation=_merge_conversation(base.conversation, sections.get("conversation", {}), warn=warn),
@@ -171,6 +182,7 @@ def apply_cli_overrides(
             max_seconds=_coalesce(args.max_seconds, config.audio.max_seconds),
             silence_seconds=_coalesce(args.silence_seconds, config.audio.silence_seconds),
         ),
+        stt=config.stt,
         llm=LlmConfig(
             enabled=_or_config(args.enable_llm, config.llm.enabled),
             provider=config.llm.provider,
@@ -231,6 +243,16 @@ def _merge_audio(base: AudioConfig, data: dict[str, Any], *, warn=None) -> Audio
         device_id=_coerce_int(data.get("device_id"), base.device_id, 0, 99, warn),
         max_seconds=_coerce_float(data.get("max_seconds"), base.max_seconds, 1.0, 120.0, warn),
         silence_seconds=_coerce_float(data.get("silence_seconds"), base.silence_seconds, 0.1, 10.0, warn),
+    )
+
+
+def _merge_stt(base: SttConfig, data: dict[str, Any], *, warn=None) -> SttConfig:
+    return SttConfig(
+        engine=_coerce_str(data.get("engine"), base.engine),
+        model_name=_coerce_str(data.get("model_name"), base.model_name),
+        language=_coerce_str(data.get("language"), base.language),
+        use_itn=_coerce_bool(data.get("use_itn"), base.use_itn, warn),
+        device=_coerce_str(data.get("device"), base.device).lower(),
     )
 
 
@@ -359,6 +381,13 @@ def _coerce_float(value: Any, default: float, lo: float, hi: float, warn=None) -
 
 
 def _coerce_optional_str(value: Any, default: str | None) -> str | None:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text or default
+
+
+def _coerce_str(value: Any, default: str) -> str:
     if value is None:
         return default
     text = str(value).strip()

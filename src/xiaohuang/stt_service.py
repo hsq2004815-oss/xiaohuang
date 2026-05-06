@@ -6,7 +6,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 class MissingDependencyError(RuntimeError):
@@ -27,12 +27,14 @@ class SenseVoiceTranscriber:
         model_name: str = "iic/SenseVoiceSmall",
         language: str = "auto",
         use_itn: bool = True,
+        device: str = "cpu",
         funasr_module: Any | None = "auto",
         postprocess_func: Any | None = None,
     ) -> None:
         self.model_name = model_name
         self.language = language
         self.use_itn = use_itn
+        self.device = device or "cpu"
         self._funasr_module = funasr_module
         self._postprocess_func = postprocess_func
         self._model = None
@@ -80,7 +82,7 @@ class SenseVoiceTranscriber:
                 remote_code="./model.py",
                 vad_model="fsmn-vad",
                 vad_kwargs={"max_single_segment_time": 30000},
-                device="cpu",
+                device=self.device,
                 disable_update=True,
             )
         except Exception as exc:
@@ -146,6 +148,46 @@ def _load_rich_transcription_postprocess():
             "Verify that FunASR is installed in the active Python environment."
         ) from exc
     return rich_transcription_postprocess
+
+
+def resolve_stt_device(
+    configured_device: str | None,
+    *,
+    torch_module: Any | None = "auto",
+    warn: Callable[[str], None] | None = None,
+) -> str:
+    device = str(configured_device or "cpu").strip().lower() or "cpu"
+    if not device.startswith("cuda"):
+        return device
+
+    torch = _load_torch_for_device_check(torch_module)
+    cuda_checker = getattr(getattr(torch, "cuda", None), "is_available", lambda: False)
+    cuda_available = bool(cuda_checker()) if torch else False
+    if cuda_available:
+        return device
+
+    _emit_device_warning(
+        warn,
+        f"stt.device={device} requested but torch.cuda.is_available() is False; falling back to stt_device=cpu.",
+    )
+    return "cpu"
+
+
+def _load_torch_for_device_check(torch_module: Any | None) -> Any | None:
+    if torch_module is None:
+        return None
+    if torch_module != "auto":
+        return torch_module
+    try:
+        import torch
+    except Exception:
+        return None
+    return torch
+
+
+def _emit_device_warning(warn: Callable[[str], None] | None, message: str) -> None:
+    if warn:
+        warn(message)
 
 
 def build_runtime_diagnostics() -> dict[str, str]:

@@ -73,6 +73,7 @@ class ConfigServiceTests(unittest.TestCase):
             self.assertEqual(config["audio"]["sample_rate"], 16000)
             self.assertEqual(config["audio"]["channels"], 1)
             self.assertEqual(config["recording"]["duration_seconds"], 5)
+            self.assertEqual(config["stt"]["device"], "cpu")
 
 
 class V114BTrayAppTests(unittest.TestCase):
@@ -4152,6 +4153,7 @@ class SttServiceTests(unittest.TestCase):
 
         transcriber._get_model()
 
+        self.assertEqual(transcriber.device, "cpu")
         self.assertEqual(FakeFunASR.captured_kwargs["model"], "iic/SenseVoiceSmall")
         self.assertTrue(FakeFunASR.captured_kwargs["trust_remote_code"])
         self.assertEqual(FakeFunASR.captured_kwargs["remote_code"], "./model.py")
@@ -4159,6 +4161,40 @@ class SttServiceTests(unittest.TestCase):
         self.assertEqual(FakeFunASR.captured_kwargs["vad_kwargs"], {"max_single_segment_time": 30000})
         self.assertEqual(FakeFunASR.captured_kwargs["device"], "cpu")
         self.assertTrue(FakeFunASR.captured_kwargs["disable_update"])
+
+    def test_sensevoice_transcriber_uses_configured_device(self):
+        class FakeFunASR:
+            captured_kwargs = None
+
+            class AutoModel:
+                def __init__(self, **kwargs):
+                    FakeFunASR.captured_kwargs = kwargs
+
+        transcriber = SenseVoiceTranscriber(device="cuda:0", funasr_module=FakeFunASR)
+
+        transcriber._get_model()
+
+        self.assertEqual(transcriber.device, "cuda:0")
+        self.assertEqual(FakeFunASR.captured_kwargs["device"], "cuda:0")
+
+    def test_resolve_stt_device_falls_back_when_cuda_unavailable(self):
+        from xiaohuang.stt_service import resolve_stt_device
+
+        warnings = []
+        fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))
+
+        device = resolve_stt_device("cuda:0", torch_module=fake_torch, warn=warnings.append)
+
+        self.assertEqual(device, "cpu")
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("torch.cuda.is_available() is False", warnings[0])
+
+    def test_resolve_stt_device_keeps_cuda_when_available(self):
+        from xiaohuang.stt_service import resolve_stt_device
+
+        fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True))
+
+        self.assertEqual(resolve_stt_device("cuda:0", torch_module=fake_torch), "cuda:0")
 
     def test_sensevoice_transcriber_uses_recommended_generate_args_and_postprocess(self):
         class FakeModel:
@@ -5336,6 +5372,19 @@ class V102HealthObservabilityTests(unittest.TestCase):
         resp = self._build_health_response()
         self.assertIsNone(resp["last_error"])
 
+    def test_health_includes_stt_device(self):
+        import stt_server
+
+        state = stt_server.SttServerState(
+            transcriber=SimpleNamespace(_model=object()),
+            model_init_seconds=22.06,
+            stt_device="cuda:0",
+        )
+
+        fields = stt_server.build_health_fields(state)
+
+        self.assertEqual(fields["stt_device"], "cuda:0")
+
     def test_health_last_error_after_recording(self):
         resp = self._build_health_response()
         resp["last_error"] = {
@@ -6183,6 +6232,7 @@ class V113AppConfigTests(unittest.TestCase):
         from xiaohuang.app_config_service import load_config
         cfg = load_config(Path("/nonexistent/config.json"))
         self.assertEqual(cfg.wake.phrases, ["小黄"])
+        self.assertEqual(cfg.stt.device, "cpu")
 
     def test_load_config_valid_json_overrides_wake_phrase(self):
         import tempfile, json
@@ -6192,6 +6242,15 @@ class V113AppConfigTests(unittest.TestCase):
             fp.write_text(json.dumps({"wake": {"phrases": ["贾维斯"]}}), encoding="utf-8")
             cfg = load_config(fp)
             self.assertEqual(cfg.wake.phrases, ["贾维斯"])
+
+    def test_load_config_valid_json_overrides_stt_device(self):
+        import tempfile, json
+        from xiaohuang.app_config_service import load_config
+        with tempfile.TemporaryDirectory() as d:
+            fp = Path(d) / "config.json"
+            fp.write_text(json.dumps({"stt": {"device": "cuda:0"}}), encoding="utf-8")
+            cfg = load_config(fp)
+            self.assertEqual(cfg.stt.device, "cuda:0")
 
     def test_load_config_invalid_json_warns_and_returns_default(self):
         import tempfile
@@ -6432,6 +6491,58 @@ class V113BLlmProviderRouterTests(unittest.TestCase):
         cfg = apply_cli_overrides(get_default_config(), args)
         self.assertEqual(cfg.llm.model, "deepseek-v4-flash")
         self.assertEqual(cfg.llm.base_url, "https://api.deepseek.com")
+
+
+class V13SttServerDeviceConfigTests(unittest.TestCase):
+    def test_stt_server_passes_configured_cuda_device_to_transcriber(self):
+        import stt_server
+        from xiaohuang.app_config_service import get_default_config, merge_config_dict
+
+        captured = {}
+
+        class FakeTranscriber:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+                self.device = kwargs["device"]
+
+        fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True))
+        config = merge_config_dict(get_default_config(), {"stt": {"device": "cuda:0"}})
+
+        transcriber = stt_server.build_transcriber_from_config(
+            config,
+            transcriber_cls=FakeTranscriber,
+            torch_module=fake_torch,
+        )
+
+        self.assertEqual(transcriber.device, "cuda:0")
+        self.assertEqual(captured["device"], "cuda:0")
+        self.assertEqual(captured["model_name"], "iic/SenseVoiceSmall")
+
+    def test_stt_server_falls_back_to_cpu_when_cuda_unavailable(self):
+        import stt_server
+        from xiaohuang.app_config_service import get_default_config, merge_config_dict
+
+        captured = {}
+
+        class FakeTranscriber:
+            def __init__(self, **kwargs):
+                captured.update(kwargs)
+                self.device = kwargs["device"]
+
+        warnings = []
+        fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False))
+        config = merge_config_dict(get_default_config(), {"stt": {"device": "cuda:0"}})
+
+        transcriber = stt_server.build_transcriber_from_config(
+            config,
+            transcriber_cls=FakeTranscriber,
+            torch_module=fake_torch,
+            warn=warnings.append,
+        )
+
+        self.assertEqual(transcriber.device, "cpu")
+        self.assertEqual(captured["device"], "cpu")
+        self.assertTrue(warnings)
 
 
 class V113CSettingsConfigFileServiceTests(unittest.TestCase):

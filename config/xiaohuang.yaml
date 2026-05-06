@@ -13,6 +13,7 @@ stt:
   model_name: iic/SenseVoiceSmall
   language: zh
   use_itn: true
+  device: cpu
 
 logging:
   directory: logs
