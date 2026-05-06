@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import unittest
+from pathlib import Path
 
 from xiaohuang.overlay_state_service import (
     STATE_ERROR,
@@ -47,6 +48,26 @@ class VoiceOverlayQtUiTests(unittest.TestCase):
         self.assertNotIn("tkinter", voice_overlay_qt_ui.__dict__)
         self.assertNotIn("ImageTk", voice_overlay_qt_ui.__dict__)
         self.assertNotIn("ImageDraw", voice_overlay_qt_ui.__dict__)
+
+    def test_paint_event_does_not_draw_background_frame(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "xiaohuang"
+            / "voice_overlay_qt_ui.py"
+        ).read_text(encoding="utf-8")
+
+        for forbidden in (
+            "drawRoundedRect",
+            "fillRect",
+            "fillPath",
+            "drawRect",
+            "setStyleSheet",
+            "setAutoFillBackground(True)",
+            "autoFillBackground(True)",
+        ):
+            self.assertNotIn(forbidden, source)
+        self.assertIn("Qt.NoDropShadowWindowHint", source)
 
     def test_voice_overlay_app_exposes_runtime_interface(self):
         try:

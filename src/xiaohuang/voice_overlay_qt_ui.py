@@ -124,10 +124,17 @@ class WaveformDock(QWidget):
     def _configure_window(self) -> None:
         self.setWindowTitle(self.assistant_name)
         self.setFixedSize(self.WIDTH, self.HEIGHT)
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+            | Qt.Tool
+            | Qt.NoDropShadowWindowHint
+        )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self.setAttribute(Qt.WA_OpaquePaintEvent, False)
+        self.setAttribute(Qt.WA_StyledBackground, False)
+        self.setAutoFillBackground(False)
         self._move_bottom_center()
 
     def _move_bottom_center(self) -> None:
