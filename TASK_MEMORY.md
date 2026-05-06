@@ -1,5 +1,26 @@
 # Task Memory
 
+## RTK onboarding snapshot（2026-05-06）
+
+- Purpose: Windows 桌面语音助手；当前真实代码已超过 README 的 V1.2E，处在 V1.3 UI / overlay dock 与 Web 控制面板迭代后状态。
+- Key entry points: `scripts/voice_overlay.py`（PySide6 透明音波 dock + runtime 组装）、`scripts/stt_server.py`、`scripts/control_panel.py`、`scripts/control_panel_web.py`、`scripts/tray_app.py`。
+- Runtime boundaries: `voice_overlay.py` 不再承载主循环业务；主循环在 `overlay_loop_runtime_service.py`，wake 在 `wake_runtime_service.py` / `openwakeword_adapter.py`，command 在 `command_runtime_service.py`，reply/session 在 `reply_runtime_service.py` / `assistant_runtime_service.py`。
+- UI surfaces: Tk 控制面板仍在 `scripts/control_panel.py`；pywebview 控制面板通过 `control_panel_web_service.py` + `frontend/control_panel/*`；voice overlay 已替换为 `voice_overlay_qt_ui.py` 的 PySide6 透明音波 dock，旧 `frontend/voice_overlay/*` 原型资产已删除。
+- Startup/test: 先 dot-source `.\scripts\run_env.ps1`；Python 固定用 `F:\for_xiaohuang\conda310\python.exe`。
+- Baseline verification on 2026-05-06: `unittest discover -s tests -q` 535 tests OK；`compileall -q src scripts tests` OK；`scripts\voice_overlay.py --help` OK。
+- Git state on 2026-05-06: `main...origin/main` ahead 10；untracked `.claude/` and `overlay_ui_context.txt` only; no tracked diff before this memory note.
+- Known trap: `README.md` and `run_env.ps1` text are stale in places; prefer `AGENTS.md`, this memory, git log, and actual files.
+- Known trap: `overlay_ui_context.txt` is an old UI snapshot and differs from current `scripts/voice_overlay.py`; do not restore from it blindly.
+- Hard boundaries still active: no API key in config/docs/logs/code/commit messages, no writes to `E:\DataBase`, no new god manager/controller, no broad refactor unless explicitly scoped.
+
+### V1.3-Overlay-UI-E PySide6 overlay dock（2026-05-06）
+
+- 新增 `src/xiaohuang/voice_overlay_qt_ui.py`（427 行）：PySide6 frameless/topmost/tool 透明窗口，QPainterPath 多层音波，Qt Signal bridge 保证 worker thread 更新 UI 安全。
+- `scripts/voice_overlay.py` 从 Tkinter/Pillow 音波实现缩减到 374 行入口/组装；保留 `VoiceOverlayApp` re-export 和 wake runtime 测试兼容常量。
+- 删除未引用的 `frontend/voice_overlay/*` HTML prototype 资产；`frontend/control_panel/*` 和 Web 控制面板不变。
+- `requirements.txt` 新增 `PySide6>=6.11.0`；未新增其他 GUI 依赖。
+- 验证：`voice_overlay.py --help` OK；`compileall -q src scripts tests` OK；`unittest discover -s tests` 539 tests OK；有界 Qt preview smoke 自动打开/关闭，`stop_event_set=True`。
+
 ## 当前最新状态
 
 - **阶段**：V1.3-UI-A — pywebview Web 控制面板原型

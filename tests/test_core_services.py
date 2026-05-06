@@ -5116,50 +5116,34 @@ class VoiceOverlayGuardTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         try:
-            import tkinter as tk
+            from PySide6.QtWidgets import QApplication
         except ImportError:
-            raise unittest.SkipTest("Tkinter not available")
-        cls._tk = tk
+            raise unittest.SkipTest("PySide6 not available")
+        cls._qt_app = QApplication.instance() or QApplication([])
 
     def setUp(self):
         import threading
         self._stop_event = threading.Event()
-        self._root = self._tk.Tk()
-        self._root.withdraw()
-
-    def tearDown(self):
-        try:
-            self._root.destroy()
-        except Exception:
-            pass
 
     def _make_app(self):
         from voice_overlay import VoiceOverlayApp
-        return VoiceOverlayApp(self._root, stop_event=self._stop_event, debug=False)
+        return VoiceOverlayApp(self._qt_app, stop_event=self._stop_event, debug=False)
 
     def test_thread_safe_set_state_after_close_does_not_throw(self):
         app = self._make_app()
         app.close()
         try:
             app.thread_safe_set_state("idle")
-        except tk.TclError:
-            self.fail("thread_safe_set_state raised TclError after close")
+        except Exception as exc:
+            self.fail(f"thread_safe_set_state raised after close: {type(exc).__name__}: {exc}")
 
     def test_schedule_idle_after_close_does_not_throw(self):
         app = self._make_app()
         app.close()
         try:
             app.schedule_idle(100)
-        except tk.TclError:
-            self.fail("schedule_idle raised TclError after close")
-
-    def test_animate_after_close_does_not_throw(self):
-        app = self._make_app()
-        app.close()
-        try:
-            app._animate()
-        except tk.TclError:
-            self.fail("_animate raised TclError after close")
+        except Exception as exc:
+            self.fail(f"schedule_idle raised after close: {type(exc).__name__}: {exc}")
 
     def test_thread_safe_show_status_after_close_does_not_throw(self):
         from xiaohuang.overlay_state_service import build_server_unavailable_status
@@ -5168,8 +5152,8 @@ class VoiceOverlayGuardTests(unittest.TestCase):
         status = build_server_unavailable_status("http://127.0.0.1:8766")
         try:
             app.thread_safe_show_status(status)
-        except tk.TclError:
-            self.fail("thread_safe_show_status raised TclError after close")
+        except Exception as exc:
+            self.fail(f"thread_safe_show_status raised after close: {type(exc).__name__}: {exc}")
 
     def test_close_is_idempotent(self):
         app = self._make_app()
@@ -5824,24 +5808,18 @@ class V111WakeDetectedCallbackTests(unittest.TestCase):
 
 class V111ResidentHiddenTests(unittest.TestCase):
     def test_voice_overlay_app_accepts_start_hidden(self):
-        import importlib, threading
+        import threading
         try:
-            import tkinter as tk
+            from PySide6.QtWidgets import QApplication
         except ImportError:
-            raise unittest.SkipTest("Tkinter not available")
-        root = tk.Tk()
-        root.withdraw()
-        try:
-            from voice_overlay import VoiceOverlayApp
-            stop = threading.Event()
-            app = VoiceOverlayApp(root, stop_event=stop, debug=False, start_hidden=True)
-            self.assertIsNotNone(app)
-            app.close()
-        finally:
-            try:
-                root.destroy()
-            except Exception:
-                pass
+            raise unittest.SkipTest("PySide6 not available")
+        from voice_overlay import VoiceOverlayApp
+        qt_app = QApplication.instance() or QApplication([])
+        stop = threading.Event()
+        app = VoiceOverlayApp(qt_app, stop_event=stop, debug=False, start_hidden=True)
+        self.assertIsNotNone(app)
+        self.assertFalse(app._widget.isVisible())
+        app.close()
 
     def test_resident_hidden_in_help(self):
         import subprocess, sys

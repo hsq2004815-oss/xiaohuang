@@ -5,6 +5,7 @@ soundfile>=0.12.1
 edge-tts
 pystray>=0.19.5
 Pillow>=10.0
+PySide6>=6.11.0
 
 # Optional STT stack for scripts/transcribe_test.py:
 # funasr
