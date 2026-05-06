@@ -252,10 +252,12 @@ class VoiceOverlayApp:
                 easy_drag=True,
                 resizable=False,
                 transparent=True,
-                background_color="#00000000",
+                background_color="#000000",
             )
-        except TypeError:
-            # Fallback: older pywebview without transparent support
+            return
+        except (TypeError, ValueError):
+            pass  # fall through to fallback
+        try:
             self._window = webview.create_window(
                 title="小黄",
                 url=url,
@@ -266,6 +268,8 @@ class VoiceOverlayApp:
                 easy_drag=True,
                 resizable=False,
             )
+        except Exception:
+            self._window = None
 
         self._window.events.closed += self._on_window_closed
 
@@ -436,6 +440,8 @@ def main() -> int:
         assistant_name=app.assistant_name,
     )
 
+    app._prepare_window(index_path, args.server_url)
+
     worker = threading.Thread(
         target=run_overlay_runtime,
         kwargs={
@@ -455,13 +461,10 @@ def main() -> int:
     )
     worker.start()
 
-    app._prepare_window(index_path, args.server_url)
     webview.start()
     stop_event.set()
     worker.join(timeout=1.0)
     return 0
-
-
 def _record_openwakeword_command(
     *,
     event: WakeEvent,
