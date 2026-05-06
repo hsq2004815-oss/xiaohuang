@@ -19,12 +19,22 @@
 ### 验证结果（2026-05-06）
 
 - compileall OK
-- unittest discover OK：547 tests OK
+- unittest discover OK：570 tests OK
 - scripts\stt_server.py --help OK
 - PySide6 overlay 人工验收 OK
 - CUDA STT 人工验收 OK
 - nvidia-smi 可见 Python 占用 GPU 显存（约 1.7GB）
 - voice_overlay 日志出现 openwakeword_wake_event / command_record_start / Overlay command transcription / Overlay reply source=llm
+
+### V1.3A voice_overlay bootstrap extraction（2026-05-06）
+
+- 新增 `src/xiaohuang/voice_overlay_bootstrap_service.py`（~160 行）：`VoiceOverlayBootstrapResult` dataclass + `bootstrap_voice_overlay()` 函数
+- `scripts/voice_overlay.py` 从 414 行缩减到 358 行（-56 行），配置装配逻辑迁移至 bootstrap service
+- 新增 `tests/test_voice_overlay_bootstrap_service.py`（23 tests）
+- 本次未修改 PySide6 UI 外观
+- 未修改 openWakeWord / STT / LLM / TTS 主链路
+- `legacy_config`（YAML 项目默认配置）与 `app_config`（JSON 用户配置）暂时并存，命名明确
+- bootstrap service 只负责"加载配置 + 组装 options/config"，不做 UI、不做线程、不做网络
 
 ---
 

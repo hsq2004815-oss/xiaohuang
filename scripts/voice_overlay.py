@@ -12,10 +12,7 @@ sys.path.insert(0, str(SRC_DIR))
 
 from PySide6.QtWidgets import QApplication
 
-from xiaohuang.config_service import load_config
-from xiaohuang.conversation_session_service import ConversationSessionConfig
 from xiaohuang.logging_service import configure_logging
-from xiaohuang.llm_reply_service import load_llm_provider_config
 from xiaohuang.overlay_state_service import (
     STATE_ERROR,
     STATE_LISTENING,
@@ -24,30 +21,23 @@ from xiaohuang.overlay_state_service import (
     build_server_unavailable_status,
     get_overlay_status_text,
 )
-from xiaohuang.overlay_runtime_service import resolve_post_response_cooldown
-from xiaohuang.reply_pipeline_service import ReplyPipelineConfig
-from xiaohuang.overlay_loop_runtime_service import (
-    OverlayLoopRuntimeConfig,
-    run_overlay_runtime,
-)
-from xiaohuang.app_config_service import apply_cli_overrides, load_config as load_user_config
+from xiaohuang.overlay_loop_runtime_service import run_overlay_runtime
 from xiaohuang.audio_capture_service import build_recording_path
 from xiaohuang.command_runtime_service import record_and_transcribe
 from xiaohuang.stt_client_service import SttServerError, SttServerUnavailable, check_server_health, request_transcription
 from xiaohuang.tts_service import DEFAULT_TTS_VOICE
 from xiaohuang.vad_recording_service import record_until_silence
+from xiaohuang.voice_overlay_bootstrap_service import bootstrap_voice_overlay
 from xiaohuang.voice_overlay_qt_ui import VoiceOverlayApp
 from xiaohuang.wake_engine_service import WakeEvent
-from xiaohuang.wake_loop_service import STT_MODE_COMMAND, WakeLoopOptions, WakeLoopResult
+from xiaohuang.wake_loop_service import STT_MODE_COMMAND, WakeLoopResult
 from xiaohuang.wake_runtime_service import (
     WAKE_ENGINE_OPENWAKEWORD,
     WAKE_ENGINE_STT_TEXT,
     WakeEngineRuntimeConfig,
     OpenWakeWordBridgeRuntime as _OpenWakeWordBridgeRuntime,
-    build_wake_engine_runtime_config as _build_wake_engine_runtime_config,
-    select_wake_engine_runtime as _select_wake_engine_runtime,
 )
-from xiaohuang.wake_word_service import WakeMatchResult, parse_wake_phrases
+from xiaohuang.wake_word_service import WakeMatchResult
 
 
 def parse_args() -> argparse.Namespace:
@@ -135,17 +125,12 @@ def _print_wake_engine_runtime_config(
 
 def main() -> int:
     args = parse_args()
-    config = load_config()
-    app_config = load_user_config(args.config, warn=lambda msg: print(f"Config warning: {msg}"))
-    app_config = apply_cli_overrides(app_config, args)
-    debug = bool(app_config.runtime.debug)
-    enable_llm = bool(app_config.llm.enabled)
-    enable_tts = bool(app_config.tts.enabled)
-    resident_hidden = bool(app_config.overlay.resident_hidden)
+    bootstrap = bootstrap_voice_overlay(args, project_root=PROJECT_ROOT)
+
     logger = configure_logging(
-        PROJECT_ROOT / config["logging"]["directory"],
+        PROJECT_ROOT / bootstrap.legacy_config["logging"]["directory"],
         "voice_overlay",
-        config["logging"]["level"],
+        bootstrap.legacy_config["logging"]["level"],
     )
 
     stop_event = threading.Event()
@@ -154,10 +139,10 @@ def main() -> int:
     app = VoiceOverlayApp(
         qt_app,
         stop_event=stop_event,
-        debug=debug,
-        start_hidden=resident_hidden,
-        title=app_config.assistant.display_name,
-        wake_phrase=app_config.wake.phrases[0] if app_config.wake.phrases else "小黄",
+        debug=bootstrap.debug,
+        start_hidden=bootstrap.resident_hidden,
+        title=bootstrap.app_config.assistant.display_name,
+        wake_phrase=bootstrap.app_config.wake.phrases[0] if bootstrap.app_config.wake.phrases else "小黄",
         quit_on_close=True,
     )
 
@@ -175,40 +160,16 @@ def main() -> int:
         stop_event.set()
         return 6
 
-    if debug:
+    if bootstrap.debug:
         print(f"STT server ready: {args.server_url} ({health.get('status', 'ok')})")
 
-    audio_config = config.get("audio", {})
-    recording_config = config.get("recording", {})
-    device_id = args.device
-    if device_id is None:
-        config_device = audio_config.get("device_id")
-        device_id = int(config_device) if config_device is not None else 0
-    recording_dir = PROJECT_ROOT / recording_config.get("output_dir", "data/recordings")
-    wake_phrases = parse_wake_phrases(args.wake_phrases) if args.wake_phrases else app_config.wake.phrases
-    wake_aliases = parse_wake_phrases(args.wake_aliases) if args.wake_aliases else app_config.wake.aliases
-    options = WakeLoopOptions(
-        device_id=device_id,
-        server_url=args.server_url,
-        wake_window_seconds=app_config.wake.wake_window_seconds,
-        wake_phrases=wake_phrases,
-        wake_aliases=wake_aliases,
-        max_seconds=app_config.audio.max_seconds,
-        silence_seconds=app_config.audio.silence_seconds,
-        sample_rate=int(audio_config.get("sample_rate", 16000)),
-        channels=int(audio_config.get("channels", 1)),
-        recording_dir=recording_dir,
-        keep_wake_recordings=False,
-    )
-    wake_engine_runtime = _build_wake_engine_runtime_config(app_config, options)
-    wake_engine_plan = _select_wake_engine_runtime(wake_engine_runtime)
-    if wake_engine_plan.error:
-        print(wake_engine_plan.error)
-        logger.error(wake_engine_plan.error)
+    if bootstrap.wake_engine_plan.error:
+        print(bootstrap.wake_engine_plan.error)
+        logger.error(bootstrap.wake_engine_plan.error)
         app.show_status(
             get_overlay_status_text(
                 STATE_ERROR,
-                wake_engine_plan.error,
+                bootstrap.wake_engine_plan.error,
                 assistant_name=app.assistant_name,
                 wake_phrase=app.wake_phrase,
             )
@@ -216,62 +177,45 @@ def main() -> int:
         qt_app.exec()
         stop_event.set()
         return 7
-    if wake_engine_plan.warning:
-        print(wake_engine_plan.warning)
-        logger.warning(wake_engine_plan.warning)
-    _print_wake_engine_runtime_config(wake_engine_runtime, wake_engine_plan.engine, logger)
+    if bootstrap.wake_engine_plan.warning:
+        print(bootstrap.wake_engine_plan.warning)
+        logger.warning(bootstrap.wake_engine_plan.warning)
 
-    tts_output_dir = PROJECT_ROOT / args.tts_output_dir
-    post_response_cooldown = resolve_post_response_cooldown(enable_tts, app_config.overlay.post_response_cooldown)
-    llm_config = load_llm_provider_config(app_config.llm)
-    if enable_llm:
-        if not llm_config.is_configured:
-            if debug:
-                print(f"LLM API key 未配置（{app_config.llm.api_key_env}），已使用本地规则回复")
-            logger.info("--enable-llm specified but %s is not set; using local rule replies", app_config.llm.api_key_env)
-        elif debug:
-            print(f"LLM enabled: provider={llm_config.provider} model={llm_config.model} max_tokens={llm_config.max_tokens} timeout={llm_config.timeout_seconds}s")
-    if debug:
-        print(f"Resolved wake phrases: {wake_phrases}")
-        print(f"Resolved wake aliases: {wake_aliases}")
-        print(f"Wake engine: {wake_engine_plan.engine}")
-        print(f"TTS enabled: {enable_tts}")
-    session_config = ConversationSessionConfig(
-        enabled=app_config.conversation.enabled,
-        timeout_seconds=app_config.conversation.session_timeout,
-        max_turns=app_config.conversation.max_turns,
-        followup_timeout_seconds=app_config.conversation.followup_timeout,
-        max_session_seconds=app_config.conversation.max_session_seconds,
-        max_no_speech_retries=app_config.conversation.max_no_speech_retries,
+    _print_wake_engine_runtime_config(
+        bootstrap.wake_engine_runtime,
+        bootstrap.wake_engine_plan.engine,
+        logger,
     )
-    if debug and session_config.enabled:
+
+    if bootstrap.enable_llm:
+        llm_config = bootstrap.pipeline_config.llm_config
+        if not llm_config.is_configured:
+            if bootstrap.debug:
+                print(f"LLM API key 未配置（{bootstrap.app_config.llm.api_key_env}），已使用本地规则回复")
+            logger.info(
+                "--enable-llm specified but %s is not set; using local rule replies",
+                bootstrap.app_config.llm.api_key_env,
+            )
+        elif bootstrap.debug:
+            print(
+                f"LLM enabled: provider={llm_config.provider} model={llm_config.model} "
+                f"max_tokens={llm_config.max_tokens} timeout={llm_config.timeout_seconds}s"
+            )
+
+    if bootstrap.debug:
+        print(f"Resolved wake phrases: {bootstrap.wake_phrases}")
+        print(f"Resolved wake aliases: {bootstrap.wake_aliases}")
+        print(f"Wake engine: {bootstrap.wake_engine_plan.engine}")
+        print(f"TTS enabled: {bootstrap.enable_tts}")
+
+    if bootstrap.debug and bootstrap.session_config.enabled:
         _safe_print(
             f"Conversation session config: "
-            f"followup_timeout={session_config.followup_timeout_seconds} "
-            f"max_turns={session_config.max_turns} "
-            f"max_session_seconds={session_config.max_session_seconds} "
-            f"max_no_speech_retries={session_config.max_no_speech_retries}"
+            f"followup_timeout={bootstrap.session_config.followup_timeout_seconds} "
+            f"max_turns={bootstrap.session_config.max_turns} "
+            f"max_session_seconds={bootstrap.session_config.max_session_seconds} "
+            f"max_no_speech_retries={bootstrap.session_config.max_no_speech_retries}"
         )
-    pipeline_config = ReplyPipelineConfig(
-        enable_llm=enable_llm,
-        enable_tts=enable_tts,
-        llm_config=llm_config,
-        tts_voice=app_config.tts.voice,
-        tts_output_dir=tts_output_dir,
-        persona=app_config.assistant.persona,
-    )
-
-    runtime_config = OverlayLoopRuntimeConfig(
-        wake_engine_mode=wake_engine_plan.engine,
-        wake_engine_runtime=wake_engine_runtime,
-        session_config=session_config,
-        enable_tts=enable_tts,
-        enable_llm=enable_llm,
-        post_response_cooldown=post_response_cooldown,
-        resident_hidden=resident_hidden,
-        debug=debug,
-        assistant_name=app.assistant_name,
-    )
 
     worker = threading.Thread(
         target=run_overlay_runtime,
@@ -279,14 +223,14 @@ def main() -> int:
             "app": app,
             "stop_event": stop_event,
             "logger": logger,
-            "options": options,
-            "runtime_config": runtime_config,
-            "pipeline_config": pipeline_config,
+            "options": bootstrap.options,
+            "runtime_config": bootstrap.runtime_config,
+            "pipeline_config": bootstrap.pipeline_config,
             "record_openwakeword_command": _record_openwakeword_command,
             "make_llm_debug_handler": _make_llm_debug_handler,
             "playback_warning": _playback_warning,
             "log_warning": lambda msg: _warn(logger, msg),
-            "print_wake_match": (_print_wake_match if debug else None),
+            "print_wake_match": (_print_wake_match if bootstrap.debug else None),
         },
         daemon=True,
     )
