@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 import threading
+import time
+import tkinter as tk
 from pathlib import Path
 from typing import Callable
 
@@ -138,20 +141,55 @@ def _print_wake_engine_runtime_config(
         _log_runtime_message(logger, "info", message)
 
 
-class VoiceOverlayApp:
-    """pywebview-based Voice Dock HUD.
+_TCOLOR = "#010101"  # transparentcolor key
 
-    Creates a frameless transparent HTML Canvas waveform window
-    positioned bottom-center.  Exposes the same API as the old
-    Tkinter overlay so run_overlay_runtime() needs no changes.
+_STATE_COLORS = {
+    STATE_IDLE:           (0x4a, 0x9e, 0xff),
+    STATE_WAKE_CHECKING:  (0x3d, 0x8b, 0xfd),
+    STATE_WAKE_DETECTED:  (0x00, 0xe5, 0xa0),
+    STATE_LISTENING:      (0x00, 0xe5, 0xa0),
+    STATE_TRANSCRIBING:   (0x7c, 0x6f, 0xff),
+    STATE_REPLYING:       (0x00, 0xb4, 0xff),
+    STATE_SPEAKING:       (0x9b, 0x6d, 0xff),
+    STATE_RESULT:         (0x00, 0xd6, 0x8f),
+    STATE_ERROR:          (0xff, 0x47, 0x57),
+}
+
+_STATE_AMPS = {
+    STATE_IDLE: 3.2, STATE_WAKE_CHECKING: 5.5,
+    STATE_WAKE_DETECTED: 13, STATE_LISTENING: 15,
+    STATE_TRANSCRIBING: 8, STATE_REPLYING: 9,
+    STATE_SPEAKING: 20, STATE_RESULT: 4.5,
+    STATE_ERROR: 12,
+}
+
+_STATE_SPEEDS = {
+    STATE_IDLE: 0.65, STATE_WAKE_CHECKING: 1.1,
+    STATE_WAKE_DETECTED: 1.5, STATE_LISTENING: 1.65,
+    STATE_TRANSCRIBING: 1.2, STATE_REPLYING: 1.15,
+    STATE_SPEAKING: 1.9, STATE_RESULT: 0.75,
+    STATE_ERROR: 3.5,
+}
+
+
+class VoiceOverlayApp:
+    """Tkinter transparent Canvas waveform dock.
+
+    Renders a multi-layer sin-wave voice HUD using only
+    Canvas create_line.  Background is keyed out via
+    wm_attributes -transparentcolor so the desktop shows
+    through everywhere except the waveform lines.
     """
 
     _W = 720
     _H = 160
+    _ANIM_MS = 70
+    _LAYERS = 4
+    _STEP = 3  # px between waveform sample points
 
     def __init__(
         self,
-        root,  # ignored; kept for API compatibility
+        root,
         *,
         stop_event: threading.Event,
         debug: bool = False,
@@ -159,8 +197,7 @@ class VoiceOverlayApp:
         title: str = "小黄",
         wake_phrase: str = "小黄",
     ) -> None:
-        import webview
-
+        self.root = root
         self.stop_event = stop_event
         self.debug = debug
         self.assistant_name = title or "小黄"
@@ -168,8 +205,68 @@ class VoiceOverlayApp:
         self.state = STATE_IDLE
         self.closed = False
         self._resident_hidden = start_hidden
-        self._webview = webview
-        self._window = None
+        self._after_ids: set[str] = set()
+
+        # live interpolation targets
+        self._live_amp = 0.0
+        self._live_spd = _STATE_SPEEDS[STATE_IDLE]
+        self._live_r, self._live_g, self._live_b = _STATE_COLORS[STATE_IDLE]
+        self._tgt_r, self._tgt_g, self._tgt_b = self._live_r, self._live_g, self._live_b
+        self._tgt_amp = _STATE_AMPS[STATE_IDLE]
+        self._tgt_spd = _STATE_SPEEDS[STATE_IDLE]
+        self._flash = 0.0
+        self._time = 0.0
+        self._last_ts = 0.0
+
+        self._build_ui(title)
+        self.set_state(STATE_IDLE)
+        self._animate()
+        if start_hidden:
+            try:
+                self.root.withdraw()
+            except Exception:
+                pass
+
+    # ── UI construction ────────────────────────────────────────
+
+    def _build_ui(self, title: str = "小黄") -> None:
+        self.root.title(title)
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x = (sw - self._W) // 2
+        y = sh - self._H - 44
+        self.root.geometry(f"{self._W}x{self._H}+{x}+{y}")
+        self.root.attributes("-topmost", True)
+        self.root.resizable(False, False)
+        try:
+            self.root.overrideredirect(True)
+        except Exception:
+            pass
+        try:
+            self.root.wm_attributes("-transparentcolor", _TCOLOR)
+        except Exception:
+            pass
+        self.canvas = tk.Canvas(
+            self.root, width=self._W, height=self._H,
+            bg=_TCOLOR, highlightthickness=0, bd=0,
+        )
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.bind("<ButtonPress-1>", self._start_move)
+        self.canvas.bind("<B1-Motion>", self._move)
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
+        self.root.bind("<Escape>", lambda _event: self.close())
+
+    def _start_move(self, event) -> None:
+        self._drag_x = event.x
+        self._drag_y = event.y
+
+    def _move(self, event) -> None:
+        try:
+            x = self.root.winfo_x() + event.x - self._drag_x
+            y = self.root.winfo_y() + event.y - self._drag_y
+            self.root.geometry(f"+{x}+{y}")
+        except tk.TclError:
+            pass
 
     # ── State management ───────────────────────────────────────
 
@@ -181,42 +278,140 @@ class VoiceOverlayApp:
             assistant_name=self.assistant_name,
             wake_phrase=self.wake_phrase,
         )
-        self.state = status.state
-        self._js("window.XiaoHuangHUD.setState('%s')" % self.state)
+        s = status.state
+        if s == self.state:
+            return
+        self.state = s
+        rgb = _STATE_COLORS.get(s, _STATE_COLORS[STATE_IDLE])
+        self._tgt_r, self._tgt_g, self._tgt_b = rgb
+        self._tgt_amp = _STATE_AMPS.get(s, _STATE_AMPS[STATE_IDLE])
+        self._tgt_spd = _STATE_SPEEDS.get(s, _STATE_SPEEDS[STATE_IDLE])
+        self._flash = 0.22
 
     def thread_safe_set_state(self, state: str, detail: str | None = None) -> None:
-        self.set_state(state, detail)
+        self._safe_after(0, lambda: self.set_state(state, detail))
 
     def show_status(self, status) -> None:
         if self.closed:
             return
         self.state = status.state
-        self._js("window.XiaoHuangHUD.setState('%s')" % self.state)
+        rgb = _STATE_COLORS.get(status.state, _STATE_COLORS[STATE_IDLE])
+        self._tgt_r, self._tgt_g, self._tgt_b = rgb
+        self._tgt_amp = _STATE_AMPS.get(status.state, _STATE_AMPS[STATE_IDLE])
+        self._tgt_spd = _STATE_SPEEDS.get(status.state, _STATE_SPEEDS[STATE_IDLE])
 
     def thread_safe_show_status(self, status) -> None:
-        self.show_status(status)
+        self._safe_after(0, lambda: self.show_status(status))
 
     def schedule_idle(self, delay_ms: int = 3500) -> None:
-        t = threading.Timer(delay_ms / 1000.0, self._on_schedule_idle)
-        t.daemon = True
-        t.start()
-
-    def _on_schedule_idle(self) -> None:
-        if not self.closed:
-            self.set_state(STATE_IDLE)
-            if self._resident_hidden:
-                self.hide_overlay()
-
-    def _animate(self) -> None:
-        """No-op kept for backward compatibility; animation runs in HTML."""
+        self._safe_after(delay_ms, lambda: self.set_state(STATE_IDLE))
 
     # ── Window visibility ──────────────────────────────────────
 
     def show_overlay(self) -> None:
-        self._js("window.XiaoHuangHUD.fadeIn()")
+        def _show() -> None:
+            try:
+                if not self.root.winfo_exists():
+                    return
+                self.root.deiconify()
+                self.root.lift()
+                self.root.attributes("-topmost", True)
+                self.root.after(300, lambda: self.root.attributes("-topmost", True))
+            except Exception:
+                pass
+        try:
+            self.root.after(0, _show)
+        except Exception:
+            pass
 
     def hide_overlay(self) -> None:
-        self._js("window.XiaoHuangHUD.fadeOut()")
+        def _hide() -> None:
+            try:
+                if not self.root.winfo_exists():
+                    return
+                self.root.withdraw()
+            except Exception:
+                pass
+        try:
+            self.root.after(0, _hide)
+        except Exception:
+            pass
+
+    # ── Animation ──────────────────────────────────────────────
+
+    def _animate(self) -> None:
+        if self.closed:
+            return
+        try:
+            self.canvas.delete("all")
+        except tk.TclError:
+            self.closed = True
+            return
+        self._draw_waveform()
+        self._safe_after(self._ANIM_MS, self._animate)
+
+    def _draw_waveform(self) -> None:
+        now = self._time_get()
+        dt = 0.016
+        if self._last_ts > 0:
+            dt = min(now - self._last_ts, 0.05)
+        self._last_ts = now
+
+        k = 1.0 - math.pow(0.035, dt)
+        self._live_amp += (self._tgt_amp - self._live_amp) * k
+        self._live_spd += (self._tgt_spd - self._live_spd) * k
+        self._live_r += (self._tgt_r - self._live_r) * k
+        self._live_g += (self._tgt_g - self._live_g) * k
+        self._live_b += (self._tgt_b - self._live_b) * k
+        if self._flash > 0:
+            self._flash = max(0.0, self._flash - dt * 1.6)
+        self._time += dt * self._live_spd
+
+        r = int(self._live_r)
+        g = int(self._live_g)
+        b = int(self._live_b)
+        w = self._W
+        cy = self._H // 2
+        amp = self._live_amp
+        t = self._time
+        step = self._STEP
+
+        # ── Background layers (dimmer, wider) ──
+        for li in range(self._LAYERS - 1, 0, -1):
+            frac = li / self._LAYERS
+            bright = 0.08 + (1.0 - frac) * 0.22
+            lw = max(0.8, 1.8 - li * 0.22)
+            ph_off = li * 0.62
+            fm = 1.0 + li * 0.18
+            self._draw_layer(w, cy, amp, t, r, g, b, bright, lw, ph_off, fm, step)
+
+        # ── Center bright line ──
+        self._draw_layer(w, cy, amp * 0.82, t * 1.02, r, g, b, 0.78, 2.0, 0.0, 1.0, step)
+
+        # ── Flash overlay ──
+        if self._flash > 0.008:
+            fc = _TCOLOR_to_hex(r, g, b)
+            alpha = int(self._flash * 50)
+            self.canvas.create_rectangle(
+                0, 0, w, self._H,
+                fill=fc, outline="", stipple="gray25",
+            )
+
+    def _draw_layer(self, w, cy, amp, t, r, g, b, bright, lw, ph, fm, step):
+        pts = []
+        for x in range(0, w + step, step):
+            nx = x / w
+            env = _edge_fade(nx)
+            s1 = math.sin(nx * 6.8  * fm + t * 2.05 + ph)
+            s2 = math.sin(nx * 10.2 * fm + t * 1.62 + ph * 1.35)
+            val = (s1 * 0.7 + s2 * 0.3) * amp * env
+            pts.append(x)
+            pts.append(int(cy + val))
+        if pts:
+            color = _TCOLOR_to_hex(r, g, b)
+            self.canvas.create_line(
+                *pts, fill=color, width=lw, capstyle="round",
+            )
 
     # ── Lifecycle ──────────────────────────────────────────────
 
@@ -225,68 +420,51 @@ class VoiceOverlayApp:
             return
         self.closed = True
         self.stop_event.set()
-        if self._window is not None:
+        for after_id in list(self._after_ids):
             try:
-                self._window.destroy()
+                self.root.after_cancel(after_id)
             except Exception:
                 pass
-
-    def _prepare_window(self, index_path: Path, server_url: str = "") -> None:
-        """Create the pywebview window (call before webview.start())."""
-        import webview
-
-        url = index_path.as_uri()
-        sw = webview.screens[0].width if webview.screens else 1920
-        sh = webview.screens[0].height if webview.screens else 1080
-        x = (sw - self._W) // 2
-        y = sh - self._H - 44
-
+        self._after_ids.clear()
         try:
-            self._window = webview.create_window(
-                title="小黄",
-                url=url,
-                width=self._W, height=self._H,
-                x=x, y=y,
-                frameless=True,
-                on_top=True,
-                easy_drag=True,
-                resizable=False,
-                transparent=True,
-                background_color="#000000",
-            )
-            return
-        except (TypeError, ValueError):
-            pass  # fall through to fallback
-        try:
-            self._window = webview.create_window(
-                title="小黄",
-                url=url,
-                width=self._W, height=self._H,
-                x=x, y=y,
-                frameless=True,
-                on_top=True,
-                easy_drag=True,
-                resizable=False,
-            )
-        except Exception:
-            self._window = None
-
-        self._window.events.closed += self._on_window_closed
-
-    def _on_window_closed(self) -> None:
-        self.close()
-
-    def _js(self, code: str) -> None:
-        """Evaluate JS in the webview window, best-effort."""
-        if self.closed:
-            return
-        try:
-            w = self._window
-            if w is None:
-                return
-            w.evaluate_js(code)
+            self.root.destroy()
         except Exception:
             pass
+
+    def _safe_after(self, delay_ms: int, callback) -> None:
+        if self.closed:
+            return
+        def _wrapper() -> None:
+            self._after_ids.discard(after_id)
+            callback()
+        try:
+            after_id = self.root.after(delay_ms, _wrapper)
+            self._after_ids.add(after_id)
+        except Exception:
+            self.stop_event.set()
+            self.closed = True
+
+    @staticmethod
+    def _time_get() -> float:
+        return time.perf_counter()
+
+
+def _edge_fade(nx: float) -> float:
+    """Smoothstep envelope: fade edges, flat center."""
+    fade_zone = 0.18
+    if nx <= 0 or nx >= 1:
+        return 0
+    if nx < fade_zone:
+        t = nx / fade_zone
+        return t * t * (3 - 2 * t)
+    if nx > 1 - fade_zone:
+        t = (1 - nx) / fade_zone
+        return t * t * (3 - 2 * t)
+    return 1.0
+
+
+def _TCOLOR_to_hex(r: int, g: int, b: int) -> str:
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 
 def main() -> int:
@@ -305,20 +483,15 @@ def main() -> int:
     )
 
     try:
-        import webview
+        import tkinter as tk
     except ImportError:
-        print("pywebview is not installed. Install with: pip install pywebview")
+        print("Tkinter is not available in this Python environment.")
         return 2
 
-    index_path = PROJECT_ROOT / "frontend" / "voice_overlay" / "index.html"
-    if not index_path.exists():
-        print(f"Frontend file not found: {index_path}")
-        return 3
-
     stop_event = threading.Event()
-
+    root = tk.Tk()
     app = VoiceOverlayApp(
-        None,
+        root,
         stop_event=stop_event,
         debug=debug,
         start_hidden=resident_hidden,
@@ -336,8 +509,7 @@ def main() -> int:
         print(message)
         logger.error(str(exc))
         app.show_status(build_server_unavailable_status(args.server_url))
-        app._prepare_window(index_path, args.server_url)
-        webview.start()
+        root.mainloop()
         stop_event.set()
         return 6
 
@@ -379,8 +551,7 @@ def main() -> int:
                 wake_phrase=app.wake_phrase,
             )
         )
-        app._prepare_window(index_path, args.server_url)
-        webview.start()
+        root.mainloop()
         stop_event.set()
         return 7
     if wake_engine_plan.warning:
@@ -440,8 +611,6 @@ def main() -> int:
         assistant_name=app.assistant_name,
     )
 
-    app._prepare_window(index_path, args.server_url)
-
     worker = threading.Thread(
         target=run_overlay_runtime,
         kwargs={
@@ -460,8 +629,7 @@ def main() -> int:
         daemon=True,
     )
     worker.start()
-
-    webview.start()
+    root.mainloop()
     stop_event.set()
     worker.join(timeout=1.0)
     return 0
