@@ -434,6 +434,7 @@
     if (action === 'save-config') { doSaveConfig(btn); return; }
     if (action === 'save-restart') { doSaveAndRestart(btn); return; }
     if (action === 'export-diag') { doExportDiag(btn); return; }
+    if (action === 'open-logs-folder') { doOpenLogsFolder(btn); return; }
     toast('未识别的操作: ' + action, 'err');
   }
 
@@ -580,6 +581,26 @@
       drawerLog('导出诊断 TXT', false, String(e));
     }).finally(function () {
       restoreButton(btn, '导出 TXT', 'export-diag');
+    });
+  }
+
+  function doOpenLogsFolder(btn) {
+    if (!btn || btn.disabled) return;
+    setButtonLoading(btn, '打开中...', 'open-logs-folder');
+    drawerLog('打开日志目录', null, '已发送请求');
+    apiCall('open_logs_folder').then(function (r) {
+      if (r && r.ok) {
+        toast('日志目录已打开', 'ok');
+        drawerLog('打开日志目录', true, (r.data && r.data.path) || '');
+      } else {
+        toast((r && r.error) || '打开失败', 'err');
+        drawerLog('打开日志目录', false, (r && r.error));
+      }
+    }).catch(function (e) {
+      toast('打开出错: ' + e, 'err');
+      drawerLog('打开日志目录', false, String(e));
+    }).finally(function () {
+      restoreButton(btn, '打开', 'open-logs-folder');
     });
   }
 

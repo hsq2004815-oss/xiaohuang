@@ -8,6 +8,7 @@ Reuses existing status_control_service for all business logic.
 from __future__ import annotations
 
 import json
+import os
 import traceback
 from dataclasses import asdict
 from pathlib import Path
@@ -203,6 +204,18 @@ class ControlPanelWebApi:
             })
         except Exception:
             return _fail(f"获取路径失败: {traceback.format_exc()}", "path_error")
+
+    def open_logs_folder(self) -> dict:
+        try:
+            logs_dir = (self._project_root / "logs").resolve()
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(logs_dir))  # type: ignore[attr-defined]
+            _record_cp_event("open_logs_folder", f"日志目录已打开: {logs_dir}")
+            return _ok(data={"path": str(logs_dir)}, message="日志目录已打开")
+        except Exception:
+            msg = f"打开日志目录失败: {traceback.format_exc()}"
+            _record_cp_event("open_logs_folder", msg, "error")
+            return _fail(msg, "open_logs_error")
 
 
 def _record_cp_event(event_type: str, message: str, level: str = "info") -> None:

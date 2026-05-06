@@ -26,6 +26,14 @@
 - nvidia-smi 可见 Python 占用 GPU 显存（约 1.7GB）
 - voice_overlay 日志出现 openwakeword_wake_event / command_record_start / Overlay command transcription / Overlay reply source=llm
 
+### V1.3B-D Open Logs Folder（2026-05-06）
+
+- Web 控制面板新增"打开日志目录"按钮，点击后用系统资源管理器打开项目 `logs/` 目录
+- `control_panel_web_service.py` 新增 `open_logs_folder()` 薄 API
+- 后端只打开项目内 `logs` 目录，不接受前端传入路径
+- Runtime Event 记录 `control_panel/open_logs_folder` 事件
+- 未修改 voice overlay / wake / STT / LLM / TTS 主链路
+
 ### V1.3B-C Runtime Event Stream（2026-05-06）
 
 - 新增 `capabilities/runtime_events/` — 独立 capability 目录

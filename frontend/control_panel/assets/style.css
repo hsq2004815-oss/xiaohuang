@@ -518,6 +518,26 @@ body{min-width:0}
   transition:all .18s var(--ease-reveal);
 }
 .drawer-export-btn:hover{background:rgba(0,213,143,0.18);color:#fff}
+.drawer-open-folder-btn{
+  border:1px solid rgba(79, 115, 255, 0.35);
+  background:linear-gradient(135deg, rgba(255,255,255,0.82), rgba(220,230,255,0.72));
+  color:var(--accent-blue);
+  border-radius:999px;
+  padding:5px 12px;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  white-space:nowrap;
+  box-shadow:0 8px 20px rgba(79,115,255,0.12);
+  transition:all .18s var(--ease-reveal);
+}
+
+.drawer-open-folder-btn:hover{
+  transform:translateY(-1px);
+  background:linear-gradient(135deg, rgba(255,255,255,0.96), rgba(205,220,255,0.88));
+  box-shadow:0 12px 26px rgba(79,115,255,0.18);
+}
+.drawer-open-folder-btn:hover{background:rgba(255,255,255,0.2);color:#fff}
 
 .drawer-rail{
   grid-area:drawer;
