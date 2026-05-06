@@ -11,6 +11,7 @@
   var lastStatusData = null;
   var lastLogPaths = null;
   var lastRuntimeEvents = [];
+  var lastStartupDiagnostic = null;
   var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
 
   /* ─── API ─── */
@@ -455,12 +456,18 @@
 
     apiCall('start_xiaohuang').then(function (r) {
       if (r && r.ok) {
+        lastStartupDiagnostic = null;
         toast(r.message || '启动成功', 'ok');
         drawerLog('启动小黄', true, r.message);
         setTimeout(refreshStatus, 3000);
       } else {
-        toast((r && r.error) || '启动失败', 'err');
-        drawerLog('启动小黄', false, (r && r.error));
+        var diag = (r && r.data && r.data.diagnostic) ? r.data.diagnostic : null;
+        lastStartupDiagnostic = diag;
+        showStartupDiagnostic(diag);
+        var msg = (r && r.error) || '启动失败';
+        if (diag && diag.summary) msg = diag.summary;
+        toast(msg, 'err');
+        drawerLog('启动小黄', false, msg);
         refreshStatus();
       }
     }).catch(function (e) {
@@ -507,12 +514,18 @@
 
     apiCall('restart_xiaohuang').then(function (r) {
       if (r && r.ok) {
+        lastStartupDiagnostic = null;
         toast('重启成功', 'ok');
         drawerLog('重启小黄', true);
         setTimeout(refreshStatus, 5000);
       } else {
-        toast((r && r.error) || '重启失败', 'err');
-        drawerLog('重启小黄', false, (r && r.error));
+        var diag = (r && r.data && r.data.diagnostic) ? r.data.diagnostic : null;
+        lastStartupDiagnostic = diag;
+        showStartupDiagnostic(diag);
+        var msg = (r && r.error) || '重启失败';
+        if (diag && diag.summary) msg = diag.summary;
+        toast(msg, 'err');
+        drawerLog('重启小黄', false, msg);
         refreshStatus();
       }
     }).catch(function (e) {
@@ -547,6 +560,18 @@
     return el ? (el.textContent || '').trim() : '';
   }
 
+  function showStartupDiagnostic(diag) {
+    var lastError = $('drawer-last-error');
+    if (!lastError) return;
+    if (!diag || !diag.summary) return;
+    var text = '启动失败：' + escapeHtml(diag.summary);
+    if (diag.suggestion) text += '\n建议：' + escapeHtml(diag.suggestion);
+    if (diag.source_file) text += '\n来源：' + escapeHtml(diag.source_file);
+    lastError.textContent = text;
+    lastError.className = 'drawer-value err';
+    lastError.style.whiteSpace = 'pre-wrap';
+  }
+
   function doExportDiag(btn) {
     if (!btn || btn.disabled) return;
     setButtonLoading(btn, '导出中...', 'export-diag');
@@ -565,7 +590,8 @@
         last_operation: collectDrawerText('drawer-last-op')
       },
       history: opHistory,
-      runtime_events: lastRuntimeEvents
+      runtime_events: lastRuntimeEvents,
+      startup_diagnostic: lastStartupDiagnostic || {}
     };
 
     apiCall('export_diagnostics_text', payload).then(function (r) {

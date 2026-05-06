@@ -105,12 +105,16 @@ class ControlPanelWebApi:
             result = run_start_operation(self._project_root, path)
             if result.ok:
                 _record_cp_event("start_xiaohuang", "启动小黄成功")
-            else:
-                _record_cp_event("start_xiaohuang", f"启动失败: {result.message}", "error")
-            return _ok(
-                data={"success": result.ok, "message": result.message},
-                message=result.message,
-            )
+                return _ok(
+                    data={"success": True, "message": result.message},
+                    message=result.message,
+                )
+            diagnostic = _run_startup_diagnostic(self._project_root)
+            _record_startup_diagnostic_event(diagnostic)
+            data = {"success": False, "message": result.message}
+            if diagnostic.kind not in ("none",):
+                data["diagnostic"] = diagnostic.to_dict()
+            return _ok(data=data, message=result.message)
         except Exception:
             msg = f"启动失败: {traceback.format_exc()}"
             _record_cp_event("start_xiaohuang", msg, "error")
@@ -138,12 +142,16 @@ class ControlPanelWebApi:
             result = run_restart_operation(self._project_root, path)
             if result.ok:
                 _record_cp_event("restart_xiaohuang", "重启小黄成功")
-            else:
-                _record_cp_event("restart_xiaohuang", f"重启失败: {result.message}", "error")
-            return _ok(
-                data={"success": result.ok, "message": result.message},
-                message=result.message,
-            )
+                return _ok(
+                    data={"success": True, "message": result.message},
+                    message=result.message,
+                )
+            diagnostic = _run_startup_diagnostic(self._project_root)
+            _record_startup_diagnostic_event(diagnostic)
+            data = {"success": False, "message": result.message}
+            if diagnostic.kind not in ("none",):
+                data["diagnostic"] = diagnostic.to_dict()
+            return _ok(data=data, message=result.message)
         except Exception:
             msg = f"重启失败: {traceback.format_exc()}"
             _record_cp_event("restart_xiaohuang", msg, "error")
@@ -242,3 +250,39 @@ def _coerce_optional_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _run_startup_diagnostic(project_root: Path):
+    try:
+        from xiaohuang.capabilities.startup_diagnostics.service import (
+            diagnose_startup_failure,
+        )
+        return diagnose_startup_failure(project_root)
+    except Exception:
+        from xiaohuang.capabilities.startup_diagnostics.models import StartupDiagnostic
+        return StartupDiagnostic(
+            kind="none",
+            severity="info",
+            summary="",
+            suggestion="",
+        )
+
+
+def _record_startup_diagnostic_event(diagnostic) -> None:
+    if diagnostic.kind in ("none",):
+        return
+    try:
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        record_event(
+            "control_panel",
+            "startup_diagnostic",
+            diagnostic.summary,
+            level=diagnostic.severity,
+            details={
+                "kind": diagnostic.kind,
+                "suggestion": diagnostic.suggestion,
+                "source_file": diagnostic.source_file or "",
+            },
+        )
+    except Exception:
+        pass

@@ -26,6 +26,18 @@
 - nvidia-smi 可见 Python 占用 GPU 显存（约 1.7GB）
 - voice_overlay 日志出现 openwakeword_wake_event / command_record_start / Overlay command transcription / Overlay reply source=llm
 
+### V1.3C-A Startup Failure Diagnostics（2026-05-07）
+
+- 新增 `capabilities/startup_diagnostics/` — 独立 capability 目录
+- `startup_diagnostics/service.py`：读取日志尾部，识别 5 类常见启动失败原因
+- 能识别：内存不足/模型加载失败、run_env.ps1 解析错误、端口占用/health 不可达、模型缓存/下载异常、未知错误
+- 启动/重启失败时自动调用诊断，结果附加到 API response 的 `diagnostic` 字段
+- 前端 `drawer-last-error` 展示诊断摘要、建议和日志来源
+- Runtime Event 记录 `control_panel/startup_diagnostic` 事件
+- 诊断导出 TXT 新增"八、启动失败诊断" section
+- 未修改 voice overlay / wake / STT / LLM / TTS 主链路
+- 新增 `tests/test_startup_diagnostics_service.py`（28 tests）
+
 ### V1.3B-D Open Logs Folder（2026-05-06）
 
 - Web 控制面板新增"打开日志目录"按钮，点击后用系统资源管理器打开项目 `logs/` 目录

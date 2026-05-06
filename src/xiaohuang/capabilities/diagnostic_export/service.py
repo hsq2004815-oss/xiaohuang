@@ -133,6 +133,19 @@ def format_diagnostics_text(input_data: dict) -> str:
         _a("暂无运行事件")
     _a("")
 
+    # ── 八、启动失败诊断 ──
+    diag = input_data.get("startup_diagnostic") if isinstance(input_data, dict) else None
+    if diag and isinstance(diag, dict) and diag.get("kind", "none") not in ("none", ""):
+        _a("八、启动失败诊断")
+        _a(f"- 类型：{_esc(str(diag.get('kind', '--')))}")
+        _a(f"- 严重程度：{_esc(str(diag.get('severity', '--')))}")
+        _a(f"- 摘要：{_esc(str(diag.get('summary', '--')))}")
+        _a(f"- 建议：{_esc(str(diag.get('suggestion', '--')))}")
+        source = diag.get("source_file", "")
+        if source:
+            _a(f"- 日志来源：{_esc(str(source))}")
+        _a("")
+
     return "\n".join(lines)
 
 
