@@ -146,8 +146,8 @@ class VoiceOverlayApp:
     Tkinter overlay so run_overlay_runtime() needs no changes.
     """
 
-    _W = 680
-    _H = 120
+    _W = 720
+    _H = 160
 
     def __init__(
         self,
