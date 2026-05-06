@@ -1,0 +1,52 @@
+/* XiaoHuang Voice Dock — minimal styling */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hud-anchor {
+  position: fixed;
+  bottom: 0; left: 0;
+  width: 100%; height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 12px;
+  opacity: 1;
+  transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateY(0);
+  pointer-events: none;
+}
+
+.hud-anchor.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hud-anchor.hiding {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.wave-box {
+  position: relative;
+  width: 660px; height: 110px;
+}
+
+#waveCanvas {
+  display: block;
+  width: 100%; height: 100%;
+}
