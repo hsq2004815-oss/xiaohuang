@@ -1,11 +1,11 @@
-# 小黄 Windows 桌面 AI 助手 V1.2E（openWakeWord overlay listener）
+# 小黄 Windows 桌面 AI 助手 V1.3（PySide6 Voice Dock + GPU STT）
 
-小黄是一个 Windows 桌面 AI 助手项目。当前已从 V0.9.1 单句原型演进到 V1.2E openWakeWord feature flag 接入阶段。
+小黄是一个 Windows 桌面 AI 助手项目。当前已从 V0.9.1 单句原型演进到 V1.3 PySide6 透明音波浮窗 + openWakeWord 本地唤醒 + 可配置 CUDA STT 阶段。
 
-管道：唤醒后听一句话 → STT server 转写 → DeepSeek 单句回复（或规则 fallback） → 可选 edge-tts 播放 → 多轮会话（可选）。
+管道：openWakeWord 本地唤醒 → VAD 录命令句 → STT server 转写 → DeepSeek 单句回复（或规则 fallback） → 可选 edge-tts 播放 → 多轮会话（可选）。
 
 ```text
-config.json / secrets.ps1 → STT server 常驻 → voice_overlay 悬浮窗 → STT 文本匹配唤醒词 → VAD 录命令句 → STT server 转写 → DeepSeek 单句回复或规则 fallback → 可选 edge-tts 播放 → 多轮会话 follow-up
+config.json / secrets.ps1 → STT server 常驻 → openWakeWord 本地唤醒 → voice_overlay PySide6 透明音波浮窗 → VAD 录命令句 → STT server 转写 → DeepSeek 单句回复或规则 fallback → 可选 edge-tts 播放 → 多轮会话 follow-up
 ```
 
 ## 当前能力
@@ -20,11 +20,24 @@ config.json / secrets.ps1 → STT server 常驻 → voice_overlay 悬浮窗 → 
 
 ### 语音与回复
 
-- STT 引擎：FunASR SenseVoiceSmall，常驻 server 模式
-- LLM 回复：DeepSeek 单句回复 + 本地规则 fallback
-- TTS 后台播放：edge-tts 合成 → 后台音频播放，不阻塞 UI
+- openWakeWord 本地唤醒：hey jarvis
+- STT 引擎：FunASR SenseVoiceSmall，常驻 server 模式，支持 cpu / cuda:0
+- LLM 回复：DeepSeek API 单句回复 + 本地规则 fallback
+- TTS 后台播放：edge-tts 在线合成 → 后台音频播放，不阻塞 UI
 - latency metrics：每轮录音/STT/LLM/TTS 耗时追踪
 - 回复来源追踪：llm / rule / rule_fallback_no_key / rule_fallback_error / tool_unavailable
+
+### Voice Overlay
+
+- 最终方案：PySide6 / QWidget / QPainter 透明音波浮窗
+- 720x160 无边框置顶窗口，靠屏幕底部居中
+- 9 种状态风格（idle / wake_checking / wake_detected / listening / transcribing / replying / speaking / result / error）
+- 多层音波渲染 + 线性渐变边缘淡出 + 颜色/振幅/速度平滑插值
+
+### Web Control Panel
+
+- pywebview + frontend/control_panel/* Liquid Glass 风格 Web 控制面板
+- 支持启动/停止/重启小黄、查看 STT/overlay/health 状态、保存配置
 
 ### 用户配置中控层（V1.1.3A 核心）
 
@@ -60,12 +73,49 @@ config.json / secrets.ps1 → STT server 常驻 → voice_overlay 悬浮窗 → 
 .\scripts\stop_xiaohuang.ps1 -StopSttServer
 ```
 
+### 最新启动命令
+
+STT server：
+
+```powershell
+cd E:\Projects\xiaohuang
+$env:PYTHONPATH = "E:\Projects\xiaohuang\src"
+$env:PYTHONDONTWRITEBYTECODE = "1"
+
+& "F:\for_xiaohuang\conda310\python.exe" .\scripts\stt_server.py --host 127.0.0.1 --port 8766
+```
+
+检查 STT health：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8766/health
+```
+
+控制面板：
+
+```powershell
+cd E:\Projects\xiaohuang
+$env:PYTHONPATH = "E:\Projects\xiaohuang\src"
+$env:PYTHONDONTWRITEBYTECODE = "1"
+
+& "F:\for_xiaohuang\conda310\python.exe" .\scripts\control_panel_web.py
+```
+
+voice overlay debug：
+
+```powershell
+& "F:\for_xiaohuang\conda310\python.exe" .\scripts\voice_overlay.py --debug
+```
+
+### 最终技术路线
+
+Voice overlay 最终方案是 **PySide6 / QPainter**。不要把 voice overlay 改回 pywebview HTML、Tkinter Cyber HUD、Tkinter Canvas/Pillow waveform。
+
 ## 当前边界
 
 - **还不执行工具**：LLM 回复不接浏览器/QQ/微信/opencode/opencli/爬虫/文件系统
 - **还不做复杂 Settings UI**：配置通过文本编辑 `config.json`
-- **还不做高级 HUD / 安装器**：当前已有 V1.1.4C 托盘启动控制，但不做开机自启或安装器
-- **当前 wake 仍是 STT 文本匹配**：不是真正 KWS 模型（openWakeWord / fsmn-kws）
+- **还不做安装器/开机自启**：当前已有 V1.1.4C 托盘启动控制
 - **LLM 仍是单句回复**：不做多轮上下文记忆
 - **不做离线 TTS**：edge-tts 依赖网络
 
@@ -74,9 +124,13 @@ config.json / secrets.ps1 → STT server 常驻 → voice_overlay 悬浮窗 → 
 ### 本机已验证环境
 
 - Python: `F:\for_xiaohuang\conda310\python.exe`
+- PySide6>=6.11.0
 - 麦克风：`device 0`
 - 模型缓存：`F:\for_xiaohuang\models\modelscope`
 - STT：FunASR / SenseVoiceSmall
+- torch/torchaudio：CPU 或 CUDA 版
+- CUDA 验证环境：torch 2.10.0+cu126 / torchaudio 2.10.0+cu126
+- GPU：NVIDIA GeForce RTX 4050 Laptop GPU
 - ffmpeg：已通过 `winget` 安装
 
 ### 启动前准备
@@ -99,9 +153,47 @@ $env:DEEPSEEK_API_KEY = "sk-..."
 
 ### STT 安装
 
+CPU：
+
 ```powershell
-python -m pip install funasr modelscope torch torchaudio
+& "F:\for_xiaohuang\conda310\python.exe" -m pip install torch torchaudio
 ```
+
+GPU（CUDA 12.6）：
+
+```powershell
+& "F:\for_xiaohuang\conda310\python.exe" -m pip install torch==2.10.0 torchaudio==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cu126
+```
+
+```powershell
+python -m pip install funasr modelscope
+```
+
+### STT Device 配置
+
+`stt.device` 控制 FunASR / SenseVoiceSmall 推理设备，默认 `cpu`。
+
+CPU：
+
+```json
+{
+  "stt": {
+    "device": "cpu"
+  }
+}
+```
+
+GPU：
+
+```json
+{
+  "stt": {
+    "device": "cuda:0"
+  }
+}
+```
+
+如果配置 `cuda:0` 但 `torch.cuda.is_available()` 为 `False`，STT server 会 warning 并 fallback 到 `cpu`。
 
 ---
 
@@ -264,25 +356,25 @@ V1.2D-B 真人 safety-check 已通过：device 0、10 秒、2 轮重复运行后
 
 V1.2D-C 已新增 `src/xiaohuang/wake_command_bridge_service.py` 和 `scripts/wake_command_bridge_demo.py`，用 fake `WakeEvent` 与 fake command starter 验证 bridge 状态机：`accepted`、`cooldown`、`command_active`、`tts_active`、`disabled`、`bridge_busy`、`invalid_event`、`recorder_error`。默认 demo 不打开麦克风、不启动 openWakeWord/STT/overlay/LLM/TTS；`events=3`、`interval=0.5`、`cooldown=2.5` 时只会启动一次 fake command starter。本阶段仍不修改 `voice_overlay.py`，不替换 STT 文本唤醒；下一步是 V1.2D-D 只读分析正式 command recorder 接入点。
 
-V1.2E 已把 openWakeWord 以 feature flag 接入 `voice_overlay.py` 主链路。默认 `wake.engine` 仍是 `stt_text`，旧 STT 文本唤醒行为不变；只有显式配置 `wake.engine="openwakeword"` 时才启动 `OpenWakeWordAdapter`。openWakeWord 由 `voice_overlay.py` 自己启动后台 listener thread，并通过 `OpenWakeWordAdapter.run_until_stopped()` 保持模型和 sounddevice input stream 连续运行；收到 accepted `WakeEvent` 后投递到 overlay worker，并进入旧 VAD command recorder / STT command 入口。openWakeWord 依赖或运行失败时，`fallback_enabled=true` 会回退到旧 `stt_text` 路径；`fallback_enabled=false` 会记录错误并安全停止。
+V1.2E 已把 openWakeWord 以 feature flag 接入 `voice_overlay.py` 主链路（已完成）。V1.3 已通过真人验收，当前默认使用 openWakeWord 唤醒，`wake.engine` 为 `openwakeword`。
 
 V1.2E listener 日志关键字：启动时输出 `wake_engine_selected`、`wake_fallback_enabled`、`wake_device_index`、`wake_cooldown_seconds`、`wake_sensitivity`；openWakeWord 分支输出 `openwakeword_listener_starting`、`openwakeword_listener_running`、周期性 `openwakeword_listener_status` 和 `openwakeword_listener_stopped`；accepted 事件输出 `openwakeword_wake_event`、`openwakeword_bridge_decision`、`command_record_start source=openwakeword`。command recording 和 TTS 播放期间会屏蔽 wake event，避免重复触发或自唤醒。
 
-最小 openWakeWord 配置示例：
+V1.3 当前 openWakeWord 配置示例：
 
 ```json
 {
-  "wake": {
-    "engine": "openwakeword",
-    "phrases": ["贾维斯"],
-    "fallback_enabled": true,
-    "sensitivity": 0.5,
-    "cooldown_seconds": 2.5,
-    "device_index": 0,
-    "model_path": null,
-    "model_name": "hey_jarvis"
+  “wake”: {
+    “engine”: “openwakeword”,
+    “phrases”: [“贾维斯”],
+    “fallback_enabled”: true,
+    “sensitivity”: 0.5,
+    “cooldown_seconds”: 2.5,
+    “device_index”: 0,
+    “model_path”: null,
+    “model_name”: “hey_jarvis”
   }
 }
 ```
 
-人工验证建议：先用默认/`stt_text` 确认旧“贾维斯”唤醒仍可用；再切到 `openwakeword` 后说 “hey jarvis”，确认进入命令录音、命令结束后能继续等待下一次唤醒，TTS 播放期间不重复自唤醒；需要回滚时改回 `wake.engine="stt_text"`。
+V1.3 PySide6 Voice Dock + GPU STT 完整验收记录见 `docs/ACCEPTANCE_V1_3_PYSIDE6_GPU_STT.md`。

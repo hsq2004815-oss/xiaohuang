@@ -33,6 +33,9 @@ notepad "$env:USERPROFILE\.xiaohuang\config.json"
     "aliases": ["小凰", "晓黄"],
     "wake_window_seconds": 3
   },
+  "stt": {
+    "device": "cpu"
+  },
   "audio": {
     "device_id": 0,
     "max_seconds": 10,
@@ -83,6 +86,24 @@ notepad "$env:USERPROFILE\.xiaohuang\config.json"
 | phrases | string[] | `["小黄"]` | Wake phrases |
 | aliases | string[] | `[]` | Low-confidence aliases |
 | wake_window_seconds | float | 3.0 | Short recording window per wake check |
+
+### stt
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| device | string | `"cpu"` | FunASR / SenseVoiceSmall inference device: `cpu` or `cuda:0` |
+
+When `stt.device` is set to `cuda:0` but PyTorch/CUDA is unavailable, the STT server prints a warning and falls back to `cpu`.
+
+Example:
+
+```json
+{
+  "stt": {
+    "device": "cuda:0"
+  }
+}
+```
 
 ### audio
 

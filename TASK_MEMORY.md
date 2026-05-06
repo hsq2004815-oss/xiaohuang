@@ -1,5 +1,33 @@
 # Task Memory
 
+## Current Snapshot（2026-05-06）— V1.3 PySide6 Voice Dock + Configurable CUDA STT
+
+- 当前阶段：V1.3 PySide6 transparent voice dock + configurable CUDA STT
+- Voice overlay 最终方案：PySide6 / QWidget / QPainter
+- 不再使用 pywebview HTML voice overlay
+- 不再使用 Tkinter Canvas / Pillow waveform 作为最终方案
+- 控制面板：pywebview Web Control Panel，frontend/control_panel/*
+- wake engine：openwakeword
+- wake phrase：hey jarvis
+- STT：FunASR SenseVoiceSmall，常驻 stt_server.py
+- STT device：支持 cpu / cuda:0，默认 cpu
+- GPU 环境：torch 2.10.0+cu126，torchaudio 2.10.0+cu126，RTX 4050 Laptop GPU
+- /health 已验证 stt_device=cuda:0、model_loaded=True、status=ready
+- LLM：DeepSeek API，日志中 source=llm
+- TTS：edge-tts 在线合成
+
+### 验证结果（2026-05-06）
+
+- compileall OK
+- unittest discover OK：547 tests OK
+- scripts\stt_server.py --help OK
+- PySide6 overlay 人工验收 OK
+- CUDA STT 人工验收 OK
+- nvidia-smi 可见 Python 占用 GPU 显存（约 1.7GB）
+- voice_overlay 日志出现 openwakeword_wake_event / command_record_start / Overlay command transcription / Overlay reply source=llm
+
+---
+
 ## RTK onboarding snapshot（2026-05-06）
 
 - Purpose: Windows 桌面语音助手；当前真实代码已超过 README 的 V1.2E，处在 V1.3 UI / overlay dock 与 Web 控制面板迭代后状态。
@@ -21,15 +49,16 @@
 - `requirements.txt` 新增 `PySide6>=6.11.0`；未新增其他 GUI 依赖。
 - 验证：`voice_overlay.py --help` OK；`compileall -q src scripts tests` OK；`unittest discover -s tests` 539 tests OK；有界 Qt preview smoke 自动打开/关闭，`stop_event_set=True`。
 
-## 当前最新状态
+## 历史状态快照（已过期，仅供参考）
 
-- **阶段**：V1.3-UI-A — pywebview Web 控制面板原型
-- **最新架构 commit**：V1.3-UI-A pywebview control panel prototype（见 git log）
-- **最新功能 commit**：V1.2E-B 控制面板布局修复（见 git log）
-- **新增**：`control_panel_web_service.py` + `control_panel_web.py` + frontend HTML/CSS/JS + tests
+以下"当前最新状态"内容曾描述 V1.3-UI-A 阶段（pywebview Web 控制面板原型阶段），现已过时。当前真实状态见顶部 **Current Snapshot（2026-05-06）**。
+
+- **历史阶段**：V1.3-UI-A — pywebview Web 控制面板原型（已过时）
+- **历史 commit**：V1.3-UI-A pywebview control panel prototype（见 git log）
+- **历史新增**：`control_panel_web_service.py` + `control_panel_web.py` + frontend HTML/CSS/JS + tests
 - **分支**：`main...origin/main`
-- **工作区**：当前修复将 openWakeWord listener 从 1 秒短周期 `run_for_duration()` 改为连续 `run_until_stopped()`；运行产物均 ignored
-- **测试**：本阶段要求 unittest / compileall / voice_overlay、wake_engine_demo、control_panel help；本次不自动跑真实 openWakeWord 主链路
+- **工作区**：openWakeWord listener 已从 1 秒短周期改为连续 `run_until_stopped()`
+- **测试**：unittest / compileall / voice_overlay、wake_engine_demo、control_panel help 均通过
 
 ### V1.3-UI-B Web 控制面板 Control Shell 重做（2026-05-05）
 
