@@ -1,52 +1,57 @@
-/* XiaoHuang Voice Dock — minimal styling */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+/* 小黄 · 纯音波浮窗 */
+:root {
+  --hud-w: 680px;
+  --hud-h: 120px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
 html, body {
-  width: 100%; height: 100%;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
   background: transparent;
-  font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  color: #c8d4e6;
 }
-
+/* 淡入淡出 */
 .hud-anchor {
   position: fixed;
-  bottom: 0; left: 0;
-  width: 100%; height: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 12px;
-  opacity: 1;
-  transition: opacity 0.45s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
-  transform: translateY(0);
-  pointer-events: none;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%) translateY(18px);
+  width: var(--hud-w);
+  height: var(--hud-h);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
-
 .hud-anchor.visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: translateX(-50%) translateY(0);
 }
-
 .hud-anchor.hiding {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateX(-50%) translateY(12px);
+  transition: opacity 0.5s cubic-bezier(0.55, 0.06, 0.68, 0.19),
+              transform 0.5s cubic-bezier(0.55, 0.06, 0.68, 0.19);
 }
-
 .hud {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: auto;
+  background: transparent;
+  border: none;
 }
-
 .wave-box {
-  position: relative;
-  width: 660px; height: 110px;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-
-#waveCanvas {
-  display: block;
-  width: 100%; height: 100%;
+#waveCanvas { width: 100%; height: 100%; display: block; }
+@media (max-width: 740px) {
+  :root { --hud-w: 94vw; }
 }

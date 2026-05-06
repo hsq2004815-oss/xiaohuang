@@ -1,214 +1,304 @@
-/* XiaoHuang Voice Dock — Canvas waveform HUD */
+/* 小黄 · 纯音波浮窗 — Canvas waveform engine */
 (function () {
   'use strict';
 
-  /* ─── State config ──────────────────────────────────── */
+  /* ══════════════════════════════════════════════════════════
+     STATES — exact copy from prototype
+     ══════════════════════════════════════════════════════════ */
   var STATES = {
-    idle:           { color: '#4dd0e1', glow: 'rgba(77,208,225,0.22)',  amp: 4,  speed: 1.0,  barCount: 42 },
-    wake_checking:  { color: '#40c4ff', glow: 'rgba(64,196,255,0.25)',  amp: 5,  speed: 1.2,  barCount: 42 },
-    wake_detected:  { color: '#00e5ff', glow: 'rgba(0,229,255,0.35)',   amp: 24, speed: 2.0,  barCount: 42 },
-    listening:      { color: '#00e5ff', glow: 'rgba(0,229,255,0.38)',   amp: 32, speed: 2.4,  barCount: 42 },
-    transcribing:   { color: '#18ffff', glow: 'rgba(24,255,255,0.32)',  amp: 20, speed: 1.8,  barCount: 42 },
-    replying:       { color: '#448aff', glow: 'rgba(68,138,255,0.30)',  amp: 20, speed: 1.7,  barCount: 42 },
-    speaking:       { color: '#b388ff', glow: 'rgba(179,136,255,0.32)', amp: 28, speed: 2.2,  barCount: 42 },
-    result:         { color: '#00e676', glow: 'rgba(0,230,118,0.22)',   amp: 6,  speed: 0.9,  barCount: 42 },
-    error:          { color: '#ff5252', glow: 'rgba(255,82,82,0.30)',   amp: 14, speed: 2.8,  barCount: 42 }
+    idle: {
+      tag: 'IDLE', name: '空闲',
+      color: '#4a9eff',
+      amp: 3.2, speed: 0.65, layers: 3, style: 'breathe', pulse: 2.6
+    },
+    wake_checking: {
+      tag: 'WAKE CHECK', name: '唤醒检测',
+      color: '#3d8bfd',
+      amp: 5.5, speed: 1.1, layers: 4, style: 'scan', pulse: 1.7
+    },
+    wake_detected: {
+      tag: 'DETECTED', name: '已唤醒',
+      color: '#00e5a0',
+      amp: 13, speed: 1.5, layers: 5, style: 'active', pulse: 1.1
+    },
+    listening: {
+      tag: 'LISTENING', name: '正在听',
+      color: '#00e5a0',
+      amp: 15, speed: 1.65, layers: 5, style: 'active', pulse: 0.9
+    },
+    transcribing: {
+      tag: 'TRANSCRIBING', name: '正在转写',
+      color: '#7c6fff',
+      amp: 8, speed: 1.2, layers: 4, style: 'mid', pulse: 1.4
+    },
+    replying: {
+      tag: 'REPLYING', name: '正在回答',
+      color: '#00b4ff',
+      amp: 9, speed: 1.15, layers: 4, style: 'mid', pulse: 1.4
+    },
+    speaking: {
+      tag: 'SPEAKING', name: '正在播报',
+      color: '#9b6dff',
+      amp: 20, speed: 1.9, layers: 6, style: 'heavy', pulse: 0.7
+    },
+    result: {
+      tag: 'RESULT', name: '完成',
+      color: '#00d68f',
+      amp: 4.5, speed: 0.75, layers: 3, style: 'soft', pulse: 2.0
+    },
+    error: {
+      tag: 'ERROR', name: '错误',
+      color: '#ff4757',
+      amp: 12, speed: 3.5, layers: 3, style: 'alert', pulse: 0.35
+    }
   };
 
-  var stateKey = 'idle';
-  var stateCfg = STATES.idle;
-  var targetCfg = STATES.idle;
-  var visible = true;
-  var phase = 0;
-  var animId = null;
-  var flashPhase = 0;
-  var flashIntensity = 0;
-
-  /* ─── DOM refs ─────────────────────────────────────── */
-  var anchor = document.getElementById('hud-anchor');
+  /* ── DOM ─────────────────────────────────────────────── */
   var canvas = document.getElementById('waveCanvas');
   var ctx = canvas.getContext('2d');
-  var W = canvas.width;
-  var H = canvas.height;
+  var hudAnchor = document.getElementById('hudAnchor');
 
-  /* ─── Color interpolation ──────────────────────────── */
-  function hexToRgb(hex) {
-    var v = parseInt(hex.slice(1), 16);
-    return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
-  }
+  /* ── Live interpolation state ────────────────────────── */
+  var currentKey = 'idle';
+  var cfg = STATES.idle;
+  var liveAmp = 0;
+  var liveSpeed = cfg.speed;
+  var liveR = 74, liveG = 158, liveB = 255;
+  var tgtR = 74, tgtG = 158, tgtB = 255;
+  var time = 0;
+  var lastTs = 0;
+  var flashAlpha = 0;
+  var isVisible = false;
+  var animId = null;
 
-  function lerpColor(c1, c2, t) {
-    t = Math.max(0, Math.min(1, t));
+  /* ── hex2rgb ─────────────────────────────────────────── */
+  function hex2rgb(hex) {
     return {
-      r: Math.round(c1.r + (c2.r - c1.r) * t),
-      g: Math.round(c1.g + (c2.g - c1.g) * t),
-      b: Math.round(c1.b + (c2.b - c1.b) * t)
+      r: parseInt(hex.slice(1, 3), 16),
+      g: parseInt(hex.slice(3, 5), 16),
+      b: parseInt(hex.slice(5, 7), 16)
     };
   }
 
-  function rgbStr(c) { return 'rgb(' + c.r + ',' + c.g + ',' + c.b + ')'; }
-  function rgbaStr(c, a) { return 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + a + ')'; }
-
-  var curColor = hexToRgb(STATES.idle.color);
-  var curGlow = STATES.idle.glow;
-  var curAmp = STATES.idle.amp;
-  var curSpeed = STATES.idle.speed;
-
-  /* ─── Flash on state change ────────────────────────── */
-  function flashOnChange(newKey) { flashPhase = 0; flashIntensity = 1.0; }
-
-  /* ─── Apply state ──────────────────────────────────── */
-  function applyState(key) {
-    if (!STATES[key]) return;
-    if (key !== stateKey) flashOnChange(key);
-    stateKey = key;
-    targetCfg = STATES[key];
+  /* ══════════════════════════════════════════════════════════
+     edgeFade — exact copy from prototype
+     Smoothstep envelope: wide fade at ends, flat center
+     ══════════════════════════════════════════════════════════ */
+  function edgeFade(nx) {
+    var fadeZone = 0.18;
+    if (nx <= 0) return 0;
+    if (nx >= 1) return 0;
+    if (nx < fadeZone) {
+      var t = nx / fadeZone;
+      return t * t * (3 - 2 * t);
+    }
+    if (nx > 1 - fadeZone) {
+      var t2 = (1 - nx) / fadeZone;
+      return t2 * t2 * (3 - 2 * t2);
+    }
+    return 1;
   }
 
-  /* ─── Render frame ─────────────────────────────────── */
-  function frame() {
-    if (!visible && flashIntensity <= 0.01) {
-      ctx.clearRect(0, 0, W, H);
-      animId = requestAnimationFrame(frame);
-      return;
+  /* ── fadeIn / fadeOut ────────────────────────────────── */
+  function fadeIn() {
+    hudAnchor.classList.remove('hiding');
+    void hudAnchor.offsetHeight;
+    hudAnchor.classList.add('visible');
+    isVisible = true;
+  }
+
+  function fadeOut() {
+    hudAnchor.classList.remove('visible');
+    hudAnchor.classList.add('hiding');
+    isVisible = false;
+  }
+
+  /* ── sizeCanvas with devicePixelRatio ────────────────── */
+  function sizeCanvas() {
+    var rect = canvas.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(rect.width * dpr);
+    canvas.height = Math.round(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', sizeCanvas);
+
+  /* ── applyState ──────────────────────────────────────── */
+  function applyState(key) {
+    if (!STATES[key]) return;
+    currentKey = key;
+    cfg = STATES[key];
+    var rgb = hex2rgb(cfg.color);
+    tgtR = rgb.r; tgtG = rgb.g; tgtB = rgb.b;
+    flashAlpha = 0.18;
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     frame(ts) — exact rendering loop from prototype
+     ══════════════════════════════════════════════════════════ */
+  function frame(ts) {
+    if (!lastTs) lastTs = ts;
+    var dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+    var k = 1 - Math.pow(0.035, dt);
+    liveAmp += (cfg.amp - liveAmp) * k;
+    liveSpeed += (cfg.speed - liveSpeed) * k;
+    liveR += (tgtR - liveR) * k;
+    liveG += (tgtG - liveG) * k;
+    liveB += (tgtB - liveB) * k;
+    if (flashAlpha > 0) flashAlpha = Math.max(0, flashAlpha - dt * 1.6);
+    time += dt * liveSpeed;
+    var w = canvas.getBoundingClientRect().width;
+    var h = canvas.getBoundingClientRect().height;
+    var cy = h / 2;
+    ctx.clearRect(0, 0, w, h);
+    var r = Math.round(liveR);
+    var g = Math.round(liveG);
+    var b = Math.round(liveB);
+    var style = cfg.style;
+    var layers = cfg.layers;
+
+    /* --- 多层音波 --- */
+    for (var i = layers - 1; i >= 0; i--) {
+      var t = i / layers;
+      var opacity = 0.06 + (1 - t) * 0.28;
+      var phOff = i * 0.62;
+      var fMul = 1 + i * 0.18;
+      var lw = Math.max(0.5, 1.7 - i * 0.18);
+      var amp = liveAmp;
+      switch (style) {
+        case 'breathe': amp *= 0.42 + 0.58 * Math.sin(time * 0.55 + i * 0.32); break;
+        case 'scan':    amp *= 0.5  + 0.5  * Math.sin(time * 0.8  + i * 0.28); break;
+        case 'active':  amp *= 0.62 + 0.38 * Math.sin(time * 1.25 + i * 0.48); break;
+        case 'mid':     amp *= 0.68 + 0.32 * Math.sin(time * 0.95 + i * 0.38); break;
+        case 'heavy':   amp *= (0.52 + 0.48 * Math.sin(time * 1.55 + i * 0.52)) * 1.18; break;
+        case 'soft':    amp *= 0.38 + 0.62 * Math.sin(time * 0.42 + i * 0.22); break;
+        case 'alert':   amp *= Math.abs(Math.sin(time * 5.5)) > 0.35 ? 1.0 : 0.12; break;
+      }
+      ctx.beginPath();
+      ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + opacity.toFixed(3) + ')';
+      ctx.lineWidth = lw;
+      for (var x = 0; x <= w; x += 2) {
+        var nx = x / w;
+        var env = edgeFade(nx);
+        var s1 = Math.sin(nx * 6.8  * fMul + time * 2.05 + phOff);
+        var s2 = Math.sin(nx * 10.2 * fMul + time * 1.62 + phOff * 1.35);
+        var s3 = Math.sin(nx * 3.4  * fMul + time * 2.55 + phOff * 0.75);
+        var s4 = Math.sin(nx * 15.0 * fMul + time * 1.15 + phOff * 0.45) * 0.12;
+        var val = (s1 * 0.54 + s2 * 0.24 + s3 * 0.14 + s4) * amp * env;
+        var y = cy + val;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
     }
 
-    ctx.clearRect(0, 0, W, H);
-
-    /* Smoothly blend toward target */
-    var t = 0.12;
-    var tc = hexToRgb(targetCfg.color);
-    curColor = lerpColor(curColor, tc, t);
-    curGlow = interpolateGlow(curGlow, targetCfg.glow, t);
-    curAmp = curAmp + (targetCfg.amp - curAmp) * t;
-    curSpeed = curSpeed + (targetCfg.speed - curSpeed) * t;
-
-    /* Flash decay */
-    flashIntensity = Math.max(0, flashIntensity - 0.04);
-    var flashColor = flashIntensity > 0
-      ? { r: 255, g: 255, b: 255 } : null;
-
-    var baseColor = flashColor
-      ? lerpColor(curColor, flashColor, flashIntensity * 0.6)
-      : curColor;
-
-    phase += curSpeed * 0.05;
-
-    var n = Math.round(curAmp > 16 ? targetCfg.barCount + 10 : targetCfg.barCount);
-    var barW = 3;
-    var gap = (W - 10) / n - barW;
-    var cx = W / 2;
-    var cy = H / 2;
-
-    /* ── Glow underlay ── */
+    /* --- 中心发光主线 --- */
     ctx.save();
-    ctx.globalAlpha = 0.45;
-    for (var i = 0; i < n; i++) {
-      var off = 0.25 + 0.75 * Math.abs(Math.sin(phase * 1.3 + i * 0.55));
-      var h = 3 + (curAmp * 1.5) * off;
-      var x = 5 + i * (barW + gap);
-      var y1 = cy - h / 2;
-      ctx.fillStyle = rgbStr(baseColor);
-      ctx.fillRect(x, y1, barW, h);
-    }
-    ctx.restore();
-
-    /* ── Main waveform bars ── */
-    for (var i2 = 0; i2 < n; i2++) {
-      var off2 = 0.22 + 0.78 * Math.abs(Math.sin(phase * 1.5 + i2 * 0.5));
-      var h2 = Math.max(2, 2 + curAmp * off2);
-      var x2 = 5 + i2 * (barW + gap);
-      var y2 = cy - h2 / 2;
-      ctx.fillStyle = rgbStr(baseColor);
-      ctx.fillRect(x2, y2, barW, h2);
-    }
-
-    /* ── Center glow line ── */
-    ctx.save();
-    ctx.globalAlpha = 0.35 + 0.15 * Math.sin(phase * 2);
-    ctx.strokeStyle = rgbStr(baseColor);
-    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    for (var i3 = 0; i3 < n; i3++) {
-      var off3 = 0.22 + 0.78 * Math.abs(Math.sin(phase * 1.5 + i3 * 0.5));
-      var h3 = Math.max(2, 2 + curAmp * off3);
-      var x3 = 5 + i3 * (barW + gap);
-      var yTop = cy - h3 / 2;
-      if (i3 === 0) ctx.moveTo(x3 + barW / 2, yTop);
-      else ctx.lineTo(x3 + barW / 2, yTop);
+    ctx.strokeStyle = 'rgba(' + r + ',' + g + ',' + b + ',0.78)';
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = 'rgba(' + r + ',' + g + ',' + b + ',0.85)';
+    ctx.shadowBlur = 18;
+    for (var x2 = 0; x2 <= w; x2 += 2) {
+      var nx2 = x2 / w;
+      var env2 = edgeFade(nx2);
+      var s1_2 = Math.sin(nx2 * 7.2 + time * 2.2);
+      var s2_2 = Math.sin(nx2 * 11.5 + time * 1.68);
+      var val2 = (s1_2 * 0.58 + s2_2 * 0.42) * liveAmp * 0.82 * env2;
+      var y2 = cy + val2;
+      if (x2 === 0) ctx.moveTo(x2, y2);
+      else ctx.lineTo(x2, y2);
     }
     ctx.stroke();
     ctx.restore();
 
-    /* ── Mirror bottom glow ── */
+    /* --- 下方渐变填充 --- */
     ctx.save();
-    ctx.globalAlpha = 0.18;
-    ctx.strokeStyle = rgbStr(baseColor);
-    ctx.lineWidth = 1;
     ctx.beginPath();
-    for (var i4 = 0; i4 < n; i4++) {
-      var off4 = 0.22 + 0.78 * Math.abs(Math.sin(phase * 1.5 + i4 * 0.5));
-      var h4 = Math.max(2, 2 + curAmp * off4);
-      var x4 = 5 + i4 * (barW + gap);
-      var yBot = cy + h4 / 2;
-      if (i4 === 0) ctx.moveTo(x4 + barW / 2, yBot);
-      else ctx.lineTo(x4 + barW / 2, yBot);
+    for (var x3 = 0; x3 <= w; x3 += 3) {
+      var nx3 = x3 / w;
+      var env3 = edgeFade(nx3);
+      var s1_3 = Math.sin(nx3 * 7.2 + time * 2.2);
+      var s2_3 = Math.sin(nx3 * 11.5 + time * 1.68);
+      var val3 = (s1_3 * 0.58 + s2_3 * 0.42) * liveAmp * 0.82 * env3;
+      var y3 = cy + val3;
+      if (x3 === 0) ctx.moveTo(x3, y3);
+      else ctx.lineTo(x3, y3);
     }
-    ctx.stroke();
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    var gf = ctx.createLinearGradient(0, cy, 0, h);
+    gf.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',0.06)');
+    gf.addColorStop(1, 'rgba(' + r + ',' + g + ',' + b + ',0.0)');
+    ctx.fillStyle = gf;
+    ctx.fill();
     ctx.restore();
+
+    /* --- 上方淡填充 --- */
+    ctx.save();
+    ctx.beginPath();
+    for (var x4 = 0; x4 <= w; x4 += 3) {
+      var nx4 = x4 / w;
+      var env4 = edgeFade(nx4);
+      var s1_4 = Math.sin(nx4 * 7.2 + time * 2.2);
+      var s2_4 = Math.sin(nx4 * 11.5 + time * 1.68);
+      var val4 = (s1_4 * 0.58 + s2_4 * 0.42) * liveAmp * 0.82 * env4;
+      var y4 = cy + val4;
+      if (x4 === 0) ctx.moveTo(x4, y4);
+      else ctx.lineTo(x4, y4);
+    }
+    ctx.lineTo(w, 0);
+    ctx.lineTo(0, 0);
+    ctx.closePath();
+    var gt = ctx.createLinearGradient(0, cy, 0, 0);
+    gt.addColorStop(0, 'rgba(' + r + ',' + g + ',' + b + ',0.035)');
+    gt.addColorStop(1, 'rgba(' + r + ',' + g + ',' + b + ',0.0)');
+    ctx.fillStyle = gt;
+    ctx.fill();
+    ctx.restore();
+
+    /* --- 边缘渐隐遮罩 (destination-out) --- */
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    var fadeW = w * 0.15;
+    var lg = ctx.createLinearGradient(0, 0, fadeW, 0);
+    lg.addColorStop(0, 'rgba(0,0,0,1)');
+    lg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = lg;
+    ctx.fillRect(0, 0, fadeW, h);
+    var rg = ctx.createLinearGradient(w - fadeW, 0, w, 0);
+    rg.addColorStop(0, 'rgba(0,0,0,0)');
+    rg.addColorStop(1, 'rgba(0,0,0,1)');
+    ctx.fillStyle = rg;
+    ctx.fillRect(w - fadeW, 0, fadeW, h);
+    ctx.restore();
+
+    /* --- 状态切换闪光 --- */
+    if (flashAlpha > 0.005) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + (flashAlpha * 0.12).toFixed(4) + ')';
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
 
     animId = requestAnimationFrame(frame);
   }
 
-  function interpolateGlow(from, to, t) {
-    var fr = parseGlow(from);
-    var tr = parseGlow(to);
-    var r = Math.round(fr[0] + (tr[0] - fr[0]) * t);
-    var g = Math.round(fr[1] + (tr[1] - fr[1]) * t);
-    var b = Math.round(fr[2] + (tr[2] - fr[2]) * t);
-    var a = fr[3] + (tr[3] - fr[3]) * t;
-    return 'rgba(' + r + ',' + g + ',' + b + ',' + a.toFixed(3) + ')';
-  }
-
-  function parseGlow(g) {
-    var m = g.match(/[\d.]+/g);
-    if (!m || m.length < 4) return [77, 208, 225, 0.22];
-    return [parseInt(m[0]), parseInt(m[1]), parseInt(m[2]), parseFloat(m[3])];
-  }
-
-  /* ─── Visibility ───────────────────────────────────── */
-  function fadeIn() {
-    visible = true;
-    anchor.classList.add('visible');
-    anchor.classList.remove('hiding');
-  }
-
-  function fadeOut() {
-    anchor.classList.add('hiding');
-    anchor.classList.remove('visible');
-    setTimeout(function () { visible = false; }, 500);
-  }
-
-  /* ─── Resize handler ──────────────────────────────── */
-  function onResize() {
-    W = canvas.width = canvas.clientWidth || 660;
-    H = canvas.height = canvas.clientHeight || 110;
-  }
-  window.addEventListener('resize', onResize);
-
-  /* ─── Public API ───────────────────────────────────── */
+  /* ── Public API for Python bridge ─────────────────────── */
   window.XiaoHuangHUD = {
     setState: function (key) { applyState(key); },
     fadeIn: fadeIn,
     fadeOut: fadeOut,
     setVisible: function (v) { if (v) fadeIn(); else fadeOut(); },
-    getState: function () { return stateKey; }
+    getState: function () { return currentKey; }
   };
 
-  /* ─── Init ─────────────────────────────────────────── */
-  onResize();
+  /* ── Init ─────────────────────────────────────────────── */
+  sizeCanvas();
   applyState('idle');
-  visible = true;
   fadeIn();
   animId = requestAnimationFrame(frame);
 })();
