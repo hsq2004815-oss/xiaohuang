@@ -4,7 +4,7 @@ html, body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: transparent;
+  background: transparent !important;
   font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   color: #c8d4e6;
 }
@@ -16,6 +16,7 @@ html, body {
   height: 100vh;
   z-index: 100;
   opacity: 0;
+  background: transparent !important;
   transform: translateY(18px);
   transition: opacity 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94),
               transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -36,7 +37,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background: transparent !important;
   border: none;
 }
 .wave-box {
@@ -45,5 +46,9 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  background: transparent !important;
 }
-#waveCanvas { width: 100%; height: 100%; display: block; }
+#waveCanvas {
+  width: 100%; height: 100%; display: block;
+  background: transparent !important;
+}
