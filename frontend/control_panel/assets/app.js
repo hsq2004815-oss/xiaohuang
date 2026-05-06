@@ -10,6 +10,7 @@
   var activeButton = null;
   var lastStatusData = null;
   var lastLogPaths = null;
+  var lastRuntimeEvents = [];
   var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
 
   /* ─── API ─── */
@@ -416,6 +417,7 @@
       var el = $('drawer-logs-path');
       if (el && r && r.ok && r.data) el.textContent = r.data.logs_directory || '--';
     });
+    apiCall('get_runtime_events', 20).then(renderRuntimeEvents);
   }
 
   function handleButtonClick(action, btn) {
@@ -520,6 +522,25 @@
     });
   }
 
+  function renderRuntimeEvents(response) {
+    var data = (response && response.ok && response.data) ? response.data : null;
+    var events = (data && data.events) ? data.events : [];
+    lastRuntimeEvents = events;
+    var el = $('drawer-runtime-events');
+    if (!el) return;
+    if (!events.length) {
+      el.innerHTML = '暂无运行事件';
+      return;
+    }
+    el.innerHTML = events.slice(-15).map(function (evt) {
+      var cls = evt.level === 'error' ? 'err' : evt.level === 'warning' ? 'warn' : '';
+      return '<div class="drawer-entry ' + cls + '"><span class="ts">' +
+        escapeHtml(evt.timestamp ? evt.timestamp.slice(-8) : '') + '</span>' +
+        escapeHtml(evt.source + '/' + evt.event_type) +
+        ' — ' + escapeHtml(evt.message || '') + '</div>';
+    }).join('');
+  }
+
   function collectDrawerText(id) {
     var el = $(id);
     return el ? (el.textContent || '').trim() : '';
@@ -542,7 +563,8 @@
         last_error: collectDrawerText('drawer-last-error'),
         last_operation: collectDrawerText('drawer-last-op')
       },
-      history: opHistory
+      history: opHistory,
+      runtime_events: lastRuntimeEvents
     };
 
     apiCall('export_diagnostics_text', payload).then(function (r) {

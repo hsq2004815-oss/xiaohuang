@@ -235,12 +235,29 @@ def main() -> int:
         daemon=True,
     )
     worker.start()
+    _record_voice_overlay_started(bootstrap)
     try:
         exit_code = qt_app.exec()
     finally:
         stop_event.set()
         worker.join(timeout=1.0)
     return int(exit_code)
+
+
+def _record_voice_overlay_started(bootstrap) -> None:
+    try:
+        from xiaohuang.capabilities.runtime_events.service import (
+            init_event_logger,
+            record_event,
+        )
+        init_event_logger(bootstrap.paths.project_root)
+        record_event(
+            "voice_overlay", "started",
+            f"Voice overlay worker started, wake_engine={bootstrap.wake_engine_plan.engine}",
+            details={"wake_engine": bootstrap.wake_engine_plan.engine},
+        )
+    except Exception:
+        pass
 
 
 def _record_openwakeword_command(

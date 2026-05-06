@@ -54,6 +54,14 @@ class ControlPanelWebApi:
         else:
             self._config_path = None
         self._project_root = get_project_root()
+        self._init_runtime_events()
+
+    def _init_runtime_events(self) -> None:
+        try:
+            from xiaohuang.capabilities.runtime_events.service import init_event_logger
+            init_event_logger(self._project_root)
+        except Exception:
+            pass
 
     def _resolve_config_path(self) -> Path:
         if self._config_path:
@@ -67,7 +75,17 @@ class ControlPanelWebApi:
             status = build_status(self._project_root, path)
             return _ok(data=_status_to_dict(status))
         except Exception:
-            return _fail(f"获取状态失败: {traceback.format_exc()}", "status_error")
+            msg = f"获取状态失败: {traceback.format_exc()}"
+            _record_cp_event("get_status", msg, "error")
+            return _fail(msg, "status_error")
+
+    def get_runtime_events(self, limit: int = 30) -> dict:
+        try:
+            from xiaohuang.capabilities.runtime_events.service import get_recent_events
+            events = get_recent_events(int(limit) if limit else 30)
+            return _ok(data={"events": events}, message="运行事件已加载")
+        except Exception:
+            return _fail(f"获取运行事件失败: {traceback.format_exc()}", "events_error")
 
     def get_config_summary(self) -> dict:
         try:
@@ -84,33 +102,51 @@ class ControlPanelWebApi:
         try:
             path = self._resolve_config_path()
             result = run_start_operation(self._project_root, path)
+            if result.ok:
+                _record_cp_event("start_xiaohuang", "启动小黄成功")
+            else:
+                _record_cp_event("start_xiaohuang", f"启动失败: {result.message}", "error")
             return _ok(
                 data={"success": result.ok, "message": result.message},
                 message=result.message,
             )
         except Exception:
-            return _fail(f"启动失败: {traceback.format_exc()}", "start_error")
+            msg = f"启动失败: {traceback.format_exc()}"
+            _record_cp_event("start_xiaohuang", msg, "error")
+            return _fail(msg, "start_error")
 
     def stop_xiaohuang(self) -> dict:
         try:
             result = run_stop_operation(self._project_root)
+            if result.ok:
+                _record_cp_event("stop_xiaohuang", "停止小黄成功")
+            else:
+                _record_cp_event("stop_xiaohuang", f"停止失败: {result.message}", "error")
             return _ok(
                 data={"success": result.ok, "message": result.message},
                 message=result.message,
             )
         except Exception:
-            return _fail(f"停止失败: {traceback.format_exc()}", "stop_error")
+            msg = f"停止失败: {traceback.format_exc()}"
+            _record_cp_event("stop_xiaohuang", msg, "error")
+            return _fail(msg, "stop_error")
 
     def restart_xiaohuang(self) -> dict:
         try:
             path = self._resolve_config_path()
             result = run_restart_operation(self._project_root, path)
+            if result.ok:
+                _record_cp_event("restart_xiaohuang", "重启小黄成功")
+            else:
+                _record_cp_event("restart_xiaohuang", f"重启失败: {result.message}", "error")
             return _ok(
                 data={"success": result.ok, "message": result.message},
                 message=result.message,
             )
         except Exception:
-            return _fail(f"重启失败: {traceback.format_exc()}", "restart_error")
+            msg = f"重启失败: {traceback.format_exc()}"
+            _record_cp_event("restart_xiaohuang", msg, "error")
+            return _fail(msg, "restart_error")
 
     def save_wake_config(self, payload: dict) -> dict:
         try:
@@ -143,6 +179,10 @@ class ControlPanelWebApi:
             text = format_diagnostics_text(payload)
             logs_dir = self._project_root / "logs"
             result = export_diagnostics_to_file(text, logs_dir)
+            if result.ok:
+                _record_cp_event("export_diagnostics", "诊断信息已导出")
+            else:
+                _record_cp_event("export_diagnostics", f"导出失败: {result.message}", "error")
             return _ok(
                 data={
                     "path": result.path,
@@ -163,6 +203,14 @@ class ControlPanelWebApi:
             })
         except Exception:
             return _fail(f"获取路径失败: {traceback.format_exc()}", "path_error")
+
+
+def _record_cp_event(event_type: str, message: str, level: str = "info") -> None:
+    try:
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        record_event("control_panel", event_type, message, level=level)
+    except Exception:
+        pass
 
 
 def _coerce_optional_int(value: Any) -> int | None:

@@ -200,6 +200,18 @@ def _is_model_loaded(transcriber: Any) -> bool:
     return transcriber._model is not None if hasattr(transcriber, "_model") else True
 
 
+def _record_stt_ready(device: str, init_seconds: float) -> None:
+    try:
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        record_event(
+            "stt_server", "ready",
+            f"STT server ready on {device}",
+            details={"stt_device": device, "init_seconds": round(init_seconds, 2)},
+        )
+    except Exception:
+        pass
+
+
 def _startup_warning(message: str) -> None:
     logger.warning(message)
     print(f"WARNING: {message}", flush=True)
@@ -225,6 +237,7 @@ def main() -> int:
     server = ThreadingHTTPServer((args.host, args.port), make_handler(state))
     print(f"STT server ready on http://{args.host}:{args.port}", flush=True)
     print(f"server_model_init_seconds={model_init_seconds:.2f} (server startup only)", flush=True)
+    _record_stt_ready(transcriber.device, model_init_seconds)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

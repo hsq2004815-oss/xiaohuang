@@ -19,12 +19,24 @@
 ### 验证结果（2026-05-06）
 
 - compileall OK
-- unittest discover OK：594 tests OK
+- unittest discover OK：615 tests OK
 - scripts\stt_server.py --help OK
 - PySide6 overlay 人工验收 OK
 - CUDA STT 人工验收 OK
 - nvidia-smi 可见 Python 占用 GPU 显存（约 1.7GB）
 - voice_overlay 日志出现 openwakeword_wake_event / command_record_start / Overlay command transcription / Overlay reply source=llm
+
+### V1.3B-C Runtime Event Stream（2026-05-06）
+
+- 新增 `capabilities/runtime_events/` — 独立 capability 目录
+- `runtime_events/service.py`：内存 ring buffer + JSONL 追加写入 + `record_event()` / `get_recent_events()`
+- 事件写入 `logs/runtime_events.jsonl`，重启后可从磁盘恢复最近事件
+- Web 控制面板右侧新增"运行事件"区块，刷新状态时自动加载
+- 诊断导出 TXT 追加"七、运行事件" section
+- 接入点：`control_panel_web_service`（start/stop/restart/export）、`stt_server.py`（server ready）、`voice_overlay.py`（worker started）
+- 未深度侵入 openWakeWord / STT / LLM / TTS 语音主链路
+- 敏感字段自动过滤，写入失败不抛致命异常
+- 新增 `tests/test_runtime_events_service.py`（21 tests）
 
 ### V1.3B-B Diagnostic Export TXT（2026-05-06）
 

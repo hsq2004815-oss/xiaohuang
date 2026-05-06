@@ -118,6 +118,21 @@ def format_diagnostics_text(input_data: dict) -> str:
         _a("（无操作历史）")
     _a("")
 
+    # ── 七、运行事件 ──
+    _a("七、运行事件")
+    runtime_events = input_data.get("runtime_events", []) if isinstance(input_data, dict) else []
+    if runtime_events:
+        for evt in runtime_events[: _MAX_HISTORY_ENTRIES]:
+            ts_str = evt.get("timestamp", "")
+            source = evt.get("source", "")
+            etype = evt.get("event_type", "")
+            lvl = evt.get("level", "info")
+            msg = evt.get("message", "")
+            _a(f"[{ts_str}] {_esc(source)}/{_esc(etype)} {_esc(lvl)} {_esc(msg)}")
+    else:
+        _a("暂无运行事件")
+    _a("")
+
     return "\n".join(lines)
 
 
