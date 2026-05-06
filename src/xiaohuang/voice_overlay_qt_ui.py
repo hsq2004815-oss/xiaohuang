@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import math
+import sys
 import time
 import threading
 from dataclasses import dataclass
 from typing import Any
 
 from PySide6.QtCore import QObject, QEasingCurve, QPropertyAnimation, QTimer, Qt, Signal
-from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QKeyEvent, QLinearGradient, QMouseEvent, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QApplication, QWidget
 
 from xiaohuang.overlay_state_service import (
@@ -54,6 +55,8 @@ VISIBLE_WHEN_RESIDENT_HIDDEN = {
     STATE_RESULT,
     STATE_ERROR,
 }
+
+EDGE_FADE_ZONE = 0.34
 
 
 class OverlaySignalBridge(QObject):
@@ -135,6 +138,7 @@ class WaveformDock(QWidget):
         self.setAttribute(Qt.WA_OpaquePaintEvent, False)
         self.setAttribute(Qt.WA_StyledBackground, False)
         self.setAutoFillBackground(False)
+        _strip_native_window_frame(self)
         self._move_bottom_center()
 
     def _move_bottom_center(self) -> None:
@@ -187,6 +191,7 @@ class WaveformDock(QWidget):
             return
         self._move_bottom_center()
         self.show()
+        _strip_native_window_frame(self)
         self.raise_()
         self.activateWindow()
         self._fade_to(1.0, duration_ms=220, hide_when_done=False)
@@ -250,28 +255,28 @@ class WaveformDock(QWidget):
             width = max(0.55, 1.5 - index * 0.14)
             amp = self._layer_amp(index)
             path = self._wave_path(w, cy, amp, self._time, index * 0.62, 1.0 + index * 0.18)
-            self._stroke_path(painter, path, r, g, b, int(opacity * 255), width)
+            self._stroke_path(painter, path, w, r, g, b, int(opacity * 255), width)
 
         main_path = self._main_path(w, cy)
         flash_boost = int(self._flash_alpha * 60)
         self._stroke_path(
-            painter, main_path, r, g, b,
+            painter, main_path, w, r, g, b,
             int((0.10 + amp_ratio * 0.10) * 255) + flash_boost,
             8.0,
         )
         self._stroke_path(
-            painter, main_path, r, g, b,
+            painter, main_path, w, r, g, b,
             int((0.18 + amp_ratio * 0.20) * 255) + flash_boost,
             4.0,
         )
         self._stroke_path(
-            painter, main_path, r, g, b,
+            painter, main_path, w, r, g, b,
             min(255, 220 + flash_boost),
             1.35,
         )
 
         mirror_path = self._main_path(w, cy, mirror=True)
-        self._stroke_path(painter, mirror_path, r, g, b, int(amp_ratio * 20), 0.8)
+        self._stroke_path(painter, mirror_path, w, r, g, b, int(amp_ratio * 20), 0.8)
 
     def _layer_amp(self, index: int) -> float:
         amp = self._live_amp
@@ -337,6 +342,7 @@ class WaveformDock(QWidget):
     def _stroke_path(
         painter: QPainter,
         path: QPainterPath,
+        canvas_width: float,
         r: int,
         g: int,
         b: int,
@@ -345,7 +351,13 @@ class WaveformDock(QWidget):
     ) -> None:
         if alpha <= 0:
             return
-        pen = QPen(QColor(r, g, b, max(0, min(255, alpha))), width)
+        solid_alpha = max(0, min(255, alpha))
+        gradient = QLinearGradient(0.0, 0.0, float(canvas_width), 0.0)
+        gradient.setColorAt(0.0, QColor(r, g, b, 0))
+        gradient.setColorAt(EDGE_FADE_ZONE, QColor(r, g, b, solid_alpha))
+        gradient.setColorAt(1.0 - EDGE_FADE_ZONE, QColor(r, g, b, solid_alpha))
+        gradient.setColorAt(1.0, QColor(r, g, b, 0))
+        pen = QPen(gradient, width)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
@@ -462,16 +474,18 @@ def _hex_to_rgb(value: str) -> tuple[int, int, int]:
 
 
 def _edge_fade(nx: float) -> float:
-    fade_zone = 0.18
     if nx <= 0.0 or nx >= 1.0:
         return 0.0
-    if nx < fade_zone:
-        t = nx / fade_zone
-        return t * t * (3 - 2 * t)
-    if nx > 1.0 - fade_zone:
-        t = (1.0 - nx) / fade_zone
-        return t * t * (3 - 2 * t)
+    if nx < EDGE_FADE_ZONE:
+        return _smootherstep(nx / EDGE_FADE_ZONE)
+    if nx > 1.0 - EDGE_FADE_ZONE:
+        return _smootherstep((1.0 - nx) / EDGE_FADE_ZONE)
     return 1.0
+
+
+def _smootherstep(value: float) -> float:
+    t = max(0.0, min(1.0, value))
+    return t * t * t * (t * (t * 6 - 15) + 10)
 
 
 def _smooth_path(points: list[tuple[float, float]]) -> QPainterPath:
@@ -492,3 +506,70 @@ def _smooth_path(points: list[tuple[float, float]]) -> QPainterPath:
         c2y = p2[1] - (p3[1] - p1[1]) / 6.0
         path.cubicTo(c1x, c1y, c2x, c2y, p2[0], p2[1])
     return path
+
+
+def _strip_native_window_frame(widget: QWidget) -> None:
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return
+
+    try:
+        hwnd = int(widget.winId())
+    except Exception:
+        return
+    if not hwnd:
+        return
+
+    user32 = ctypes.windll.user32
+    dwmapi = getattr(ctypes.windll, "dwmapi", None)
+    is_64bit = ctypes.sizeof(ctypes.c_void_p) == ctypes.sizeof(ctypes.c_longlong)
+
+    get_window_long = user32.GetWindowLongPtrW if is_64bit else user32.GetWindowLongW
+    set_window_long = user32.SetWindowLongPtrW if is_64bit else user32.SetWindowLongW
+    get_window_long.argtypes = [wintypes.HWND, ctypes.c_int]
+    get_window_long.restype = ctypes.c_void_p if is_64bit else ctypes.c_long
+    set_window_long.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p if is_64bit else ctypes.c_long]
+    set_window_long.restype = ctypes.c_void_p if is_64bit else ctypes.c_long
+    user32.SetWindowPos.argtypes = [
+        wintypes.HWND,
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint,
+    ]
+    user32.SetWindowPos.restype = wintypes.BOOL
+
+    style_remove = 0x00C00000 | 0x00040000 | 0x00800000 | 0x00400000
+    exstyle_remove = 0x00000001 | 0x00000200 | 0x00020000 | 0x00000100
+    exstyle_add = 0x00080000 | 0x00000080
+    style = int(get_window_long(hwnd, -16) or 0) & ~style_remove
+    exstyle = (int(get_window_long(hwnd, -20) or 0) & ~exstyle_remove) | exstyle_add
+    set_window_long(hwnd, -16, style)
+    set_window_long(hwnd, -20, exstyle)
+    user32.SetWindowPos(
+        wintypes.HWND(hwnd),
+        wintypes.HWND(0),
+        0, 0, 0, 0,
+        0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020,
+    )
+
+    if dwmapi is None:
+        return
+    try:
+        dwm_set_attribute = dwmapi.DwmSetWindowAttribute
+        dwm_set_attribute.argtypes = [wintypes.HWND, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint]
+        dwm_set_attribute.restype = ctypes.c_long
+        ncrp_disabled = ctypes.c_int(1)
+        dwm_set_attribute(hwnd, 2, ctypes.byref(ncrp_disabled), ctypes.sizeof(ncrp_disabled))
+        corner_do_not_round = ctypes.c_int(1)
+        dwm_set_attribute(hwnd, 33, ctypes.byref(corner_do_not_round), ctypes.sizeof(corner_do_not_round))
+        color_none = ctypes.c_uint(0xFFFFFFFE)
+        dwm_set_attribute(hwnd, 34, ctypes.byref(color_none), ctypes.sizeof(color_none))
+    except Exception:
+        return

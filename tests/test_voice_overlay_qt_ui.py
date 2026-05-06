@@ -41,6 +41,8 @@ class VoiceOverlayQtUiTests(unittest.TestCase):
         self.assertEqual(_edge_fade(1.0), 0.0)
         self.assertEqual(_edge_fade(0.5), 1.0)
         self.assertGreater(_edge_fade(0.1), 0.0)
+        self.assertLess(_edge_fade(0.08), _edge_fade(0.18))
+        self.assertLess(_edge_fade(0.92), _edge_fade(0.82))
 
     def test_module_does_not_import_tkinter_or_pillow(self):
         from xiaohuang import voice_overlay_qt_ui
@@ -62,12 +64,16 @@ class VoiceOverlayQtUiTests(unittest.TestCase):
             "fillRect",
             "fillPath",
             "drawRect",
+            "QBrush",
             "setStyleSheet",
             "setAutoFillBackground(True)",
             "autoFillBackground(True)",
         ):
             self.assertNotIn(forbidden, source)
         self.assertIn("Qt.NoDropShadowWindowHint", source)
+        self.assertIn("QLinearGradient", source)
+        self.assertIn("_strip_native_window_frame", source)
+        self.assertIn("DwmSetWindowAttribute", source)
 
     def test_voice_overlay_app_exposes_runtime_interface(self):
         try:
