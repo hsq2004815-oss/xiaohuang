@@ -19,12 +19,24 @@
 ### 验证结果（2026-05-06）
 
 - compileall OK
-- unittest discover OK：570 tests OK
+- unittest discover OK：594 tests OK
 - scripts\stt_server.py --help OK
 - PySide6 overlay 人工验收 OK
 - CUDA STT 人工验收 OK
 - nvidia-smi 可见 Python 占用 GPU 显存（约 1.7GB）
 - voice_overlay 日志出现 openwakeword_wake_event / command_record_start / Overlay command transcription / Overlay reply source=llm
+
+### V1.3B-B Diagnostic Export TXT（2026-05-06）
+
+- 新增 `capabilities/diagnostic_export/` — 独立 capability 目录
+- `diagnostic_export/service.py`：`format_diagnostics_text()` + `export_diagnostics_to_file()`
+- Web 控制面板右侧诊断栏新增"导出 TXT"按钮
+- 导出文件写入 `logs/diagnostic_exports/xiaohuang_diagnostics_YYYYMMDD_HHMMSS_micros.txt`
+- `control_panel_web_service.py` 新增 `export_diagnostics_text()` 薄 API 方法
+- 敏感字段（api_key, secret, password, token, etc.）自动过滤，不进入导出文本
+- HTML 特殊字符转义，路径限制在 `logs/diagnostic_exports/` 内
+- 未修改 voice overlay / wake / STT / LLM / TTS 主链路
+- 新增 `tests/test_diagnostic_export_service.py`（24 tests）
 
 ### V1.3A voice_overlay bootstrap extraction（2026-05-06）
 

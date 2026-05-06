@@ -8,6 +8,9 @@
   var initDone = false;
   var activeAction = null;
   var activeButton = null;
+  var lastStatusData = null;
+  var lastLogPaths = null;
+  var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
 
   /* ─── API ─── */
   function getApi() {
@@ -111,6 +114,74 @@
       last.textContent = op + (lastOk === true ? ' ✓' : lastOk === false ? ' ✗' : '');
     }
   }
+
+
+
+  function safeLocalStorageGet(key) {
+    try { return window.localStorage ? window.localStorage.getItem(key) : null; }
+    catch (e) { return null; }
+  }
+
+  function safeLocalStorageSet(key, value) {
+    try { if (window.localStorage) window.localStorage.setItem(key, value); }
+    catch (e) { /* pywebview may block storage in some environments */ }
+  }
+
+  function isDrawerCollapsed() {
+    return safeLocalStorageGet(DRAWER_STORAGE_KEY) === '1';
+  }
+
+  function applyDrawerState(collapsed) {
+    var shell = $('app-shell');
+    var topToggle = $('btn-drawer-toggle');
+    var drawerToggle = $('btn-drawer-collapse');
+    var rail = $('drawer-rail');
+    var expanded = !collapsed;
+
+    if (shell) shell.classList.toggle('drawer-collapsed', collapsed);
+
+    [topToggle, drawerToggle, rail].forEach(function (btn) {
+      if (!btn) return;
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    });
+
+    if (topToggle) {
+      topToggle.textContent = collapsed ? '展开诊断' : '诊断';
+      topToggle.title = collapsed ? '展开诊断栏' : '收起诊断栏';
+    }
+    if (drawerToggle) {
+      drawerToggle.textContent = '收起';
+      drawerToggle.title = '收起诊断栏';
+    }
+    if (rail) {
+      rail.title = '展开诊断栏';
+    }
+  }
+
+  function setDrawerCollapsed(collapsed) {
+    safeLocalStorageSet(DRAWER_STORAGE_KEY, collapsed ? '1' : '0');
+    applyDrawerState(collapsed);
+  }
+
+  function toggleDrawerCollapsed() {
+    var shell = $('app-shell');
+    var collapsed = shell ? shell.classList.contains('drawer-collapsed') : isDrawerCollapsed();
+    setDrawerCollapsed(!collapsed);
+  }
+
+  function initDrawerControls() {
+    ['btn-drawer-toggle', 'btn-drawer-collapse', 'drawer-rail'].forEach(function (id) {
+      var el = $(id);
+      if (!el || el.dataset.drawerBound === '1') return;
+      el.dataset.drawerBound = '1';
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        toggleDrawerCollapsed();
+      });
+    });
+    applyDrawerState(isDrawerCollapsed());
+  }
+
 
   /* ─── Helpers ─── */
   function setVal(id, val) { var el = $(id); if (el) el.value = (val !== null && val !== undefined) ? val : ''; }
@@ -220,6 +291,7 @@
   /* ─── Render status ─── */
   function renderStatus(data) {
     var d = (data && data.ok && data.data) ? data.data : null;
+    if (d) lastStatusData = d;
     if (!d) {
       setStatusBadge(S.loading, 'off');
       return;
@@ -340,6 +412,7 @@
     updateBridgeIndicator();
     apiCall('get_status').then(renderStatus);
     apiCall('get_log_paths').then(function (r) {
+      if (r && r.ok && r.data) lastLogPaths = r.data;
       var el = $('drawer-logs-path');
       if (el && r && r.ok && r.data) el.textContent = r.data.logs_directory || '--';
     });
@@ -358,6 +431,7 @@
     if (action === 'restart') { doRestart(btn); return; }
     if (action === 'save-config') { doSaveConfig(btn); return; }
     if (action === 'save-restart') { doSaveAndRestart(btn); return; }
+    if (action === 'export-diag') { doExportDiag(btn); return; }
     toast('未识别的操作: ' + action, 'err');
   }
 
@@ -446,6 +520,47 @@
     });
   }
 
+  function collectDrawerText(id) {
+    var el = $(id);
+    return el ? (el.textContent || '').trim() : '';
+  }
+
+  function doExportDiag(btn) {
+    if (!btn || btn.disabled) return;
+    setButtonLoading(btn, '导出中...', 'export-diag');
+    toast('正在导出诊断信息...', 'info');
+    drawerLog('导出诊断 TXT', null, '已发送导出请求');
+
+    var payload = {
+      exported_from: 'control_panel_web',
+      bridge_ready: !!getApi(),
+      status: lastStatusData || {},
+      log_paths: lastLogPaths || {},
+      drawer: {
+        config_path: collectDrawerText('drawer-config-path'),
+        logs_path: collectDrawerText('drawer-logs-path'),
+        last_error: collectDrawerText('drawer-last-error'),
+        last_operation: collectDrawerText('drawer-last-op')
+      },
+      history: opHistory
+    };
+
+    apiCall('export_diagnostics_text', payload).then(function (r) {
+      if (r && r.ok && r.data && r.data.path) {
+        toast('诊断信息已导出: ' + (r.message || r.data.path), 'ok');
+        drawerLog('导出诊断 TXT', true, r.data.path);
+      } else {
+        toast((r && r.error) || '导出失败', 'err');
+        drawerLog('导出诊断 TXT', false, (r && r.error));
+      }
+    }).catch(function (e) {
+      toast('导出出错: ' + e, 'err');
+      drawerLog('导出诊断 TXT', false, String(e));
+    }).finally(function () {
+      restoreButton(btn, '导出 TXT', 'export-diag');
+    });
+  }
+
   function wakePayload() {
     return {
       engine: getVal('wake-engine'),
@@ -529,6 +644,7 @@
     if (initDone) return;
     initDone = true;
     initNav();
+    initDrawerControls();
     updateBridgeIndicator();
     refreshStatus();
     drawerLog('面板启动', true);
@@ -540,6 +656,7 @@
   });
 
   document.addEventListener('DOMContentLoaded', function () {
+    initDrawerControls();
     updateBridgeIndicator();
     setTimeout(function () { if (!initDone) doInit(); }, 800);
   });

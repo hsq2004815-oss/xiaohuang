@@ -23,6 +23,7 @@
       <div class="topbar-right">
         <span class="status-badge" id="top-status">--</span>
         <span class="wake-badge" id="top-wake">--</span>
+        <button class="glass-pill drawer-toggle" id="btn-drawer-toggle" type="button" title="收起诊断栏" aria-controls="drawer" aria-expanded="true">诊断</button>
         <button class="glass-pill" id="btn-top-refresh" title="刷新状态" data-action="refresh">↻</button>
       </div>
     </header>
@@ -127,13 +128,39 @@
       <section class="content-section" id="section-automation"><h2 class="section-title">自动化</h2><div class="glass-card"><div class="card-body">即将推出 — 计划任务、触发器、宏</div></div></section>
       <section class="content-section" id="section-database"><h2 class="section-title">数据库</h2><div class="glass-card"><div class="card-body">即将推出 — 知识库管理、记忆、搜索</div></div></section>
       <section class="content-section" id="section-logs"><h2 class="section-title">日志</h2><div class="glass-card"><div class="card-body">即将推出 — 完整日志查看、搜索、导出</div></div></section>
-      <section class="content-section" id="section-settings"><h2 class="section-title">设置</h2><div class="glass-card"><div class="card-body">即将推出 — 全局偏好、快捷键、主题</div></div></section>
+      <section class="content-section" id="section-settings">
+        <h2 class="section-title">设置</h2>
+        <div class="settings-coming-soon glass-card">
+          <div class="card-header"><h3 class="card-title">即将推出</h3></div>
+          <div class="card-body">设置页将用于管理全局偏好、快捷键和主题。当前版本仅保留入口，不提供可点击的假功能。</div>
+        </div>
+        <div class="coming-soon-grid">
+          <div class="glass-card coming-soon-card">
+            <div class="card-label">全局偏好</div>
+            <div class="card-body">启动行为、常驻模式、默认页面等配置入口。</div>
+          </div>
+          <div class="glass-card coming-soon-card">
+            <div class="card-label">快捷键</div>
+            <div class="card-body">唤醒、暂停、控制面板呼出等快捷键配置入口。</div>
+          </div>
+          <div class="glass-card coming-soon-card">
+            <div class="card-label">主题</div>
+            <div class="card-body">主题色、玻璃强度、布局密度等视觉偏好入口。</div>
+          </div>
+        </div>
+      </section>
       <section class="content-section" id="section-developer"><h2 class="section-title">开发者</h2><div class="glass-card"><div class="card-body">即将推出 — API 测试、代码资源索引、调试工具</div></div></section>
     </main>
 
     <!-- Right Diagnostic Drawer -->
     <aside class="diagnostic-drawer glass-card" id="drawer">
-      <h3 class="drawer-title">诊断信息</h3>
+      <div class="drawer-header">
+        <h3 class="drawer-title">诊断信息</h3>
+        <div class="drawer-header-actions">
+          <button class="drawer-export-btn" id="btn-export-diag" type="button" data-action="export-diag" title="导出诊断 TXT">导出 TXT</button>
+          <button class="drawer-collapse-btn" id="btn-drawer-collapse" type="button" title="收起诊断栏" aria-controls="drawer" aria-expanded="true">收起</button>
+        </div>
+      </div>
       <div class="drawer-section">
         <div class="drawer-label">桌面桥接</div>
         <div class="drawer-value" id="drawer-bridge-status">连接中...</div>
@@ -159,6 +186,9 @@
         <div id="drawer-history"></div>
       </div>
     </aside>
+
+    <!-- Collapsed Diagnostic Rail -->
+    <button class="drawer-rail" id="drawer-rail" type="button" aria-controls="drawer" aria-expanded="false">诊断</button>
 
     <!-- Toast -->
     <div class="toast-container" id="toast-container"></div>

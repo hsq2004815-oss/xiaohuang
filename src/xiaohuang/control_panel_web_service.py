@@ -134,6 +134,25 @@ class ControlPanelWebApi:
         except Exception:
             return _fail(f"保存配置失败: {traceback.format_exc()}", "save_error")
 
+    def export_diagnostics_text(self, payload: dict) -> dict:
+        try:
+            from xiaohuang.capabilities.diagnostic_export.service import (
+                export_diagnostics_to_file,
+                format_diagnostics_text,
+            )
+            text = format_diagnostics_text(payload)
+            logs_dir = self._project_root / "logs"
+            result = export_diagnostics_to_file(text, logs_dir)
+            return _ok(
+                data={
+                    "path": result.path,
+                    "content": result.content,
+                },
+                message=result.message,
+            )
+        except Exception:
+            return _fail(f"导出诊断信息失败: {traceback.format_exc()}", "export_error")
+
     def get_log_paths(self) -> dict:
         try:
             logs_dir = self._project_root / "logs"

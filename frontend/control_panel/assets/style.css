@@ -425,3 +425,187 @@ select.glass-input{cursor:pointer}
   position:relative;
   z-index:2;
 }
+
+/* ============================================================
+   V1.3B-A Responsive Layout + Collapsible Diagnostic Drawer
+   说明：只调整控制面板布局，不影响 PySide6 语音悬浮窗和语音主链路。
+   ============================================================ */
+:root{
+  --sidebar-w:clamp(196px,14vw,232px);
+  --drawer-w:clamp(284px,22vw,382px);
+  --drawer-rail-w:56px;
+  --workspace-pad-x:clamp(18px,2.4vw,34px);
+  --workspace-pad-y:clamp(18px,2.6vh,30px);
+}
+
+body{min-width:0}
+.app-shell{
+  grid-template-columns:var(--sidebar-w) minmax(0,1fr) var(--drawer-w);
+  transition:grid-template-columns .28s var(--ease-reveal);
+}
+.app-shell.drawer-collapsed{
+  grid-template-columns:var(--sidebar-w) minmax(0,1fr) var(--drawer-rail-w);
+}
+.topbar,.sidebar,.main-workspace,.diagnostic-drawer{min-width:0}
+.main-workspace{
+  padding:var(--workspace-pad-y) var(--workspace-pad-x);
+  overflow-x:hidden;
+}
+.topbar{
+  min-width:0;
+  gap:clamp(8px,1.2vw,16px);
+  padding-left:clamp(16px,1.8vw,24px);
+  padding-right:clamp(16px,1.8vw,24px);
+}
+.topbar-center{min-width:140px;max-width:min(380px,28vw)}
+.topbar-center .glass-input{width:100%}
+.topbar-right{min-width:0;justify-content:flex-end;gap:8px}
+.status-badge,.wake-badge{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drawer-toggle{min-width:74px;padding-left:16px;padding-right:16px}
+
+.card-grid-4{
+  grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+  gap:clamp(12px,1.4vw,18px);
+}
+.card-grid-2{
+  grid-template-columns:repeat(auto-fit,minmax(min(390px,100%),1fr));
+  gap:clamp(14px,1.6vw,20px);
+}
+.main-workspace .glass-card{padding:clamp(18px,1.8vw,24px)}
+.section-title{margin-bottom:clamp(16px,1.8vw,22px)}
+
+.diagnostic-drawer{
+  width:auto;
+  min-width:0;
+  padding:20px clamp(14px,1.4vw,20px);
+  transition:opacity .22s var(--ease-reveal),transform .28s var(--ease-reveal),visibility .22s var(--ease-reveal);
+}
+.drawer-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding-bottom:12px;
+  margin-bottom:14px;
+  border-bottom:1px solid var(--rim);
+}
+.drawer-header .drawer-title{
+  margin:0;
+  padding:0;
+  border-bottom:none;
+}
+.drawer-collapse-btn{
+  border:1px solid rgba(255,255,255,0.58);
+  background:rgba(255,255,255,0.52);
+  color:var(--text-secondary);
+  border-radius:var(--radius-pill);
+  padding:6px 12px;
+  font-size:11px;
+  font-weight:700;
+  cursor:pointer;
+  backdrop-filter:var(--glass-blur-sm);
+  -webkit-backdrop-filter:var(--glass-blur-sm);
+  transition:all .18s var(--ease-reveal);
+}
+.drawer-collapse-btn:hover{background:rgba(255,255,255,0.78);color:var(--accent-blue)}
+.drawer-header-actions{display:flex;align-items:center;gap:6px}
+.drawer-export-btn{
+  border:1px solid var(--accent-teal);
+  background:rgba(0,213,143,0.08);
+  color:var(--accent-teal);
+  padding:4px 10px;border-radius:8px;font-size:0.8rem;cursor:pointer;
+  font-family:inherit;white-space:nowrap;
+  transition:all .18s var(--ease-reveal);
+}
+.drawer-export-btn:hover{background:rgba(0,213,143,0.18);color:#fff}
+
+.drawer-rail{
+  grid-area:drawer;
+  align-self:stretch;
+  justify-self:stretch;
+  display:none;
+  border:0;
+  border-left:1px solid rgba(255,255,255,0.52);
+  background:rgba(255,255,255,0.42);
+  color:var(--accent-blue);
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+  writing-mode:vertical-rl;
+  text-orientation:mixed;
+  cursor:pointer;
+  backdrop-filter:var(--glass-blur-md);
+  -webkit-backdrop-filter:var(--glass-blur-md);
+  box-shadow:-8px 0 30px rgba(31,38,135,0.08),inset 1px 0 1px rgba(255,255,255,.55);
+}
+.drawer-rail:hover{background:rgba(255,255,255,0.64)}
+.app-shell.drawer-collapsed .diagnostic-drawer{
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transform:translateX(14px);
+}
+.app-shell.drawer-collapsed .drawer-rail{display:flex;align-items:center;justify-content:center}
+
+.settings-coming-soon{max-width:min(920px,100%);margin-bottom:18px}
+.coming-soon-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));
+  gap:16px;
+  max-width:1100px;
+}
+.coming-soon-card{padding:18px 20px;min-height:128px}
+.coming-soon-card .card-body{font-size:12px;color:var(--text-secondary)}
+
+@media(max-width:1180px){
+  :root{--drawer-w:clamp(260px,25vw,330px)}
+  .topbar-sub{display:none}
+  .status-badge{max-width:150px}
+  .wake-badge{max-width:132px}
+}
+
+@media(max-width:960px){
+  .app-shell,.app-shell.drawer-collapsed{
+    grid-template-columns:var(--sidebar-w) minmax(0,1fr);
+    grid-template-areas:"topbar topbar" "sidebar main";
+  }
+  .diagnostic-drawer,.drawer-rail{display:none!important}
+  .drawer-toggle{display:none}
+  .topbar-center{max-width:280px}
+}
+
+@media(max-width:760px){
+  .app-shell,.app-shell.drawer-collapsed{
+    grid-template-columns:1fr;
+    grid-template-rows:var(--topbar-h) auto 1fr;
+    grid-template-areas:"topbar" "sidebar" "main";
+  }
+  .sidebar{
+    display:flex;
+    gap:10px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding:10px 14px;
+    border-right:none;
+    border-bottom:1px solid rgba(255,255,255,0.48);
+  }
+  .sidebar-section{display:flex;align-items:center;gap:8px;margin:0;flex:0 0 auto}
+  .sidebar-label{padding:0 4px 0 0;white-space:nowrap}
+  .sidebar-item{white-space:nowrap;margin:0;padding:7px 12px}
+  .topbar-center{display:none}
+  .topbar-left>div{min-width:0}
+  .topbar-title{white-space:nowrap}
+  .topbar-right .status-badge{display:none}
+  .main-workspace{padding:16px 14px 20px}
+  .form-grid{grid-template-columns:1fr}
+}
+
+@media(max-width:520px){
+  .topbar{padding-left:12px;padding-right:12px}
+  .wake-badge{display:none}
+  .glass-pill{padding:8px 14px}
+  .topbar-logo{width:34px;height:34px}
+  .card-grid-4{grid-template-columns:1fr}
+  .event-row{grid-template-columns:1fr;gap:4px}
+  .event-val{white-space:normal;text-align:left}
+}
