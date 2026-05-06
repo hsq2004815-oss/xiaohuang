@@ -141,18 +141,12 @@ def _print_wake_engine_runtime_config(
 
 
 class VoiceOverlayApp:
-    _W = 560
-    _H = 180
-    _BAR_COUNT = 10
+    _W = 620
+    _H = 110
+    _BAR_COUNT = 18
     _BAR_W = 3
     _BAR_GAP = 4
     _ANIM_MS = 80
-    _CORE_CX = 430
-    _CORE_R = 52
-    _PANEL_X0 = 16
-    _PANEL_Y0 = 14
-    _PANEL_X1 = 320
-    _FOLD = 20
 
     def __init__(
         self,
@@ -188,14 +182,18 @@ class VoiceOverlayApp:
 
     def _build_ui(self, title: str = "小黄") -> None:
         self.root.title(title)
-        self.root.geometry(f"{self._W}x{self._H}+100+100")
+        # Position bottom-center
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x = (sw - self._W) // 2
+        y = sh - self._H - 52
+        self.root.geometry(f"{self._W}x{self._H}+{x}+{y}")
         self.root.attributes("-topmost", True)
         self.root.resizable(False, False)
         try:
             self.root.overrideredirect(True)
         except Exception:
             pass
-        # Transparent: use a unique dark key color for the canvas background.
         self._tk = tk
         try:
             self.root.wm_attributes("-transparentcolor", "#010101")
@@ -295,108 +293,56 @@ class VoiceOverlayApp:
             self.closed = True
             return
         self._draw_hud()
-        self.phase += 0.25
+        self.phase += 0.22
         self._safe_after(self._ANIM_MS, self._animate)
+
+    # ── HUD drawing ────────────────────────────────────────────
 
     def _draw_hud(self) -> None:
         c = self._palette()
-        self._draw_backdrop(c)
-        self._draw_panel(c)
-        self._draw_core(c)
+        margin = 6
+        x0, y0 = margin, margin
+        x1, y1 = self._W - margin, self._H - margin
+        r = 18
+        # Semi-transparent backdrop capsule
+        self._rounded_rect(x0, y0, x1, y1, r, fill="#080e14", outline=c["primary"])
+        cy = self._H // 2
 
-    # ── Backdrop ───────────────────────────────────────────────
-
-    def _draw_backdrop(self, c: dict) -> None:
-        r = 12
-        x0, y0, x1, y1 = 2, 2, self._W - 2, self._H - 2
-        self._rounded_rect(x0, y0, x1, y1, r, fill="#060c14", outline=c["primary"])
-
-    # ── Left panel ─────────────────────────────────────────────
-
-    def _draw_panel(self, c: dict) -> None:
-        x0, y0 = self._PANEL_X0, self._PANEL_Y0
-        x1 = self._PANEL_X1
-        y1 = self._H - self._PANEL_Y0
-        fold = self._FOLD
-        # Folded-corner tech frame
-        pts = (
-            x0, y0, x1 - fold, y0,
-            x1, y0 + fold,
-            x1, y1, x0, y1,
-        )
-        self.canvas.create_line(*pts, x0, y0, fill=c["primary"], width=1.5)
-        # Title text
+        # ── Left: status dot + text ──
+        dot_x, dot_y = 28, cy
+        self.canvas.create_oval(dot_x - 4, dot_y - 4, dot_x + 4, dot_y + 4,
+                                fill=c["accent"], outline=c["primary"], width=1)
         self.canvas.create_text(
-            x0 + 22, y0 + 26,
+            dot_x + 18, cy - 10,
             text=self._title_text, fill=c["primary"],
-            font=("Microsoft YaHei UI", 18, "bold"), anchor="w",
+            font=("Microsoft YaHei UI", 15, "bold"), anchor="w",
         )
-        # Subtitle text
         self.canvas.create_text(
-            x0 + 22, y0 + 58,
+            dot_x + 18, cy + 12,
             text=self._sub_text, fill=c["secondary"],
-            font=("Microsoft YaHei UI", 11), anchor="w",
+            font=("Microsoft YaHei UI", 10), anchor="w",
         )
-        # Corner ornaments
-        self._draw_node(x0, y0, c["accent"])
-        self._draw_node(x1, y1, c["accent"])
-        # Fold marker
-        self.canvas.create_line(
-            x1 - fold, y0 + 2, x1 - 2, y0 + fold, fill=c["primary"], width=1,
-        )
-        # Decorative short lines on frame
-        for i in range(3):
-            lx = x0 + 60 + i * 70
-            self.canvas.create_line(lx, y0, lx + 12, y0, fill=c["primary"], width=1.5)
 
-    # ── Right circular core ────────────────────────────────────
+        # ── Center: horizontal waveform ──
+        self._draw_waveform(c["primary"])
 
-    def _draw_core(self, c: dict) -> None:
-        cx, cy = self._CORE_CX, self._H // 2
-        r = self._CORE_R
-        # Outer rings
-        for offset, alpha in ((0, 1.0), (8, 0.45), (16, 0.25)):
-            rr = r - offset
-            self.canvas.create_oval(
-                cx - rr, cy - rr, cx + rr, cy + rr,
-                outline=c["primary"], width=1,
-            )
-        # Segmented middle ring arcs (4 segments)
-        a = self.phase * 0.35
-        rr = r - 4
-        for k in range(4):
-            start = int(a * 57.3 + k * 90) % 360
-            self.canvas.create_arc(
-                cx - rr, cy - rr, cx + rr, cy + rr,
-                start=start, extent=60, style="arc",
-                outline=c["primary"], width=1,
-            )
-        # Rotating dot on middle ring
-        angle = self.phase * 0.45
-        dot_r = r - 4
-        dot_x = cx + dot_r * math.cos(angle)
-        dot_y = cy + dot_r * math.sin(angle)
-        self.canvas.create_oval(
-            dot_x - 3, dot_y - 3, dot_x + 3, dot_y + 3,
-            fill=c["accent"], outline="",
-        )
-        # Crosshair in center (small)
-        ch = 9
-        self.canvas.create_line(cx - ch, cy, cx + ch, cy, fill=c["secondary"], width=1)
-        self.canvas.create_line(cx, cy - ch, cx, cy + ch, fill=c["secondary"], width=1)
-        # Waveform bars
-        self._draw_waveform(cx, cy, c["primary"])
+        # ── Right: corner ornament ──
+        rx1, rx2 = x1 - r - 6, x1 - r + 10
+        self.canvas.create_line(rx1, y0 + r, rx2, y0 + r, fill=c["primary"], width=1)
+        self.canvas.create_line(rx1, y0 + r + 4, rx2, y0 + r + 4, fill=c["primary"], width=1)
 
     # ── Waveform ───────────────────────────────────────────────
 
-    def _draw_waveform(self, cx: int, cy: int, color: str) -> None:
+    def _draw_waveform(self, color: str) -> None:
         amp = self._amplitude_for_state()
         n = self._BAR_COUNT
         total_w = n * (self._BAR_W + self._BAR_GAP) - self._BAR_GAP
+        cx = self._W // 2
+        cy = self._H // 2
         x0 = cx - total_w // 2
         for i in range(n):
-            offset = 0.35 + 0.65 * abs(math.sin(self.phase * 1.8 + i * 0.65))
-            h = 3 + amp * offset
+            offset = 0.28 + 0.72 * abs(math.sin(self.phase * 1.9 + i * 0.52))
+            h = max(3, 4 + amp * offset)
             x = x0 + i * (self._BAR_W + self._BAR_GAP)
             y1 = int(cy - h / 2)
             y2 = int(cy + h / 2)
@@ -409,42 +355,43 @@ class VoiceOverlayApp:
     def _palette(self) -> dict:
         s = self.state
         if s == STATE_ERROR:
-            return {"primary": "#ff5252", "secondary": "#ff8a80", "accent": "#ff1744", "bg": "#0a0004"}
+            return {"primary": "#ff5252", "secondary": "#ff8a80", "accent": "#ff1744"}
         if s == STATE_SPEAKING:
-            return {"primary": "#b388ff", "secondary": "#7c4dff", "accent": "#e040fb", "bg": "#060012"}
+            return {"primary": "#b388ff", "secondary": "#7c4dff", "accent": "#e040fb"}
         if s == STATE_REPLYING:
-            return {"primary": "#448aff", "secondary": "#82b1ff", "accent": "#2962ff", "bg": "#000814"}
+            return {"primary": "#448aff", "secondary": "#82b1ff", "accent": "#2962ff"}
         if s == STATE_TRANSCRIBING:
-            return {"primary": "#18ffff", "secondary": "#00b8d4", "accent": "#7c4dff", "bg": "#001014"}
+            return {"primary": "#18ffff", "secondary": "#00b8d4", "accent": "#7c4dff"}
         if s == STATE_RESULT:
-            return {"primary": "#00e676", "secondary": "#69f0ae", "accent": "#00c853", "bg": "#000e04"}
+            return {"primary": "#00e676", "secondary": "#69f0ae", "accent": "#00c853"}
         if s in (STATE_WAKE_DETECTED, STATE_LISTENING):
-            return {"primary": "#00e5ff", "secondary": "#00b8d4", "accent": "#00e676", "bg": "#001014"}
+            return {"primary": "#00e5ff", "secondary": "#18ffff", "accent": "#00e676"}
         if s == STATE_WAKE_CHECKING:
-            return {"primary": "#40c4ff", "secondary": "#80deea", "accent": "#00b0ff", "bg": "#000a14"}
+            return {"primary": "#40c4ff", "secondary": "#80deea", "accent": "#00b0ff"}
         # idle default
-        return {"primary": "#4dd0e1", "secondary": "#80cbc4", "accent": "#00bcd4", "bg": "#00080e"}
+        return {"primary": "#4dd0e1", "secondary": "#80cbc4", "accent": "#00bcd4"}
 
     def _amplitude_for_state(self) -> float:
         s = self.state
         if s in (STATE_WAKE_DETECTED, STATE_LISTENING):
-            return 28.0
+            return 32.0
         if s == STATE_SPEAKING:
-            return 26.0
+            return 28.0
         if s in (STATE_TRANSCRIBING, STATE_REPLYING):
-            return 18.0
+            return 20.0
         if s == STATE_ERROR:
-            return 12.0
+            return 14.0
         if s == STATE_WAKE_CHECKING:
-            return 7.0
-        return 6.0
+            return 8.0
+        return 7.0
 
     # ── Drawing helpers ────────────────────────────────────────
 
-    def _rounded_rect(self, x0: int, y0: int, x1: int, y1: int, r: int, *, fill: str = "", outline: str = "") -> None:
+    def _rounded_rect(self, x0: int, y0: int, x1: int, y1: int, r: int,
+                      *, fill: str = "", outline: str = "") -> None:
         d = r * 2
         c = self.canvas
-        for sx, sy in [(x0, y0), (x1-d, y0), (x1-d, y1-d), (x0, y1-d)]:
+        for sx, sy in [(x0, y0), (x1 - d, y0), (x1 - d, y1 - d), (x0, y1 - d)]:
             c.create_arc(sx, sy, sx + d, sy + d, start=90, extent=90,
                          style="arc" if not fill else "pieslice",
                          outline=outline, fill=fill if fill else "", width=1)
@@ -455,9 +402,6 @@ class VoiceOverlayApp:
         if fill:
             c.create_rectangle(x0 + r, y0 + 1, x1 - r + 1, y1, fill=fill, outline="")
             c.create_rectangle(x0 + 1, y0 + r, x1 + 1, y1 - r + 1, fill=fill, outline="")
-
-    def _draw_node(self, x: int, y: int, color: str) -> None:
-        self.canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill=color, outline="")
 
     # ── Lifecycle ──────────────────────────────────────────────
 
