@@ -9,6 +9,8 @@ import tkinter as tk
 from pathlib import Path
 from typing import Callable
 
+from PIL import Image, ImageDraw, ImageFilter, ImageTk
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
@@ -183,9 +185,10 @@ class VoiceOverlayApp:
 
     _W = 720
     _H = 160
-    _ANIM_MS = 70
+    _SS = 4          # supersampling scale
+    _GLOW_BLUR = 14  # GaussianBlur radius for center glow
+    _ANIM_MS = 33    # ~30 fps
     _LAYERS = 4
-    _STEP = 3  # px between waveform sample points
 
     def __init__(
         self,
@@ -206,6 +209,7 @@ class VoiceOverlayApp:
         self.closed = False
         self._resident_hidden = start_hidden
         self._after_ids: set[str] = set()
+        self._photo = None  # keep ImageTk ref alive
 
         # live interpolation targets
         self._live_amp = 0.0
@@ -347,12 +351,20 @@ class VoiceOverlayApp:
         except tk.TclError:
             self.closed = True
             return
-        self._draw_waveform()
+        img = self._render_wave_image()
+        self._photo = ImageTk.PhotoImage(img)
+        self.canvas.create_image(
+            self._W // 2, self._H // 2,
+            image=self._photo, tags="wave",
+        )
         self._safe_after(self._ANIM_MS, self._animate)
 
-    def _draw_waveform(self) -> None:
+    # ── Pillow offscreen rendering ─────────────────────────────
+
+    def _render_wave_image(self) -> Image.Image:
+        """Render one frame to a transparent RGBA PIL image with supersampling."""
         now = self._time_get()
-        dt = 0.016
+        dt = 0.033
         if self._last_ts > 0:
             dt = min(now - self._last_ts, 0.05)
         self._last_ts = now
@@ -367,51 +379,63 @@ class VoiceOverlayApp:
             self._flash = max(0.0, self._flash - dt * 1.6)
         self._time += dt * self._live_spd
 
-        r = int(self._live_r)
-        g = int(self._live_g)
-        b = int(self._live_b)
-        w = self._W
-        cy = self._H // 2
+        r, g, b = int(self._live_r), int(self._live_g), int(self._live_b)
         amp = self._live_amp
-        t = self._time
-        step = self._STEP
+        tt = self._time
+        sw, sh = self._W * self._SS, self._H * self._SS
+        cy = sh // 2
 
-        # ── Background layers (dimmer, wider) ──
+        # Main canvas image (transparent)
+        img = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        # Background layers
         for li in range(self._LAYERS - 1, 0, -1):
             frac = li / self._LAYERS
-            bright = 0.08 + (1.0 - frac) * 0.22
-            lw = max(0.8, 1.8 - li * 0.22)
-            ph_off = li * 0.62
-            fm = 1.0 + li * 0.18
-            self._draw_layer(w, cy, amp, t, r, g, b, bright, lw, ph_off, fm, step)
+            alpha = int((0.06 + (1.0 - frac) * 0.22) * 255)
+            lw = max(1, int((1.8 - li * 0.22) * self._SS))
+            self._draw_wave_layer(draw, sw, cy, amp, tt, r, g, b, alpha, lw,
+                                  li * 0.62, 1.0 + li * 0.18)
 
-        # ── Center bright line ──
-        self._draw_layer(w, cy, amp * 0.82, t * 1.02, r, g, b, 0.78, 2.0, 0.0, 1.0, step)
+        # Glow layer (separate image, blurred, then composited)
+        glow = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+        glow_draw = ImageDraw.Draw(glow)
+        glow_alpha = int(0.70 * 255)
+        glow_lw = max(2, int(2.6 * self._SS))
+        self._draw_wave_layer(glow_draw, sw, cy, amp * 0.82, tt * 1.02,
+                              r, g, b, glow_alpha, glow_lw, 0.0, 1.0)
+        glow = glow.filter(ImageFilter.GaussianBlur(radius=self._GLOW_BLUR))
+        img = Image.alpha_composite(img, glow)
 
-        # ── Flash overlay ──
+        # Center bright line
+        draw2 = ImageDraw.Draw(img)
+        line_alpha = int(0.82 * 255)
+        line_lw = max(2, int(2.4 * self._SS))
+        self._draw_wave_layer(draw2, sw, cy, amp * 0.82, tt * 1.02,
+                              r, g, b, line_alpha, line_lw, 0.0, 1.0)
+
+        # Flash overlay
         if self._flash > 0.008:
-            fc = _TCOLOR_to_hex(r, g, b)
-            alpha = int(self._flash * 50)
-            self.canvas.create_rectangle(
-                0, 0, w, self._H,
-                fill=fc, outline="", stipple="gray25",
-            )
+            flash_a = int(self._flash * 0.10 * 255)
+            overlay = Image.new("RGBA", (sw, sh), (r, g, b, flash_a))
+            img = Image.alpha_composite(img, overlay)
 
-    def _draw_layer(self, w, cy, amp, t, r, g, b, bright, lw, ph, fm, step):
+        return img.resize((self._W, self._H), Image.Resampling.LANCZOS)
+
+    def _draw_wave_layer(self, draw, w, cy, amp, t, r, g, b, alpha, lw,
+                         ph_off, fm):
+        """Draw one sin-wave polyline onto a PIL ImageDraw."""
         pts = []
+        step = max(1, w // 360)  # ~360 points across width
         for x in range(0, w + step, step):
             nx = x / w
             env = _edge_fade(nx)
-            s1 = math.sin(nx * 6.8  * fm + t * 2.05 + ph)
-            s2 = math.sin(nx * 10.2 * fm + t * 1.62 + ph * 1.35)
-            val = (s1 * 0.7 + s2 * 0.3) * amp * env
-            pts.append(x)
-            pts.append(int(cy + val))
-        if pts:
-            color = _TCOLOR_to_hex(r, g, b)
-            self.canvas.create_line(
-                *pts, fill=color, width=lw, capstyle="round",
-            )
+            s1 = math.sin(nx * 6.8  * fm + t * 2.05 + ph_off)
+            s2 = math.sin(nx * 10.2 * fm + t * 1.62 + ph_off * 1.35)
+            val = int((s1 * 0.7 + s2 * 0.3) * amp * env * self._SS)
+            pts.append((x, cy + val))
+        if len(pts) >= 2:
+            draw.line(pts, fill=(r, g, b, alpha), width=lw, joint="curve")
 
     # ── Lifecycle ──────────────────────────────────────────────
 
