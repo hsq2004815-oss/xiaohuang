@@ -302,9 +302,9 @@ def save_wake_engine_config(config_path: Path, update: WakeEngineConfigUpdate) -
         return WakeEngineConfigSaveResult(False, path_error, "invalid_path")
 
     resolved = Path(config_path)
+
     if not resolved.exists():
-        message = f"配置文件不存在：{resolved}"
-        return WakeEngineConfigSaveResult(False, message, "config_not_found")
+        return _create_config_with_wake_settings(resolved, update)
 
     try:
         data = json.loads(resolved.read_text(encoding="utf-8"))
@@ -340,6 +340,41 @@ def save_wake_engine_config(config_path: Path, update: WakeEngineConfigUpdate) -
         return WakeEngineConfigSaveResult(False, message, "write_failed")
 
     return WakeEngineConfigSaveResult(True, "已保存，重启小黄后生效")
+
+
+def _create_config_with_wake_settings(
+    config_path: Path, update: WakeEngineConfigUpdate,
+) -> WakeEngineConfigSaveResult:
+    from dataclasses import asdict
+    from xiaohuang.app_config_service import get_default_config
+
+    try:
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        return WakeEngineConfigSaveResult(
+            False, f"创建配置目录失败：{exc}", "mkdir_failed",
+        )
+
+    data = asdict(get_default_config())
+    data["wake"] = {
+        "engine": _normalize_wake_engine(update.engine),
+        "fallback_enabled": bool(update.fallback_enabled),
+        "device_index": int(update.device_index),
+        "cooldown_seconds": float(update.cooldown_seconds),
+        "sensitivity": float(update.sensitivity),
+    }
+
+    try:
+        config_path.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        return WakeEngineConfigSaveResult(
+            False, f"创建配置文件失败：{exc}", "write_failed",
+        )
+
+    return WakeEngineConfigSaveResult(True, "已创建配置文件并保存，重启小黄后生效")
 
 
 def compute_status(

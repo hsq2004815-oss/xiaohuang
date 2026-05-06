@@ -3265,19 +3265,24 @@ class V12EBControlPanelWakeEngineTests(unittest.TestCase):
         self.assertEqual(data["llm"]["provider"], "qwen")
         self.assertTrue(data["custom"]["keep"])
 
-    def test_save_wake_engine_config_missing_file_returns_error(self):
+    def test_save_wake_engine_config_creates_missing_file(self):
+        import json
         from xiaohuang.status_control_service import WakeEngineConfigUpdate, save_wake_engine_config
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "missing" / "config.json"
             result = save_wake_engine_config(
                 config_path,
-                WakeEngineConfigUpdate("stt_text", True, 0, 2.5, 0.5),
+                WakeEngineConfigUpdate("openwakeword", True, 2, 3.0, 0.7),
             )
 
-        self.assertFalse(result.ok)
-        self.assertEqual(result.error, "config_not_found")
-        self.assertFalse(config_path.exists())
+            self.assertTrue(result.ok)
+            self.assertTrue(config_path.exists())
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(data["wake"]["engine"], "openwakeword")
+            self.assertEqual(data["wake"]["device_index"], 2)
+            self.assertEqual(data["wake"]["cooldown_seconds"], 3.0)
+            self.assertEqual(data["wake"]["sensitivity"], 0.7)
 
     def test_validate_config_path_rejects_empty_string(self):
         from xiaohuang.status_control_service import _validate_config_path
