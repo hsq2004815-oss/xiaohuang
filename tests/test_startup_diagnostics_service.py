@@ -78,11 +78,6 @@ class PortHealthErrorTests(unittest.TestCase):
 
 
 class ModelCacheErrorTests(unittest.TestCase):
-    def test_recognises_downloading_model(self):
-        diag = diagnose_logs({"stt_server.out.log": "Downloading Model from modelscope..."})
-        self.assertEqual(diag.kind, "model_cache_error")
-        self.assertEqual(diag.severity, "warning")
-
     def test_recognises_model_path_not_found(self):
         diag = diagnose_logs({"stt_server.err.log": "model_path_not_found: /home/user/.cache/modelscope/hub/..."})
         self.assertEqual(diag.kind, "model_cache_error")

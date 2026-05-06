@@ -146,6 +146,21 @@ def format_diagnostics_text(input_data: dict) -> str:
             _a(f"- 日志来源：{_esc(str(source))}")
         _a("")
 
+    # ── 九、启动前检查 ──
+    preflight = input_data.get("preflight_check") if isinstance(input_data, dict) else None
+    if preflight and isinstance(preflight, dict) and preflight.get("status"):
+        _a("九、启动前检查")
+        _a(f"- 总体：{_esc(str(preflight.get('status', '--')))}，{_esc(str(preflight.get('summary', '--')))}")
+        items = preflight.get("items", []) if isinstance(preflight.get("items"), list) else []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            status_label = {"ok": "ok", "warning": "warning", "error": "error"}.get(item.get("status", ""), item.get("status", "--"))
+            _a(f"- {_esc(str(item.get('label', '--')))}：{_esc(str(status_label))}，{_esc(str(item.get('message', '--')))}")
+            if item.get("suggestion"):
+                _a(f"  建议：{_esc(str(item.get('suggestion', '')))}")
+        _a("")
+
     return "\n".join(lines)
 
 

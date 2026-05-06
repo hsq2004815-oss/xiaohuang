@@ -12,6 +12,7 @@
   var lastLogPaths = null;
   var lastRuntimeEvents = [];
   var lastStartupDiagnostic = null;
+  var lastPreflightCheck = null;
   var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
 
   /* ─── API ─── */
@@ -436,6 +437,7 @@
     if (action === 'save-restart') { doSaveAndRestart(btn); return; }
     if (action === 'export-diag') { doExportDiag(btn); return; }
     if (action === 'open-logs-folder') { doOpenLogsFolder(btn); return; }
+    if (action === 'preflight-check') { doPreflightCheck(btn); return; }
     toast('未识别的操作: ' + action, 'err');
   }
 
@@ -572,6 +574,50 @@
     lastError.style.whiteSpace = 'pre-wrap';
   }
 
+  function doPreflightCheck(btn) {
+    if (!btn || btn.disabled) return;
+    setButtonLoading(btn, '检查中...', 'preflight-check');
+    drawerLog('启动前检查', null, '已发送检查请求');
+
+    apiCall('get_preflight_check').then(function (r) {
+      if (r && r.ok && r.data) {
+        lastPreflightCheck = r.data;
+        renderPreflightCheck(r.data);
+        var summary = r.data.summary || '检查完成';
+        toast(summary, r.data.status === 'error' ? 'err' : r.data.status === 'warning' ? 'warn' : 'ok');
+        drawerLog('启动前检查', true, summary);
+      } else {
+        lastPreflightCheck = null;
+        toast((r && r.error) || '检查失败', 'err');
+        drawerLog('启动前检查', false, (r && r.error));
+      }
+    }).catch(function (e) {
+      toast('检查出错: ' + e, 'err');
+      drawerLog('启动前检查', false, String(e));
+    }).finally(function () {
+      restoreButton(btn, '运行检查', 'preflight-check');
+    });
+  }
+
+  function renderPreflightCheck(data) {
+    var el = $('drawer-preflight');
+    if (!el) return;
+    if (!data || !data.items || !data.items.length) {
+      el.innerHTML = '暂无检查结果';
+      return;
+    }
+    var icon = { ok: '✅', warning: '⚠️', error: '❌' };
+    var html = data.items.map(function (item) {
+      var ico = icon[item.status] || '?';
+      return '<div class="drawer-entry"><span class="ts">' + ico +
+        '</span> ' + escapeHtml(item.label) + '：' + escapeHtml(item.message) +
+        (item.suggestion ? '<div class="hint" style="margin-left:1.5em">→ ' + escapeHtml(item.suggestion) + '</div>' : '') +
+        '</div>';
+    }).join('');
+    html += '<div style="margin-top:6px;font-weight:600">结论：' + escapeHtml(data.summary || '') + '</div>';
+    el.innerHTML = html;
+  }
+
   function doExportDiag(btn) {
     if (!btn || btn.disabled) return;
     setButtonLoading(btn, '导出中...', 'export-diag');
@@ -591,7 +637,8 @@
       },
       history: opHistory,
       runtime_events: lastRuntimeEvents,
-      startup_diagnostic: lastStartupDiagnostic || {}
+      startup_diagnostic: lastStartupDiagnostic || {},
+      preflight_check: lastPreflightCheck || {}
     };
 
     apiCall('export_diagnostics_text', payload).then(function (r) {

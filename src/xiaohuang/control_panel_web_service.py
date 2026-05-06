@@ -225,6 +225,23 @@ class ControlPanelWebApi:
             _record_cp_event("open_logs_folder", msg, "error")
             return _fail(msg, "open_logs_error")
 
+    def get_preflight_check(self) -> dict:
+        try:
+            from xiaohuang.capabilities.preflight_check.service import (
+                run_preflight_check,
+            )
+            result = run_preflight_check(self._project_root)
+            _record_cp_event(
+                "preflight_check",
+                result.summary,
+                "info" if result.status == "ok" else result.status,
+            )
+            return _ok(data=result.to_dict(), message="启动前检查完成")
+        except Exception:
+            msg = f"启动前检查失败: {traceback.format_exc()}"
+            _record_cp_event("preflight_check", msg, "error")
+            return _fail(msg, "preflight_error")
+
 
 def _record_cp_event(event_type: str, message: str, level: str = "info") -> None:
     try:

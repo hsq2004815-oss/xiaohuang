@@ -38,6 +38,19 @@
 - 未修改 voice overlay / wake / STT / LLM / TTS 主链路
 - 新增 `tests/test_startup_diagnostics_service.py`（28 tests）
 
+### V1.3C-B Preflight Check（2026-05-07）
+
+- 新增 `capabilities/preflight_check/` — 独立 capability 目录
+- `preflight_check/service.py`：启动前资源检查，含 5 个检查项
+- 检查项：物理内存/虚拟内存（threshold ok≥6GB/warn≥3GB）、STT 端口 8766、Python 环境、模型缓存（SenseVoiceSmall + VAD model.pt）、logs 目录可写性
+- 控制面板右侧诊断栏新增"启动前检查"按钮和结果展示区
+- 检查结果按 ok/warning/error 分级，含人话摘要和建议
+- Web API `get_preflight_check()` 返回结构化 PreflightCheckResult
+- Runtime Event 记录 `control_panel/preflight_check` 事件
+- 诊断导出 TXT 新增"九、启动前检查" section
+- 未修改 voice overlay / wake / STT / LLM / TTS 主链路
+- 新增 `tests/test_preflight_check_service.py`（25 tests）
+
 ### V1.3B-D Open Logs Folder（2026-05-06）
 
 - Web 控制面板新增"打开日志目录"按钮，点击后用系统资源管理器打开项目 `logs/` 目录
