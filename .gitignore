@@ -16,3 +16,22 @@ data/tts/*.mp3
 .env.*
 secrets.ps1
 .xiaohuang/
+
+# Local AI agent runtime / private context
+.claude/
+overlay_ui_context.txt
+
+# Runtime outputs
+logs/
+data/recordings/
+data/tts/
+models/
+
+# Secrets / env
+secrets.ps1
+.env
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
