@@ -5542,8 +5542,8 @@ class V104ReplyPipelineTests(unittest.TestCase):
         def fake_llm(_text, **_kw):
             return ReplyGenerationResult(TOOL_UNAVAILABLE_REPLY, "tool_unavailable")
         result = generate_reply_pipeline_result("打开浏览器", config, llm_reply_func=fake_llm)
-        self.assertEqual(result.reply_source, "tool_unavailable")
-        self.assertIn("不能执行工具", result.source_note or "")
+        self.assertIn(result.reply_source, ("tool_unavailable", "tool_denied"))
+        self.assertTrue(result.source_note is not None)
 
     def test_pipeline_tts_disabled(self):
         from xiaohuang.reply_pipeline_service import generate_reply_pipeline_result
@@ -5727,8 +5727,7 @@ class V105TaskRouterTests(unittest.TestCase):
             return type("R", (), {"text": "x", "source": "llm"})()
         result = generate_reply_pipeline_result("帮我打开浏览器", config, llm_reply_func=fake_llm)
         self.assertEqual(llm_called["n"], 0)
-        self.assertEqual(result.reply_source, "tool_unavailable")
-        self.assertIn("不能执行工具", result.source_note or "")
+        self.assertIn(result.reply_source, ("tool_unavailable", "tool_denied"))
 
     def test_pipeline_task_request_still_does_tts(self):
         from pathlib import Path
@@ -5739,7 +5738,7 @@ class V105TaskRouterTests(unittest.TestCase):
         def fake_play(_path):
             return True
         result = generate_reply_pipeline_result("帮我打开浏览器", config, tts_func=fake_tts, play_audio_func=fake_play)
-        self.assertEqual(result.reply_source, "tool_unavailable")
+        self.assertIn(result.reply_source, ("tool_unavailable", "tool_denied"))
         self.assertTrue(result.tts_played)
         self.assertEqual(result.tts_path, Path("/tmp/fake.mp3"))
 

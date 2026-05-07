@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import unittest
 from unittest.mock import patch
 
@@ -185,8 +186,21 @@ class V12GAExistingBehaviorTests(unittest.TestCase):
 
     def test_fallback_no_key_preserved(self):
         from xiaohuang.llm_reply_service import generate_llm_reply_result
-        result = generate_llm_reply_result("你好", config=None)
-        self.assertEqual(result.source, "rule_fallback_no_key")
+
+        _ENV_KEYS = (
+            "DEEPSEEK_API_KEY",
+            "DEEPSEEK_BASE_URL",
+            "DEEPSEEK_MODEL",
+            "DEEPSEEK_MAX_TOKENS",
+        )
+        saved = {k: os.environ.pop(k, None) for k in _ENV_KEYS}
+        try:
+            result = generate_llm_reply_result("你好", config=None)
+            self.assertEqual(result.source, "rule_fallback_no_key")
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
 
     def test_no_tkinter_import(self):
         from xiaohuang import llm_reply_service

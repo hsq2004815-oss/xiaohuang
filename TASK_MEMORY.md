@@ -51,6 +51,20 @@
 - 未修改 voice overlay / wake / STT / LLM / TTS 主链路
 - 新增 `tests/test_preflight_check_service.py`（25 tests）
 
+### V1.4-A Capability Router MVP（2026-05-07）
+
+- 新增 `capabilities/local_commands/` — 安全白名单能力路由层
+- `local_commands/models.py`：RouteDecision / LocalCommandIntent / LocalCommandResult / CapabilityDefinition
+- `local_commands/registry.py`：5 个白名单能力 + lazy handler
+- `local_commands/service.py`：中文关键词确定性匹配（不用 LLM function calling）+ 执行分发
+- 5 个安全白名单能力：open_logs_folder / run_preflight_check / get_status / export_diagnostics / open_control_panel
+- 安全边界：危险关键词（powershell/cmd/shell/shutdown/微信/Q等）优先拒绝，fail closed
+- 接入 reply_pipeline_service：可执行能力直接返回结果不调 LLM，不可执行能力返回明确拒绝
+- 保留旧 task_router_service 兼容接口
+- Runtime Event 记录 capability_invoked/completed/failed 事件
+- 未修改 voice overlay / wake / STT / LLM / TTS 主链路
+- 新增 `tests/test_capability_router.py`（36 tests）
+
 ### V1.3B-D Open Logs Folder（2026-05-06）
 
 - Web 控制面板新增"打开日志目录"按钮，点击后用系统资源管理器打开项目 `logs/` 目录

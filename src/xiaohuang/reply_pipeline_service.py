@@ -13,6 +13,8 @@ from xiaohuang.tts_service import (
     synthesize_tts_to_mp3,
 )
 
+TOOL_DENIED_REPLY = "该操作不在安全白名单中，当前版本还不能执行。"
+
 
 @dataclass(frozen=True)
 class ReplyPipelineConfig:
@@ -46,21 +48,23 @@ def generate_reply_pipeline_result(
     on_before_tts: Callable[[str], None] | None = None,
     playback_warn: Callable[[str], None] | None = None,
     latency_tracker: Any | None = None,
+    project_root: Any = None,
 ) -> ReplyPipelineResult:
     _track = _make_track(latency_tracker)
 
-    task = route_task(command_text)
-    if task.is_task_request:
-        reply_text = TOOL_UNAVAILABLE_REPLY
-        reply_source = "tool_unavailable"
-        source_note = _source_note_for_source(reply_source)
-        tts_path, tts_played, tts_error = _run_tts(
-            reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts,
-        )
-        return ReplyPipelineResult(
-            reply_text=reply_text, reply_source=reply_source, source_note=source_note,
-            tts_path=tts_path, tts_played=tts_played, tts_error=tts_error,
-        )
+    # Try capability router first (V1.4-A)
+    capability_handled = _try_capability_route(
+        command_text,
+        config,
+        tts_func,
+        play_audio_func,
+        playback_warn,
+        on_before_tts,
+        latency_tracker,
+        project_root,
+    )
+    if capability_handled is not None:
+        return capability_handled
 
     if config.enable_llm and config.llm_config is not None and config.llm_config.is_configured:
         _track("llm_ms", start=True)
@@ -82,6 +86,79 @@ def generate_reply_pipeline_result(
         reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts, latency_tracker=latency_tracker,
     )
 
+    return ReplyPipelineResult(
+        reply_text=reply_text,
+        reply_source=reply_source,
+        source_note=source_note,
+        tts_path=tts_path,
+        tts_played=tts_played,
+        tts_error=tts_error,
+    )
+
+
+def _try_capability_route(
+    command_text: str,
+    config: ReplyPipelineConfig,
+    tts_func: Callable[..., Path],
+    play_audio_func: Callable[..., bool],
+    playback_warn: Callable[[str], None] | None,
+    on_before_tts: Callable[[str], None] | None,
+    latency_tracker: Any | None,
+    project_root: Any,
+) -> ReplyPipelineResult | None:
+    try:
+        from xiaohuang.capabilities.local_commands.service import (
+            execute_capability,
+            route_capability,
+        )
+    except Exception:
+        return None
+
+    decision = route_capability(command_text)
+    if not decision.is_task_request:
+        return None
+
+    if decision.can_execute and decision.command:
+        result = execute_capability(decision, project_root=project_root)
+        reply_text = result.message
+        reply_source = "capability"
+        source_note = _source_note_for_source(reply_source)
+        tts_path, tts_played, tts_error = _run_tts(
+            reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts,
+            latency_tracker=latency_tracker,
+        )
+        return ReplyPipelineResult(
+            reply_text=reply_text,
+            reply_source=reply_source,
+            source_note=source_note,
+            tts_path=tts_path,
+            tts_played=tts_played,
+            tts_error=tts_error,
+        )
+
+    if decision.reason in ("not_allowed", "capability_disabled"):
+        reply_text = decision.message or TOOL_DENIED_REPLY
+        reply_source = "tool_denied"
+        source_note = _source_note_for_source(reply_source)
+        tts_path, tts_played, tts_error = _run_tts(
+            reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts,
+        )
+        return ReplyPipelineResult(
+            reply_text=reply_text,
+            reply_source=reply_source,
+            source_note=source_note,
+            tts_path=tts_path,
+            tts_played=tts_played,
+            tts_error=tts_error,
+        )
+
+    # Fallback: tool-like request that route_task would catch, but not in new router
+    reply_text = TOOL_UNAVAILABLE_REPLY
+    reply_source = "tool_unavailable"
+    source_note = _source_note_for_source(reply_source)
+    tts_path, tts_played, tts_error = _run_tts(
+        reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts,
+    )
     return ReplyPipelineResult(
         reply_text=reply_text,
         reply_source=reply_source,
@@ -155,6 +232,8 @@ def _call_play_audio(
 def _source_note_for_source(source: str) -> str | None:
     if source in ("rule", "llm"):
         return None
+    if source == "capability":
+        return None
     if source == "rule_fallback_no_key":
         return "LLM 未配置 key，已使用本地回复"
     if source == "rule_fallback_error":
@@ -165,4 +244,6 @@ def _source_note_for_source(source: str) -> str | None:
         return "LLM 输出被截断，已使用本地回复"
     if source == "tool_unavailable":
         return "当前版本还不能执行工具"
+    if source == "tool_denied":
+        return "该操作不在安全白名单中"
     return None
