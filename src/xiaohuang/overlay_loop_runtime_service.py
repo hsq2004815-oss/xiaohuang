@@ -19,6 +19,7 @@ from xiaohuang.assistant_runtime_service import (
 from xiaohuang.command_runtime_service import (
     record_command_transcribe as _record_command_transcribe,
 )
+from xiaohuang.conversation_memory_service import ConversationMemory
 from xiaohuang.conversation_session_service import ConversationSessionConfig
 from xiaohuang.latency_metrics_service import LatencyTracker
 from xiaohuang.reply_pipeline_service import ReplyPipelineConfig, ReplyPipelineResult
@@ -109,6 +110,10 @@ def run_overlay_runtime(
             latency_tracker=turn_tracker,
         )
 
+    memory: ConversationMemory | None = None
+    if runtime_config.session_config.enabled:
+        memory = ConversationMemory()
+
     def _generate_reply_pipeline_guarded(
         command_text: str,
         *,
@@ -126,7 +131,8 @@ def run_overlay_runtime(
             if bridge_runtime is not None:
                 bridge_runtime.mark_tts_finished()
 
-        return generate_reply_runtime_result(
+        ctx = memory.build_context_text() if memory else None
+        result = generate_reply_runtime_result(
             command_text,
             config=config,
             on_debug=make_llm_debug_handler(logger, runtime_config.debug),
@@ -134,7 +140,12 @@ def run_overlay_runtime(
             latency_tracker=latency_tracker,
             on_before_tts=_before_tts,
             on_after_tts=_after_tts,
+            conversation_context=ctx or None,
         )
+        if memory and result.reply_text:
+            memory.add_user(command_text)
+            memory.add_assistant(result.reply_text, source=result.reply_source)
+        return result
 
     openwakeword_bridge: _OpenWakeWordBridgeRuntime | None = None
     openwakeword_listener: OpenWakeWordListenerHandle | None = None
@@ -276,6 +287,8 @@ def run_overlay_runtime(
                 if stop_event.wait(2.0):
                     break
     finally:
+        if memory is not None:
+            memory.clear()
         if openwakeword_listener is not None:
             stop_openwakeword_listener(openwakeword_listener)
 

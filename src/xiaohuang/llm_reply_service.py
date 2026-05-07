@@ -173,8 +173,11 @@ def build_openai_compatible_chat_request(
     temperature: float = 0.4,
     persona: str | None = None,
     provider: str = "deepseek",
+    conversation_context: str | None = None,
 ) -> dict[str, Any]:
     system_content = persona if persona else _DEFAULT_VOICE_PERSONA
+    if conversation_context:
+        system_content = system_content + "\n\n" + str(conversation_context)
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
@@ -214,6 +217,7 @@ def generate_llm_reply(
     post_json_func: PostJsonFunc | None = None,
     on_debug: Callable[[str], None] | None = None,
     persona: str | None = None,
+    conversation_context: str | None = None,
 ) -> str:
     return generate_llm_reply_result(
         user_text,
@@ -222,6 +226,7 @@ def generate_llm_reply(
         post_json_func=post_json_func,
         on_debug=on_debug,
         persona=persona,
+        conversation_context=conversation_context,
     ).text
 
 
@@ -233,6 +238,7 @@ def generate_llm_reply_result(
     post_json_func: PostJsonFunc | None = None,
     on_debug: Callable[[str], None] | None = None,
     persona: str | None = None,
+    conversation_context: str | None = None,
 ) -> ReplyGenerationResult:
     if _looks_like_tool_request(user_text):
         return ReplyGenerationResult(TOOL_UNAVAILABLE_REPLY, "tool_unavailable")
@@ -252,6 +258,7 @@ def generate_llm_reply_result(
                 temperature=resolved_config.temperature,
                 persona=persona,
                 provider=provider_label,
+                conversation_context=conversation_context,
             ),
             {
                 "Authorization": f"Bearer {resolved_config.api_key}",

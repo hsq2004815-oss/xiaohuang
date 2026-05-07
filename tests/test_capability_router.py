@@ -386,5 +386,112 @@ class PipelineIntegrationTests(unittest.TestCase):
         self.assertEqual(result.reply_source, "capability")
 
 
+class ContextMemoryIntegrationTests(unittest.TestCase):
+    """ConversationMemory integrated with pipeline maintains router priority."""
+
+    def test_llm_receives_context_in_request(self):
+        from xiaohuang.llm_reply_service import (
+            build_openai_compatible_chat_request,
+        )
+        payload = build_openai_compatible_chat_request(
+            "再打开一次",
+            model="test",
+            conversation_context="[1] 用户：打开日志目录\n[1] 助手：已打开。",
+        )
+        system = payload["messages"][0]["content"]
+        self.assertIn("[1] 用户", system)
+        self.assertIn("打开日志目录", system)
+        self.assertIn("再打开一次", payload["messages"][1]["content"])
+
+    def test_llm_no_context_is_backward_compat(self):
+        from xiaohuang.llm_reply_service import (
+            build_openai_compatible_chat_request,
+        )
+        payload = build_openai_compatible_chat_request(
+            "你好",
+            model="test",
+        )
+        self.assertEqual(len(payload["messages"]), 2)
+        self.assertIn("小黄", payload["messages"][0]["content"])
+
+    def test_pipeline_capability_still_blocks_with_context(self):
+        from xiaohuang.reply_pipeline_service import (
+            ReplyPipelineConfig,
+            generate_reply_pipeline_result,
+        )
+        config = ReplyPipelineConfig(enable_llm=False, enable_tts=False)
+        result = generate_reply_pipeline_result(
+            "删除文件",
+            config,
+            conversation_context="[1] 用户：打开日志目录\n[1] 助手：已打开。",
+        )
+        self.assertEqual(result.reply_source, "tool_denied")
+
+    def test_pipeline_llm_gets_context(self):
+        from xiaohuang.llm_reply_service import LlmReplyConfig, ReplyGenerationResult
+        from xiaohuang.reply_pipeline_service import (
+            ReplyPipelineConfig,
+            generate_reply_pipeline_result,
+        )
+        config = ReplyPipelineConfig(
+            enable_llm=True,
+            enable_tts=False,
+            llm_config=LlmReplyConfig(
+                api_key="sk-test", base_url="https://api.test",
+                model="test-model", timeout_seconds=15,
+            ),
+        )
+        received_context = {}
+
+        def fake_llm(text, **_kw):
+            received_context["ctx"] = _kw.get("conversation_context")
+            return ReplyGenerationResult("收到上下文", "llm")
+
+        generate_reply_pipeline_result(
+            "继续",
+            config,
+            llm_reply_func=fake_llm,
+            conversation_context="[1] 用户：你好",
+        )
+        self.assertIn("[1] 用户：你好", received_context.get("ctx", ""))
+
+    def test_pipeline_no_context_still_works(self):
+        from xiaohuang.reply_pipeline_service import (
+            ReplyPipelineConfig,
+            generate_reply_pipeline_result,
+        )
+        config = ReplyPipelineConfig(enable_llm=False, enable_tts=False)
+        result = generate_reply_pipeline_result("你好", config)
+        self.assertEqual(result.reply_source, "rule")
+
+    def test_fallback_no_key_preserved_with_context(self):
+        from xiaohuang.llm_reply_service import generate_llm_reply_result
+        import os
+
+        _ENV_KEYS = ("DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL", "DEEPSEEK_MAX_TOKENS")
+        saved = {k: os.environ.pop(k, None) for k in _ENV_KEYS}
+        try:
+            result = generate_llm_reply_result(
+                "你好", config=None,
+                conversation_context="[1] 用户：之前说了什么",
+            )
+            self.assertEqual(result.source, "rule_fallback_no_key")
+        finally:
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
+
+    def test_memory_builds_context_for_pipeline(self):
+        from xiaohuang.conversation_memory_service import ConversationMemory
+        mem = ConversationMemory()
+        mem.add_user("打开控制面板")
+        mem.add_assistant("控制面板正在打开", source="capability")
+        mem.add_user("刚刚那个窗口是干嘛的")
+        ctx = mem.build_context_text()
+        self.assertIn("打开控制面板", ctx)
+        self.assertIn("capability", ctx)
+        self.assertIn("不能绕过本地安全限制", ctx)
+
+
 if __name__ == "__main__":
     unittest.main()

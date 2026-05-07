@@ -48,6 +48,7 @@ def generate_reply_pipeline_result(
     playback_warn: Callable[[str], None] | None = None,
     latency_tracker: Any | None = None,
     project_root: Any = None,
+    conversation_context: str | None = None,
 ) -> ReplyPipelineResult:
     _track = _make_track(latency_tracker)
 
@@ -68,7 +69,11 @@ def generate_reply_pipeline_result(
     if config.enable_llm and config.llm_config is not None and config.llm_config.is_configured:
         _track("llm_ms", start=True)
         reply_result = llm_reply_func(
-            command_text, config=config.llm_config, on_debug=on_debug, persona=config.persona,
+            command_text,
+            config=config.llm_config,
+            on_debug=on_debug,
+            persona=config.persona,
+            conversation_context=conversation_context,
         )
         _track("llm_ms", start=False)
         reply_text = reply_result.text

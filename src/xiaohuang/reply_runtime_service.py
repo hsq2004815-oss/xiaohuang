@@ -19,6 +19,7 @@ def generate_reply_runtime_result(
     on_before_tts: Callable[[str], None] | None = None,
     on_after_tts: Callable[[], None] | None = None,
     pipeline_func: Callable[..., ReplyPipelineResult] = generate_reply_pipeline_result,
+    conversation_context: str | None = None,
 ) -> ReplyPipelineResult:
     tts_started = False
 
@@ -28,6 +29,9 @@ def generate_reply_runtime_result(
         if on_before_tts is not None:
             on_before_tts(text)
 
+    kwargs = {}
+    if conversation_context is not None:
+        kwargs["conversation_context"] = conversation_context
     try:
         return pipeline_func(
             command_text,
@@ -36,6 +40,7 @@ def generate_reply_runtime_result(
             on_before_tts=_before_tts,
             playback_warn=playback_warn,
             latency_tracker=latency_tracker,
+            **kwargs,
         )
     finally:
         if tts_started and on_after_tts is not None:
