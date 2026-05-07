@@ -18,6 +18,8 @@ class WakeConfig:
     device_index: int | None = None
     model_path: str | None = None
     model_name: str | None = None
+    wake_greeting_enabled: bool = False
+    wake_greeting_text: str = "您好先生，有什么为你服务？"
 
 
 @dataclass(frozen=True)
@@ -176,6 +178,12 @@ def apply_cli_overrides(
             device_index=config.wake.device_index,
             model_path=config.wake.model_path,
             model_name=config.wake.model_name,
+            wake_greeting_enabled=_or_config(
+                getattr(args, "wake_greeting", None), config.wake.wake_greeting_enabled,
+            ),
+            wake_greeting_text=_coalesce(
+                getattr(args, "wake_greeting_text", None), config.wake.wake_greeting_text,
+            ),
         ),
         audio=AudioConfig(
             device_id=_coalesce(args.device, config.audio.device_id),
@@ -235,6 +243,8 @@ def _merge_wake(base: WakeConfig, data: dict[str, Any], *, warn=None) -> WakeCon
         device_index=_coerce_optional_int(data.get("device_index"), base.device_index, 0, 99, warn),
         model_path=_coerce_optional_str(data.get("model_path"), base.model_path),
         model_name=_coerce_optional_str(data.get("model_name"), base.model_name),
+        wake_greeting_enabled=_coerce_bool(data.get("wake_greeting_enabled"), base.wake_greeting_enabled, warn),
+        wake_greeting_text=_coerce_str(data.get("wake_greeting_text"), base.wake_greeting_text),
     )
 
 

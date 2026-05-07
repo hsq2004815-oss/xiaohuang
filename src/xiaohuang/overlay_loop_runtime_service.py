@@ -10,6 +10,8 @@ import threading
 from dataclasses import dataclass
 from typing import Callable
 
+from pathlib import Path
+
 from xiaohuang.assistant_runtime_service import (
     AssistantRuntimeCallbacks,
     AssistantSessionCallbacks,
@@ -63,6 +65,8 @@ class OverlayLoopRuntimeConfig:
     resident_hidden: bool = False
     debug: bool = False
     assistant_name: str = "小黄"
+    wake_greeting_enabled: bool = False
+    wake_greeting_text: str = "您好先生，有什么为你服务？"
 
 
 def run_overlay_runtime(
@@ -240,6 +244,10 @@ def run_overlay_runtime(
                             resident_hidden=runtime_config.resident_hidden,
                             request_transcription_func=_overlay_stt,
                             record_openwakeword_command=record_openwakeword_command,
+                            wake_greeting_enabled=runtime_config.wake_greeting_enabled,
+                            wake_greeting_text=runtime_config.wake_greeting_text,
+                            enable_tts=runtime_config.enable_tts,
+                            tts_output_dir=getattr(runtime_config, "tts_output_dir", None),
                         )
                     except WakeEngineLoopStopped:
                         break
@@ -317,8 +325,22 @@ def _run_openwakeword_turn_from_listener(
     resident_hidden: bool = False,
     request_transcription_func: Callable[..., dict] = request_transcription,
     record_openwakeword_command: Callable[..., WakeLoopResult],
+    wake_greeting_enabled: bool = False,
+    wake_greeting_text: str = "",
+    enable_tts: bool = False,
+    tts_output_dir=None,
 ) -> WakeLoopResult:
     event = wait_for_openwakeword_event(listener, stop_event)
+
+    if wake_greeting_enabled and wake_greeting_text:
+        _play_wake_greeting(
+            text=wake_greeting_text,
+            logger=logger,
+            app=app,
+            enable_tts=enable_tts,
+            tts_output_dir=tts_output_dir,
+        )
+
     return record_openwakeword_command(
         event=event,
         app=app,
@@ -330,6 +352,33 @@ def _run_openwakeword_turn_from_listener(
         resident_hidden=resident_hidden,
         request_transcription_func=request_transcription_func,
     )
+
+
+def _play_wake_greeting(
+    *,
+    text: str,
+    logger,
+    app,
+    enable_tts: bool,
+    tts_output_dir,
+) -> None:
+    if not enable_tts:
+        logger.info("wake greeting skipped: tts not enabled")
+        return
+    try:
+        from xiaohuang.tts_service import synthesize_tts_to_mp3
+        from xiaohuang.audio_playback_service import play_audio_file
+
+        output_dir = Path(tts_output_dir) if tts_output_dir else Path("data/tts")
+        mp3_path = synthesize_tts_to_mp3(text, output_dir)
+        app.thread_safe_set_state("speaking", text[:30])
+        played = play_audio_file(mp3_path, warn=lambda msg: logger.warning(msg))
+        if played:
+            logger.info(f"wake greeting played: {text[:40]}")
+        else:
+            logger.warning("wake greeting playback returned False")
+    except Exception as exc:
+        logger.warning(f"wake greeting failed (continuing to command recording): {exc}")
 
 
 def _make_latency_track(tracker):

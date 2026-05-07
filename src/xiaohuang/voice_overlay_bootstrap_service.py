@@ -169,6 +169,8 @@ def bootstrap_voice_overlay(
         resident_hidden=resident_hidden,
         debug=debug,
         assistant_name=app_config.assistant.name,
+        wake_greeting_enabled=app_config.wake.wake_greeting_enabled,
+        wake_greeting_text=app_config.wake.wake_greeting_text,
     )
 
     paths = VoiceOverlayResolvedPaths(

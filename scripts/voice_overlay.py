@@ -104,6 +104,16 @@ def parse_args() -> argparse.Namespace:
         default=2,
         help="Exit session after this many no-speech follow-up attempts.",
     )
+    parser.add_argument(
+        "--wake-greeting",
+        action="store_true",
+        help="Play a configurable greeting before recording after wake word detection.",
+    )
+    parser.add_argument(
+        "--wake-greeting-text",
+        default=None,
+        help="Custom wake greeting text. Defaults to config or built-in greeting.",
+    )
     parser.add_argument("--config", default=None, help="Path to config.json. Defaults to %%USERPROFILE%%\\.xiaohuang\\config.json")
     return parser.parse_args()
 
