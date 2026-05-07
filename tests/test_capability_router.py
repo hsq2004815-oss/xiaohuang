@@ -284,24 +284,25 @@ class RouteDecisionModelTests(unittest.TestCase):
 
 
 class BackwardCompatTests(unittest.TestCase):
-    """Old task_router_service.route_task must still work."""
+    """Unified routing via route_capability."""
 
-    def test_old_route_task_greeting(self):
-        from xiaohuang.task_router_service import route_task
-        result = route_task("你好")
+    def test_route_capability_greeting(self):
+        from xiaohuang.capabilities.local_commands.service import route_capability
+        result = route_capability("你好")
         self.assertFalse(result.is_task_request)
 
-    def test_old_route_task_browser(self):
-        from xiaohuang.task_router_service import route_task
-        result = route_task("帮我打开浏览器")
+    def test_route_capability_browser_denied(self):
+        from xiaohuang.capabilities.local_commands.service import route_capability
+        result = route_capability("帮我打开浏览器")
         self.assertTrue(result.is_task_request)
         self.assertFalse(result.can_execute)
-        self.assertEqual(result.reason, "not_implemented")
+        self.assertEqual(result.reason, "not_allowed")
 
-    def test_old_route_task_opencode(self):
-        from xiaohuang.task_router_service import route_task
-        result = route_task("帮我用 opencode 写代码")
+    def test_route_capability_opencode_denied(self):
+        from xiaohuang.capabilities.local_commands.service import route_capability
+        result = route_capability("帮我用 opencode 写代码")
         self.assertTrue(result.is_task_request)
+        self.assertFalse(result.can_execute)
 
 
 class PipelineIntegrationTests(unittest.TestCase):

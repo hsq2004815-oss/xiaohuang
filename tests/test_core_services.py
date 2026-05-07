@@ -5683,35 +5683,35 @@ class V104ReplyPipelineTests(unittest.TestCase):
 
 
 class V105TaskRouterTests(unittest.TestCase):
-    def test_route_task_greeting_is_not_task(self):
-        from xiaohuang.task_router_service import route_task
-        result = route_task("你好")
+    def test_route_capability_greeting_is_not_task(self):
+        from xiaohuang.capabilities.local_commands.service import route_capability
+        result = route_capability("你好")
         self.assertFalse(result.is_task_request)
         self.assertFalse(result.can_execute)
         self.assertEqual(result.reason, "not_task")
 
-    def test_route_task_open_browser_is_task(self):
-        from xiaohuang.task_router_service import route_task
-        result = route_task("帮我打开浏览器")
+    def test_route_capability_browser_is_denied(self):
+        from xiaohuang.capabilities.local_commands.service import route_capability
+        result = route_capability("帮我打开浏览器")
         self.assertTrue(result.is_task_request)
         self.assertFalse(result.can_execute)
-        self.assertEqual(result.reason, "not_implemented")
+        self.assertEqual(result.reason, "not_allowed")
 
-    def test_route_task_download_is_task(self):
-        from xiaohuang.task_router_service import route_task
-        result = route_task("帮我下载资料")
-        self.assertTrue(result.is_task_request)
-        self.assertFalse(result.can_execute)
-
-    def test_route_task_opencode_is_task(self):
-        from xiaohuang.task_router_service import route_task
-        result = route_task("帮我用 opencode 写代码")
+    def test_route_capability_download_is_denied(self):
+        from xiaohuang.capabilities.local_commands.service import route_capability
+        result = route_capability("帮我下载资料")
         self.assertTrue(result.is_task_request)
         self.assertFalse(result.can_execute)
 
-    def test_route_task_empty_is_not_task(self):
-        from xiaohuang.task_router_service import route_task
-        result = route_task("")
+    def test_route_capability_opencode_is_denied(self):
+        from xiaohuang.capabilities.local_commands.service import route_capability
+        result = route_capability("帮我用 opencode 写代码")
+        self.assertTrue(result.is_task_request)
+        self.assertFalse(result.can_execute)
+
+    def test_route_capability_empty_is_not_task(self):
+        from xiaohuang.capabilities.local_commands.service import route_capability
+        result = route_capability("")
         self.assertFalse(result.is_task_request)
 
     def test_pipeline_task_request_skips_llm(self):

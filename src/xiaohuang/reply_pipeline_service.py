@@ -5,9 +5,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from xiaohuang.audio_playback_service import play_audio_file
-from xiaohuang.llm_reply_service import TOOL_UNAVAILABLE_REPLY, generate_llm_reply_result
+from xiaohuang.llm_reply_service import generate_llm_reply_result
 from xiaohuang.reply_service import generate_reply
-from xiaohuang.task_router_service import route_task
 from xiaohuang.tts_service import (
     MissingTtsDependencyError,
     synthesize_tts_to_mp3,
@@ -152,21 +151,8 @@ def _try_capability_route(
             tts_error=tts_error,
         )
 
-    # Fallback: tool-like request that route_task would catch, but not in new router
-    reply_text = TOOL_UNAVAILABLE_REPLY
-    reply_source = "tool_unavailable"
-    source_note = _source_note_for_source(reply_source)
-    tts_path, tts_played, tts_error = _run_tts(
-        reply_text, config, tts_func, play_audio_func, playback_warn, on_before_tts,
-    )
-    return ReplyPipelineResult(
-        reply_text=reply_text,
-        reply_source=reply_source,
-        source_note=source_note,
-        tts_path=tts_path,
-        tts_played=tts_played,
-        tts_error=tts_error,
-    )
+    # Should not reach here — route_capability covers all cases.
+    return None
 
 
 def _run_tts(

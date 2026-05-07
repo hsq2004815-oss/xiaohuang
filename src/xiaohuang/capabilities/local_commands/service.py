@@ -24,7 +24,7 @@ _KEYWORD_MAP: list[tuple[list[str], str]] = [
     (["打开控制面板", "显示控制面板", "控制中心", "打开控制中心"], "open_control_panel"),
 ]
 
-# Legacy tool keywords from task_router_service — not whitelisted, always denied
+# Tool-like keywords that are not whitelisted and must be denied.
 _DENIED_KEYWORDS: list[str] = [
     "打开浏览器", "帮我打开",
     "下载",
