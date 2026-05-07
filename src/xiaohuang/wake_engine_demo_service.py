@@ -71,13 +71,6 @@ class DetectionStats:
 
 
 @dataclass(frozen=True)
-class PredictionScore:
-    label: str
-    score: float
-    detected: bool
-
-
-@dataclass(frozen=True)
 class SafetyCheckResult:
     rounds: int
     completed_rounds: int
@@ -489,182 +482,6 @@ def _print_safety_round_summary(
     )
 
 
-def load_openwakeword_model(config: DemoConfig) -> Any:
-    try:
-        model_module = importlib.import_module("openwakeword.model")
-    except Exception as exc:
-        raise RuntimeError(
-            f"Missing optional dependency: openwakeword. Install in a test env with: {OPENWAKEWORD_INSTALL_HINT} ({exc})"
-        ) from exc
-
-    wakeword_models: list[str] = []
-    if config.model_path:
-        wakeword_models.append(config.model_path)
-    if config.model_name:
-        wakeword_models.append(config.model_name)
-
-    kwargs: dict[str, Any] = {"inference_framework": "onnx"}
-    if wakeword_models:
-        kwargs["wakeword_models"] = wakeword_models
-    return model_module.Model(**kwargs)
-
-
-def _run_with_sounddevice(config: DemoConfig, model: Any, np: Any) -> int:
-    try:
-        sd = importlib.import_module("sounddevice")
-    except Exception as exc:
-        raise MissingAudioBackend(str(exc)) from exc
-
-    print("audio_backend=sounddevice")
-    print("listening=true")
-    deadline = time.monotonic() + config.duration_seconds
-    stats = DetectionStats()
-    coalescer = WakeEventCoalescer(config.cooldown_seconds)
-    last_summary = 0.0
-    with sd.InputStream(
-        samplerate=DEFAULT_SAMPLE_RATE,
-        channels=1,
-        dtype="int16",
-        blocksize=config.chunk_samples,
-        device=config.device,
-    ) as stream:
-        while time.monotonic() < deadline:
-            data, overflowed = stream.read(config.chunk_samples)
-            frame = np.asarray(data).reshape(-1).astype(np.int16)
-            prediction = model.predict(frame)
-            score = best_prediction_score(prediction, config)
-            print_score_line(score, prediction, config, force=config.debug or overflowed)
-            process_prediction_score(
-                score,
-                config,
-                stats,
-                coalescer,
-                now=time.monotonic(),
-                force=config.debug or overflowed,
-            )
-            stats.frames += 1
-            now = time.monotonic()
-            if not config.debug and now - last_summary >= 1.0:
-                print_score_line(score, prediction, config, force=True, prefix="score")
-                last_summary = now
-    print("listening=false")
-    print_detection_summary(stats, config)
-    return 0
-
-
-def _run_with_pyaudio(config: DemoConfig, model: Any, np: Any) -> int:
-    pyaudio_module = None
-    for module_name in ("pyaudiowpatch", "pyaudio"):
-        try:
-            pyaudio_module = importlib.import_module(module_name)
-            break
-        except Exception:
-            continue
-    if pyaudio_module is None:
-        raise MissingAudioBackend("pyaudio is not installed")
-
-    print(f"audio_backend={pyaudio_module.__name__}")
-    audio = pyaudio_module.PyAudio()
-    stream = None
-    try:
-        stream = audio.open(
-            format=pyaudio_module.paInt16,
-            channels=1,
-            rate=DEFAULT_SAMPLE_RATE,
-            input=True,
-            input_device_index=config.device,
-            frames_per_buffer=config.chunk_samples,
-        )
-        print("listening=true")
-        deadline = time.monotonic() + config.duration_seconds
-        stats = DetectionStats()
-        coalescer = WakeEventCoalescer(config.cooldown_seconds)
-        last_summary = 0.0
-        while time.monotonic() < deadline:
-            data = stream.read(config.chunk_samples, exception_on_overflow=False)
-            frame = np.frombuffer(data, dtype=np.int16)
-            prediction = model.predict(frame)
-            score = best_prediction_score(prediction, config)
-            print_score_line(score, prediction, config, force=config.debug)
-            process_prediction_score(score, config, stats, coalescer, now=time.monotonic(), force=config.debug)
-            stats.frames += 1
-            now = time.monotonic()
-            if not config.debug and now - last_summary >= 1.0:
-                print_score_line(score, prediction, config, force=True, prefix="score")
-                last_summary = now
-        print("listening=false")
-        print_detection_summary(stats, config)
-        return 0
-    finally:
-        if stream is not None:
-            stream.stop_stream()
-            stream.close()
-        audio.terminate()
-
-
-def best_prediction_score(prediction: Any, config: DemoConfig) -> PredictionScore | None:
-    scores = _flatten_prediction(prediction)
-    if not scores:
-        return None
-    label, score = max(scores.items(), key=lambda item: item[1])
-    return PredictionScore(label=label, score=score, detected=score >= config.sensitivity)
-
-
-def print_score_line(
-    score: PredictionScore | None,
-    raw_prediction: Any,
-    config: DemoConfig,
-    *,
-    force: bool,
-    prefix: str = "frame",
-) -> None:
-    if score is None:
-        if force:
-            print(f"{prefix} score_unavailable=true raw={raw_prediction!r}")
-        return
-    if force or score.detected:
-        print(
-            f"{prefix} label={score.label} "
-            f"score={score.score:.3f} "
-            f"detected={_bool_text(score.detected)} "
-            f"threshold={config.sensitivity:.3f}"
-        )
-
-
-def process_prediction_score(
-    score: PredictionScore | None,
-    config: DemoConfig,
-    stats: DetectionStats,
-    coalescer: WakeEventCoalescer,
-    *,
-    now: float,
-    force: bool = False,
-) -> bool:
-    if score is None or not score.detected:
-        return False
-
-    accepted = coalescer.accept(score.label, now, score.score, coalesce=config.coalesce_events)
-    stats.update_from_wake_stats(coalescer.stats())
-    if accepted:
-        raw_event_count, suppressed_event_count = coalescer.event_counts(score.label)
-        event = WakeEvent(
-            engine_type=config.engine,
-            wake_phrase=config.wake_phrase,
-            label=score.label,
-            score=score.score,
-            detected_at=now,
-            raw_event_count=raw_event_count,
-            suppressed_event_count=suppressed_event_count,
-        )
-        _print_wake_event(event, coalesced=config.coalesce_events)
-        return True
-
-    if config.debug or force:
-        remaining = coalescer.remaining_seconds(score.label, now)
-        print(f"wake_suppressed label={score.label} score={score.score:.3f} reason=cooldown remaining={remaining:.3f}")
-    return False
-
-
 def print_detection_summary(stats: DetectionStats, config: DemoConfig) -> None:
     print(f"frames={stats.frames}")
     print(f"raw_detections={stats.raw_detections}")
@@ -692,18 +509,6 @@ def install_hint_for(name: str) -> str:
     if name in {"pyaudio", "PyAudioWPatch"}:
         return "pip install PyAudioWPatch"
     return f"pip install {name}"
-
-
-def _flatten_prediction(prediction: Any) -> dict[str, float]:
-    if not isinstance(prediction, dict):
-        return {}
-    scores: dict[str, float] = {}
-    for label, value in prediction.items():
-        try:
-            scores[str(label)] = float(value)
-        except (TypeError, ValueError):
-            continue
-    return scores
 
 
 def _list_sounddevice_devices() -> bool | None:
@@ -795,7 +600,3 @@ def configure_output_encoding() -> None:
             stream.reconfigure(errors="replace")
         except Exception:
             pass
-
-
-class MissingAudioBackend(RuntimeError):
-    pass
