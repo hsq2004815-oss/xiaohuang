@@ -495,3 +495,207 @@ class ContextMemoryIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# ---------------------------------------------------------------------------
+# V1.4-Q3 additions — normalization, disabled, route vs execute separation,
+# risk labels, refusal messages, runtime events recording
+# ---------------------------------------------------------------------------
+
+
+class RouteCapabilityNormalizationTests(unittest.TestCase):
+    def test_whitespace_around_removed(self):
+        d = route_capability("  打开日志  ")
+        self.assertTrue(d.is_task_request)
+        self.assertTrue(d.can_execute)
+        self.assertEqual(d.command, "open_logs_folder")
+
+    def test_internal_spaces_handled(self):
+        d = route_capability("打开  log  s")
+        self.assertTrue(d.is_task_request)
+        self.assertTrue(d.can_execute)
+        self.assertEqual(d.command, "open_logs_folder")
+
+    def test_english_case_folded(self):
+        d = route_capability("打开 LOGS")
+        self.assertTrue(d.is_task_request)
+        self.assertTrue(d.can_execute)
+        self.assertEqual(d.command, "open_logs_folder")
+
+    def test_mixed_spacing_with_chinese_and_english(self):
+        d = route_capability("  打开  LOGS  ")
+        self.assertTrue(d.is_task_request)
+        self.assertTrue(d.can_execute)
+        self.assertEqual(d.command, "open_logs_folder")
+
+    def test_whitespace_only_text_is_not_task(self):
+        d = route_capability("   ")
+        self.assertFalse(d.is_task_request)
+        self.assertEqual(d.reason, "not_task")
+
+
+class RouteVsExecuteSeparationTests(unittest.TestCase):
+    def test_route_capability_only_decides_does_not_execute_handler(self):
+        from unittest.mock import Mock
+        handler = Mock(return_value=LocalCommandResult(ok=False, command="x", message="x"))
+        from xiaohuang.capabilities.local_commands.registry import CapabilityDefinition, _registry
+        saved = _registry
+        try:
+            import xiaohuang.capabilities.local_commands.registry as reg_mod
+            reg_mod._registry = [
+                CapabilityDefinition(name="open_logs_folder", description="o",
+                                     risk="low", enabled=True, handler=handler),
+            ]
+            d = route_capability("打开日志")
+            self.assertTrue(d.is_task_request)
+            self.assertTrue(d.can_execute)
+            self.assertEqual(d.command, "open_logs_folder")
+            handler.assert_not_called()
+        finally:
+            import xiaohuang.capabilities.local_commands.registry as reg_mod
+            reg_mod._registry = saved
+
+
+class DisabledCapabilityTests(unittest.TestCase):
+    def test_disabled_capability_routes_as_not_executable(self):
+        from xiaohuang.capabilities.local_commands.registry import CapabilityDefinition, _registry
+        saved = _registry
+        try:
+            import xiaohuang.capabilities.local_commands.registry as reg_mod
+            reg_mod._registry = [
+                CapabilityDefinition(
+                    name="open_logs_folder", description="o",
+                    risk="low", enabled=False,
+                    handler=lambda **kw: LocalCommandResult(ok=True, command="x", message="x"),
+                ),
+            ]
+            d = route_capability("打开日志")
+            self.assertTrue(d.is_task_request)
+            self.assertFalse(d.can_execute)
+            self.assertEqual(d.reason, "capability_disabled")
+            self.assertIn("open_logs_folder", d.message)
+        finally:
+            import xiaohuang.capabilities.local_commands.registry as reg_mod
+            reg_mod._registry = saved
+
+
+class CapabilityRiskLabelTests(unittest.TestCase):
+    def test_all_core_capabilities_have_low_risk(self):
+        for name in ["open_logs_folder", "run_preflight_check", "get_status",
+                      "export_diagnostics", "open_control_panel"]:
+            cap = get_capability(name)
+            self.assertIsNotNone(cap, f"Missing capability: {name}")
+            self.assertEqual(cap.risk, "low", f"Capability {name} should be low risk")
+            self.assertTrue(cap.enabled)
+
+    def test_each_capability_has_required_fields(self):
+        for name in ["open_logs_folder", "run_preflight_check", "get_status",
+                      "export_diagnostics", "open_control_panel"]:
+            cap = get_capability(name)
+            self.assertIsInstance(cap.name, str)
+            self.assertIsInstance(cap.description, str)
+            self.assertIn(cap.risk, ("low", "medium", "high"))
+            self.assertIsInstance(cap.enabled, bool)
+            self.assertTrue(callable(cap.handler))
+
+
+class RefusalMessageContentTests(unittest.TestCase):
+    def test_high_risk_denied_message_mentions_safety(self):
+        for text in ("powershell", "cmd.exe", "微信", "shutdown", "taskkill"):
+            d = route_capability(text)
+            self.assertTrue(d.is_task_request)
+            self.assertFalse(d.can_execute)
+            self.assertIn("白名单", d.message,
+                          f"High-risk text '{text}' message should mention 白名单: {d.message}")
+
+    def test_denied_keyword_message_mentions_safety(self):
+        for text in ("打开浏览器", "下载", "搜索", "发微信", "发qq"):
+            d = route_capability(text)
+            self.assertTrue(d.is_task_request)
+            self.assertFalse(d.can_execute)
+            self.assertIn("白名单", d.message,
+                          f"Denied keyword '{text}' message should mention 白名单: {d.message}")
+
+
+class CapabilityRuntimeEventsTests(unittest.TestCase):
+    def setUp(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        es._ring.clear()
+
+    def test_execution_success_records_events(self):
+        from xiaohuang.capabilities.runtime_events.service import get_recent_events as _get
+        import json as _json
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg = root / "config.json"
+            cfg.write_text(_json.dumps({"wake": {"phrases": ["小黄"]}}), encoding="utf-8")
+
+            decision = RouteDecision(
+                is_task_request=True, can_execute=True,
+                command="get_status", reason="capability_matched",
+            )
+            result = execute_capability(decision, project_root=root, config_path=cfg)
+
+        events = _get(50)
+        cap_events = [e for e in events if e.get("source") == "capability_router"]
+        invoked = [e for e in cap_events if e["event_type"] == "capability_invoked"]
+        completed = [e for e in cap_events if e["event_type"] == "capability_completed"]
+
+        self.assertGreaterEqual(len(invoked), 1, "Expected capability_invoked event")
+        self.assertGreaterEqual(len(completed), 1, "Expected capability_completed event")
+        self.assertEqual(invoked[0]["details"]["command"], "get_status")
+
+    def test_handler_exception_records_failed_event(self):
+        from xiaohuang.capabilities.runtime_events.service import get_recent_events as _get
+        from xiaohuang.capabilities.local_commands.registry import CapabilityDefinition, _registry
+
+        def raise_handler(**kw):
+            raise RuntimeError("BOOM_TEST")
+
+        saved = _registry
+        try:
+            import xiaohuang.capabilities.local_commands.registry as reg_mod
+            reg_mod._registry = [
+                CapabilityDefinition(
+                    name="test_broken_cap", description="b",
+                    risk="low", enabled=True, handler=raise_handler,
+                ),
+                CapabilityDefinition(
+                    name="open_logs_folder", description="o",
+                    risk="low", enabled=True,
+                    handler=lambda **kw: LocalCommandResult(ok=True, command="x", message="x"),
+                ),
+            ]
+            decision = RouteDecision(
+                is_task_request=True, can_execute=True,
+                command="test_broken_cap", reason="capability_matched",
+            )
+            result = execute_capability(decision)
+
+            self.assertFalse(result.ok)
+            self.assertEqual(result.error_code, "handler_exception")
+        finally:
+            import xiaohuang.capabilities.local_commands.registry as reg_mod
+            reg_mod._registry = saved
+
+        events = _get(50)
+        cap_events = [e for e in events if e.get("source") == "capability_router"]
+        failed = [e for e in cap_events if e["event_type"] == "capability_failed"]
+        self.assertGreaterEqual(len(failed), 1, "Expected capability_failed event")
+        self.assertEqual(failed[0]["details"]["command"], "test_broken_cap")
+
+
+class NotTaskEdgeCaseTests(unittest.TestCase):
+    def test_normal_chat_texts_are_not_task(self):
+        for text in ("你好", "今天天气不错", "你是谁", "给我讲个笑话", "讲个故事吧"):
+            with self.subTest(text=text):
+                d = route_capability(text)
+                self.assertFalse(d.is_task_request)
+                self.assertEqual(d.reason, "not_task")
+
+    def test_ambiguous_text_with_keyword_later_detected(self):
+        d = route_capability("我想看看打开日志里面有什么")
+        self.assertTrue(d.is_task_request)
+        self.assertTrue(d.can_execute)
+        self.assertEqual(d.command, "open_logs_folder")

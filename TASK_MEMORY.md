@@ -1,5 +1,21 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-Q3 Capability Router Test Coverage
+
+- Purpose: Extend capability router test coverage — normalization, route/execute separation, disabled capability, risk labels, refusal messages, and runtime event recording.
+- Key files: `tests/test_capability_router.py` (extended, +15 tests, now 51 total).
+- Last completed: 7 new test classes:
+  - `RouteCapabilityNormalizationTests` (5) — whitespace trimming, internal spaces, case folding with Chinese-English mix, whitespace-only not_task
+  - `RouteVsExecuteSeparationTests` (1) — `route_capability` does NOT call capability handlers, only returns decisions
+  - `DisabledCapabilityTests` (1) — disabled cap routes as `capability_disabled` with its name in message
+  - `CapabilityRiskLabelTests` (2) — all 5 core caps are `low` risk + have all required fields
+  - `RefusalMessageContentTests` (2) — high-risk and denied keyword messages contain "白名单"
+  - `CapabilityRuntimeEventsTests` (2) — successful execution records `capability_invoked` + `capability_completed`; handler exception records `capability_failed`
+  - `NotTaskEdgeCaseTests` (2) — chat-like texts are not_task; keyword embedded in sentence still detected
+- Key observations: normalization only removes spaces and lowercases input text, does NOT normalize keyword strings; pure English "OPEN LOGS" won't match Chinese-containing keywords; keywords with internal spaces (like "rm -") won't match normalized input because spaces are stripped from input but not keywords.
+- Verification: compileall OK; unittest discover OK (886 tests, 1 symlink-permission skip, +15 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: do not add new keywords or capabilities; do not change normalization logic; route_capability is pure decision, not execution.
+
 ## Current Snapshot（2026-05-09）— V1.4-Q2 Runtime Events Test Coverage
 
 - Purpose: Extend runtime events test coverage — blank/empty edge cases, leveled events, details JSON-friendliness, ControlPanelWebApi exposure, and capability router event recording.
