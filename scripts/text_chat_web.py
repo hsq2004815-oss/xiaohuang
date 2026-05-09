@@ -1,4 +1,8 @@
-"""XiaoHuang standalone text chat window launcher."""
+"""XiaoHuang legacy standalone text chat window launcher.
+
+The primary UI is now the single-window control panel shell. This script remains
+as a standalone debug surface for the text chat frontend.
+"""
 
 from __future__ import annotations
 

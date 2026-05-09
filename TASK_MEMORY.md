@@ -1,5 +1,15 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-C.1 Single Shell UI
+
+- Purpose: Merge control center and text chat into one pywebview control panel window.
+- Key files: `frontend/control_panel/index.html`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `src/xiaohuang/control_panel_web_service.py`.
+- Startup/test: `F:\for_xiaohuang\conda310\python.exe scripts\control_panel_web.py`; text chat is selected inside the same shell.
+- Last completed: left nav/top button switch to `section-text-chat`; ControlPanelWebApi exposes `send_text_message` and `clear_text_session`.
+- Verification: compileall OK; unittest discover OK (759 tests); control_panel/voice_overlay/text_chat `--help` OK; same-window API smoke OK.
+- Known traps: `open_text_chat_window` intentionally returns `{same_window: True}` and must not launch `scripts/text_chat_web.py`.
+- Next likely edit points: remove legacy standalone text chat after manual acceptance, add temporary multi-session list, add text task confirmation.
+
 ## Current Snapshot（2026-05-09）— V1.4-C Standalone Text Chat Window
 
 - Purpose: Add a second user entry for typed XiaoHuang conversations without touching voice/STT/TTS startup.

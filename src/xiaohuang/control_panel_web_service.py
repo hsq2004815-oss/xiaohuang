@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 import traceback
 from dataclasses import asdict
 from pathlib import Path
@@ -28,6 +26,8 @@ from xiaohuang.status_control_service import (
     run_stop_operation,
     save_wake_engine_config,
 )
+from xiaohuang.text_interaction_service import run_text_interaction_turn
+from xiaohuang.text_interaction_session_service import TextInteractionSessionStore
 
 _SENSITIVE_KEYS = {"api_key", "secret", "password", "token", "api_key_env"}
 
@@ -57,7 +57,7 @@ class ControlPanelWebApi:
         else:
             self._config_path = None
         self._project_root = get_project_root()
-        self._text_chat_process: subprocess.Popen | None = None
+        self._text_interaction_sessions = TextInteractionSessionStore()
         self._init_runtime_events()
 
     def _init_runtime_events(self) -> None:
@@ -246,33 +246,38 @@ class ControlPanelWebApi:
             return _fail(msg, "preflight_error")
 
     def open_text_chat_window(self) -> dict:
+        return _ok(
+            data={"view": "text-chat", "same_window": True},
+            message="请在当前窗口切换到文本对话",
+        )
+
+    def send_text_message(self, payload: dict) -> dict:
         try:
-            if self._text_chat_process is not None and self._text_chat_process.poll() is None:
-                return _ok(data={"already_running": True}, message="文本对话已打开")
+            text = ""
+            session_id = "control_panel"
+            if isinstance(payload, dict):
+                text = str(payload.get("text") or "")
+                session_id = str(payload.get("session_id") or "control_panel")
 
-            script_path = self._project_root / "scripts" / "text_chat_web.py"
-            if not script_path.exists():
-                return _fail(f"文本对话启动脚本不存在: {script_path}", "text_chat_missing")
-
-            cmd = [sys.executable, str(script_path)]
-            if self._config_path is not None:
-                cmd.extend(["--config", str(self._config_path)])
-
-            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-            self._text_chat_process = subprocess.Popen(
-                cmd,
-                cwd=str(self._project_root),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=creationflags,
+            result = run_text_interaction_turn(
+                text,
+                session_store=self._text_interaction_sessions,
+                session_id=session_id,
+                config_path=self._resolve_config_path(),
             )
-            _record_cp_event("open_text_chat_window", "文本对话窗口已启动")
-            return _ok(data={"pid": self._text_chat_process.pid}, message="文本对话已打开")
+            return _ok(data=asdict(result), message="消息已回复" if result.ok else "消息处理失败")
         except Exception:
-            msg = f"打开文本对话失败: {traceback.format_exc()}"
-            _record_cp_event("open_text_chat_window", msg, "error")
-            return _fail(msg, "text_chat_open_error")
+            return _fail("文本消息处理失败", "send_text_message_error")
+
+    def clear_text_session(self, payload: dict | None = None) -> dict:
+        try:
+            session_id = "control_panel"
+            if isinstance(payload, dict):
+                session_id = str(payload.get("session_id") or "control_panel")
+            self._text_interaction_sessions.clear(session_id)
+            return _ok(data={"session_id": session_id}, message="文本会话已清空")
+        except Exception:
+            return _fail("清空文本会话失败", "clear_text_session_error")
 
 
 def _record_cp_event(event_type: str, message: str, level: str = "info") -> None:

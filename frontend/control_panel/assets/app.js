@@ -14,6 +14,11 @@
   var lastStartupDiagnostic = null;
   var lastPreflightCheck = null;
   var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
+  var currentSection = 'overview';
+  var textChatSessionId = 'control_panel';
+  var textChatMessages = [];
+  var textChatSending = false;
+  var textChatInitialized = false;
 
   /* ─── API ─── */
   function getApi() {
@@ -233,7 +238,7 @@
       stop: '停止小黄',
       restart: '重启小黄',
       refresh: '刷新状态',
-      'open-text-chat': '打开文本对话',
+      'open-text-chat': '文本对话',
       'save-config': '保存配置',
       'save-restart': '保存并重启'
     };
@@ -246,7 +251,6 @@
       stop: '停止中...',
       restart: '重启中...',
       refresh: '刷新中...',
-      'open-text-chat': '打开中...',
       'save-config': '保存中...',
       'save-restart': '保存中...'
     };
@@ -399,17 +403,160 @@
   }
 
   /* ─── Sidebar ─── */
+  function switchSection(sec) {
+    currentSection = sec || 'overview';
+    document.querySelectorAll('.sidebar-item').forEach(function (item) {
+      item.classList.toggle('active', item.getAttribute('data-section') === currentSection);
+    });
+    document.querySelectorAll('.content-section').forEach(function (section) {
+      section.classList.toggle('active', section.id === 'section-' + currentSection);
+    });
+    if (currentSection === 'text-chat') {
+      focusTextChatInput();
+    }
+  }
+
   function initNav() {
     document.querySelectorAll('.sidebar-item').forEach(function (item) {
       item.addEventListener('click', function () {
-        document.querySelectorAll('.sidebar-item').forEach(function (i) { i.classList.remove('active'); });
-        item.classList.add('active');
-        var sec = item.getAttribute('data-section');
-        document.querySelectorAll('.content-section').forEach(function (s) { s.classList.remove('active'); });
-        var target = document.getElementById('section-' + sec);
-        if (target) target.classList.add('active');
+        switchSection(item.getAttribute('data-section') || 'overview');
       });
     });
+  }
+
+  /* ─── Text chat ─── */
+  function initTextChat() {
+    if (textChatInitialized) return;
+    textChatInitialized = true;
+    resetTextChatMessages();
+
+    var send = $('text-chat-send');
+    var clear = $('text-chat-clear');
+    var input = $('text-chat-input');
+    var newChat = $('text-chat-new');
+    if (send) send.addEventListener('click', sendTextChatMessage);
+    if (clear) clear.addEventListener('click', clearTextChatSession);
+    if (newChat) newChat.addEventListener('click', clearTextChatSession);
+    if (input) {
+      input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          sendTextChatMessage();
+        }
+      });
+    }
+    document.querySelectorAll('[data-text-prompt]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        fillTextChatPrompt(button.getAttribute('data-text-prompt') || '');
+      });
+    });
+  }
+
+  function focusTextChatInput() {
+    var input = $('text-chat-input');
+    if (!input) return;
+    setTimeout(function () { input.focus(); }, 50);
+  }
+
+  function resetTextChatMessages() {
+    textChatMessages = [];
+    renderTextChatMessages();
+    appendTextChatMessage(
+      'assistant',
+      '你好，我是小黄。这里是文本交互界面，不需要唤醒词，也不会播放语音。你可以直接打字和我交流。',
+      { source: 'welcome' }
+    );
+  }
+
+  function fillTextChatPrompt(text) {
+    var input = $('text-chat-input');
+    if (!input) return;
+    input.value = text;
+    input.focus();
+  }
+
+  function appendTextChatMessage(role, text, meta) {
+    textChatMessages.push({
+      role: role,
+      text: text,
+      meta: meta || {},
+      ts: new Date().toLocaleTimeString()
+    });
+    renderTextChatMessages();
+  }
+
+  function renderTextChatMessages() {
+    var el = $('text-chat-messages');
+    if (!el) return;
+    el.innerHTML = textChatMessages.map(function (msg) {
+      var meta = msg.meta || {};
+      var parts = [];
+      if (meta.source) parts.push('source: ' + meta.source);
+      if (meta.latency_ms !== undefined) parts.push(meta.latency_ms + 'ms');
+      if (meta.llm_configured !== undefined) parts.push('llm configured: ' + (meta.llm_configured ? 'yes' : 'no'));
+      if (meta.blocked_panel_command) parts.push('panel command blocked');
+      var metaHtml = parts.length ? '<div class="text-chat-message-meta">' + escapeHtml(parts.join(' · ')) + '</div>' : '';
+      return '<article class="text-chat-message ' + escapeHtml(msg.role) + '">' +
+        '<div class="text-chat-bubble">' + escapeHtml(msg.text) + '</div>' +
+        metaHtml +
+        '</article>';
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function setTextChatSending(on) {
+    textChatSending = !!on;
+    var input = $('text-chat-input');
+    var send = $('text-chat-send');
+    var status = $('text-chat-status');
+    if (input) input.disabled = textChatSending;
+    if (send) {
+      send.disabled = textChatSending;
+      send.textContent = textChatSending ? '发送中...' : '发送';
+    }
+    if (status) status.textContent = textChatSending ? '正在回复...' : '本地文本入口';
+  }
+
+  function sendTextChatMessage() {
+    var input = $('text-chat-input');
+    var text = input ? input.value.trim() : '';
+    if (!text || textChatSending) return;
+
+    appendTextChatMessage('user', text);
+    input.value = '';
+    setTextChatSending(true);
+
+    apiCall('send_text_message', {
+      text: text,
+      session_id: textChatSessionId
+    }).then(function (resp) {
+      if (!resp || !resp.ok) {
+        appendTextChatMessage('assistant', (resp && resp.error) || '文本消息处理失败', { source: 'error' });
+        return;
+      }
+      var data = resp.data || {};
+      appendTextChatMessage('assistant', data.reply_text || data.error || '没有返回内容', {
+        source: data.reply_source,
+        latency_ms: data.latency_ms,
+        blocked_panel_command: data.blocked_panel_command,
+        llm_configured: data.llm_configured
+      });
+    }).catch(function (e) {
+      appendTextChatMessage('assistant', '文本消息处理出错：' + e, { source: 'js_error' });
+    }).finally(function () {
+      setTextChatSending(false);
+      focusTextChatInput();
+    });
+  }
+
+  function clearTextChatSession() {
+    resetTextChatMessages();
+    apiCall('clear_text_session', { session_id: textChatSessionId }).then(function (resp) {
+      if (resp && resp.ok) {
+        drawerLog('清空文本会话', true, resp.message || '');
+      }
+    }).catch(function () {});
+    focusTextChatInput();
   }
 
   /* ─── Actions ─── */
@@ -435,7 +582,7 @@
     if (action === 'start') { doStart(btn); return; }
     if (action === 'stop') { doStop(btn); return; }
     if (action === 'restart') { doRestart(btn); return; }
-    if (action === 'open-text-chat') { doOpenTextChat(btn); return; }
+    if (action === 'open-text-chat') { doOpenTextChat(); return; }
     if (action === 'save-config') { doSaveConfig(btn); return; }
     if (action === 'save-restart') { doSaveAndRestart(btn); return; }
     if (action === 'export-diag') { doExportDiag(btn); return; }
@@ -444,25 +591,10 @@
     toast('未识别的操作: ' + action, 'err');
   }
 
-  function doOpenTextChat(btn) {
-    if (!btn || btn.disabled) return;
-    setButtonLoading(btn, getLoadingText('open-text-chat'), 'open-text-chat');
-    drawerLog('打开文本对话', null, '已发送请求');
-
-    apiCall('open_text_chat_window').then(function (r) {
-      if (r && r.ok) {
-        toast(r.message || '文本对话已打开', 'ok');
-        drawerLog('打开文本对话', true, r.message || '');
-      } else {
-        toast((r && r.error) || '打开文本对话失败', 'err');
-        drawerLog('打开文本对话', false, (r && r.error));
-      }
-    }).catch(function (e) {
-      toast('打开文本对话出错: ' + e, 'err');
-      drawerLog('打开文本对话', false, String(e));
-    }).finally(function () {
-      restoreButton(btn, getButtonText('open-text-chat'), 'open-text-chat');
-    });
+  function doOpenTextChat() {
+    switchSection('text-chat');
+    toast('已切换到文本对话', 'info');
+    drawerLog('切换文本对话', true, '当前窗口');
   }
 
   function doRefresh(btn) {
@@ -785,6 +917,8 @@
     initDone = true;
     initNav();
     initDrawerControls();
+    initTextChat();
+    switchSection(currentSection);
     updateBridgeIndicator();
     refreshStatus();
     drawerLog('面板启动', true);

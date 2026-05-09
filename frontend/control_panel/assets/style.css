@@ -319,6 +319,108 @@ select.glass-input{cursor:pointer}
   background:rgba(255,255,255,0.48);box-shadow:inset 0 1px 1px rgba(255,255,255,.48)
 }
 
+/* ─── Text Chat View ─── */
+.text-chat-header{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px
+}
+.text-chat-header .section-title{margin-bottom:4px}
+.text-chat-header p{font-size:13px;color:var(--text-muted);line-height:1.5}
+.text-chat-status{
+  display:inline-flex;align-items:center;min-height:30px;padding:6px 13px;border-radius:var(--radius-pill);
+  color:#166534;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.22);
+  font-size:12px;font-weight:800;white-space:nowrap
+}
+.text-chat-layout{
+  display:grid;grid-template-columns:minmax(176px,220px) minmax(0,1fr) minmax(210px,260px);
+  gap:16px;min-height:calc(100vh - 172px)
+}
+.text-chat-sessions,.text-chat-main,.text-chat-workspace{min-width:0}
+.text-chat-sessions{padding:16px!important;overflow:auto}
+.text-chat-new{
+  width:100%;min-height:38px;border-radius:var(--radius-pill);cursor:pointer;border:1px solid rgba(79,110,246,0.34);
+  background:linear-gradient(135deg,rgba(79,110,246,0.92),rgba(139,92,246,0.92));color:#fff;
+  font-size:13px;font-weight:800;box-shadow:0 10px 24px rgba(79,110,246,0.18)
+}
+.text-chat-search{width:100%;margin:14px 0 18px}
+.text-chat-label{font-size:11px;font-weight:800;color:var(--text-muted);margin:0 0 8px 4px}
+.text-chat-session{
+  width:100%;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;cursor:pointer;
+  border:1px solid rgba(79,110,246,0.18);background:rgba(255,255,255,0.58);border-radius:18px;
+  padding:12px;color:var(--text-primary);text-align:left
+}
+.text-chat-session span{font-size:13px;font-weight:800}
+.text-chat-session small{font-size:11px;color:var(--text-muted)}
+.text-chat-main{
+  display:grid;grid-template-rows:minmax(0,1fr) auto;padding:0!important;overflow:hidden
+}
+.text-chat-messages{
+  overflow-y:auto;padding:22px;scroll-behavior:smooth
+}
+.text-chat-message{
+  display:flex;flex-direction:column;max-width:80%;margin-bottom:16px
+}
+.text-chat-message.user{margin-left:auto;align-items:flex-end}
+.text-chat-message.assistant{margin-right:auto;align-items:flex-start}
+.text-chat-bubble{
+  white-space:pre-wrap;line-height:1.68;font-size:14px;padding:13px 16px;border-radius:18px;
+  border:1px solid rgba(255,255,255,0.72);background:rgba(255,255,255,0.74);
+  box-shadow:0 8px 22px rgba(31,38,135,0.08)
+}
+.text-chat-message.user .text-chat-bubble{
+  color:#fff;border-color:rgba(79,110,246,0.18);
+  background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple))
+}
+.text-chat-message-meta{margin-top:6px;color:var(--text-muted);font-size:11px}
+.text-chat-composer{
+  padding:14px 16px 16px;border-top:1px solid rgba(79,110,246,0.12);
+  background:rgba(255,255,255,0.42)
+}
+.text-chat-prompts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.text-chat-prompts button,.workspace-block button,#text-chat-clear{
+  border:1px solid rgba(79,110,246,0.18);border-radius:var(--radius-pill);background:rgba(255,255,255,0.64);
+  color:var(--text-secondary);padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer
+}
+.text-chat-prompts button:hover,.workspace-block button:hover,#text-chat-clear:hover{
+  background:rgba(255,255,255,0.88);color:var(--accent-blue)
+}
+.text-chat-input-row{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:end
+}
+.text-chat-model{
+  display:inline-flex;align-items:center;min-height:48px;padding:0 13px;border-radius:18px;
+  color:#6d28d9;border:1px solid rgba(139,92,246,0.24);background:rgba(139,92,246,0.10);
+  font-size:12px;font-weight:800;white-space:nowrap
+}
+#text-chat-input{
+  width:100%;resize:none;min-height:48px;max-height:150px;border-radius:18px;border:1px solid rgba(255,255,255,0.76);
+  outline:none;padding:13px 14px;color:var(--text-primary);background:rgba(255,255,255,0.76);
+  box-shadow:inset 0 2px 7px rgba(15,23,42,0.06)
+}
+#text-chat-input:focus{
+  border-color:rgba(79,110,246,0.55);
+  box-shadow:0 0 0 4px rgba(79,110,246,0.12),inset 0 2px 7px rgba(15,23,42,0.04)
+}
+.text-chat-send{
+  min-height:48px;border-radius:18px;padding:0 20px;color:#fff;font-weight:800;cursor:pointer;
+  background:linear-gradient(135deg,#0891b2,var(--accent-blue));box-shadow:0 12px 28px rgba(8,145,178,0.16)
+}
+.text-chat-send:disabled{opacity:.58;cursor:wait}
+.text-chat-footer{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:9px;color:var(--text-muted);font-size:12px
+}
+#text-chat-clear{padding:6px 11px}
+.text-chat-workspace{padding:16px!important;overflow:auto}
+.workspace-block{
+  padding:14px;border-radius:18px;background:rgba(255,255,255,0.46);
+  border:1px solid rgba(255,255,255,0.62);margin-bottom:14px
+}
+.workspace-block h3{font-size:13px;margin:0 0 10px;color:var(--text-primary)}
+.workspace-block dl{margin:0}
+.workspace-block div{margin-bottom:12px}
+.workspace-block dt{font-size:12px;color:var(--text-muted);font-weight:800}
+.workspace-block dd{margin:4px 0 0;font-size:13px;color:var(--text-secondary);line-height:1.55}
+.workspace-block button{width:100%;margin-bottom:8px;text-align:left}
+
 /* ─── Toast ─── */
 .toast-container{position:fixed;bottom:28px;right:28px;display:flex;flex-direction:column;gap:10px;z-index:999}
 .glass-toast{
@@ -591,6 +693,8 @@ body{min-width:0}
   .topbar-sub{display:none}
   .status-badge{max-width:150px}
   .wake-badge{max-width:132px}
+  .text-chat-layout{grid-template-columns:minmax(160px,190px) minmax(0,1fr)}
+  .text-chat-workspace{display:none}
 }
 
 @media(max-width:960px){
@@ -628,6 +732,12 @@ body{min-width:0}
   .text-chat-entry{padding-left:12px;padding-right:12px}
   .main-workspace{padding:16px 14px 20px}
   .form-grid{grid-template-columns:1fr}
+  .text-chat-layout{grid-template-columns:1fr;min-height:auto}
+  .text-chat-sessions{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center}
+  .text-chat-search,.text-chat-label{display:none}
+  .text-chat-input-row{grid-template-columns:minmax(0,1fr) auto}
+  .text-chat-model{display:none}
+  .text-chat-message{max-width:92%}
 }
 
 @media(max-width:520px){

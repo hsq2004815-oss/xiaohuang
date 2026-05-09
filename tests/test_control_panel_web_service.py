@@ -4,9 +4,10 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from xiaohuang.control_panel_web_service import ControlPanelWebApi, _fail, _ok, _sanitize_dict
+from xiaohuang.text_interaction_models import TextInteractionResult
 
 
 class V13UAControlPanelWebApiTests(unittest.TestCase):
@@ -174,27 +175,35 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         api = ControlPanelWebApi(config_path="")
         self.assertIsNotNone(api._project_root)
 
-    def test_open_text_chat_window_starts_subprocess(self):
-        fake_process = Mock()
-        fake_process.pid = 12345
-        fake_process.poll.return_value = None
-        with patch("xiaohuang.control_panel_web_service.subprocess.Popen", return_value=fake_process) as mock_popen:
-            api = ControlPanelWebApi(config_path=self.config_path)
-            result = api.open_text_chat_window()
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["data"]["pid"], 12345)
-        cmd = mock_popen.call_args.args[0]
-        self.assertIn("text_chat_web.py", cmd[1])
-        self.assertIn("--config", cmd)
-
-    def test_open_text_chat_window_reuses_running_process(self):
-        fake_process = Mock()
-        fake_process.poll.return_value = None
+    def test_open_text_chat_window_returns_same_window_hint(self):
         api = ControlPanelWebApi(config_path=self.config_path)
-        api._text_chat_process = fake_process
         result = api.open_text_chat_window()
         self.assertTrue(result["ok"])
-        self.assertTrue(result["data"]["already_running"])
+        self.assertTrue(result["data"]["same_window"])
+        self.assertEqual(result["data"]["view"], "text-chat")
+
+    def test_send_text_message_returns_data(self):
+        fake = TextInteractionResult(
+            ok=True,
+            session_id="control_panel",
+            user_text="介绍一下你自己",
+            reply_text="我是小黄",
+            reply_source="llm",
+        )
+        with patch("xiaohuang.control_panel_web_service.run_text_interaction_turn", return_value=fake) as mock_run:
+            api = ControlPanelWebApi(config_path=self.config_path)
+            result = api.send_text_message({"text": "介绍一下你自己"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["reply_text"], "我是小黄")
+        self.assertEqual(mock_run.call_args.kwargs["session_id"], "control_panel")
+
+    def test_clear_text_session_returns_ok(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._text_interaction_sessions.get_or_create("control_panel").memory.add_user("测试")
+        result = api.clear_text_session({"session_id": "control_panel"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["session_id"], "control_panel")
+        self.assertEqual(len(api._text_interaction_sessions.get_or_create("control_panel").memory), 0)
 
     # ------------------------------------------------------------------
     # refresh / get_config_summary / log paths
@@ -267,7 +276,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
 
     def test_html_has_localized_nav(self):
         html = self._read("frontend/control_panel/index.html")
-        for text in ("总览", "运行状态", "唤醒与语音", "模型", "工具", "数据库", "核心", "能力", "系统", "开发者"):
+        for text in ("总览", "文本对话", "运行状态", "唤醒与语音", "模型", "工具", "数据库", "核心", "能力", "系统", "开发者"):
             self.assertIn(text, html, f"Missing localized text: {text}")
 
     def test_html_no_english_nav_labels(self):
@@ -342,8 +351,14 @@ class V13UIFrontendStructureTests(unittest.TestCase):
     def test_html_has_data_action_buttons(self):
         html = self._read("frontend/control_panel/index.html")
         for action in ("data-action=\"start\"", "data-action=\"stop\"", "data-action=\"restart\"",
-                       "data-action=\"refresh\"", "data-action=\"save-config\"", "data-action=\"save-restart\""):
+                       "data-action=\"refresh\"", "data-action=\"open-text-chat\"",
+                       "data-action=\"save-config\"", "data-action=\"save-restart\""):
             self.assertIn(action, html, f"Missing data-action: {action}")
+
+    def test_html_has_text_chat_shell(self):
+        html = self._read("frontend/control_panel/index.html")
+        for text in ("section-text-chat", "text-chat-messages", "text-chat-input", "text-chat-send", "text-chat-workspace"):
+            self.assertIn(text, html, f"Missing text chat shell element: {text}")
 
     def test_html_has_bridge_indicator(self):
         html = self._read("frontend/control_panel/index.html")
@@ -359,6 +374,9 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         js = self._read("frontend/control_panel/assets/app.js")
         self.assertIn("data-action", js)
         self.assertIn("handleButtonClick", js)
+        self.assertIn("switchSection('text-chat')", js)
+        self.assertIn("send_text_message", js)
+        self.assertIn("clear_text_session", js)
 
     def test_js_has_immediate_feedback(self):
         js = self._read("frontend/control_panel/assets/app.js")
