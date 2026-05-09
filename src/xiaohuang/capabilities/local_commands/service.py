@@ -46,8 +46,12 @@ _HIGH_RISK_PATTERNS: list[str] = [
 ]
 
 
+def _normalize_command_text(text: object) -> str:
+    return str(text or "").replace(" ", "").lower()
+
+
 def route_capability(command_text: str) -> RouteDecision:
-    normalized = str(command_text or "").replace(" ", "").lower()
+    normalized = _normalize_command_text(command_text)
     if not normalized:
         return RouteDecision(
             is_task_request=False,
@@ -58,7 +62,7 @@ def route_capability(command_text: str) -> RouteDecision:
 
     # Check high-risk patterns first (fail closed)
     for risk_pattern in _HIGH_RISK_PATTERNS:
-        if risk_pattern in normalized:
+        if _normalize_command_text(risk_pattern) in normalized:
             return RouteDecision(
                 is_task_request=True,
                 can_execute=False,
@@ -69,7 +73,11 @@ def route_capability(command_text: str) -> RouteDecision:
 
     # Check whitelisted capabilities
     for keywords, cap_name in _KEYWORD_MAP:
-        if any(kw in normalized for kw in keywords):
+        matched_keyword = next(
+            (kw for kw in keywords if _normalize_command_text(kw) in normalized),
+            None,
+        )
+        if matched_keyword is not None:
             cap = get_capability(cap_name)
             if cap is None or not cap.enabled:
                 return RouteDecision(
@@ -87,13 +95,13 @@ def route_capability(command_text: str) -> RouteDecision:
                 intent=LocalCommandIntent(
                     command=cap_name,
                     original_text=command_text,
-                    matched_phrase=keywords[0],
+                    matched_phrase=matched_keyword,
                 ),
             )
 
-    # Check old denied keywords (tool-like requests not in whitelist)
+    # Check denied keywords (tool-like requests not in whitelist)
     for kw in _DENIED_KEYWORDS:
-        if kw in normalized:
+        if _normalize_command_text(kw) in normalized:
             return RouteDecision(
                 is_task_request=True,
                 can_execute=False,

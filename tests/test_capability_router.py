@@ -699,3 +699,73 @@ class NotTaskEdgeCaseTests(unittest.TestCase):
         self.assertTrue(d.is_task_request)
         self.assertTrue(d.can_execute)
         self.assertEqual(d.command, "open_logs_folder")
+
+
+# ---------------------------------------------------------------------------
+# V1.4-Q3.1 Risk pattern normalization hardening
+# ---------------------------------------------------------------------------
+
+class RiskPatternNormalizationHardeningTests(unittest.TestCase):
+    def test_rm_dash_pattern_matches_after_normalization(self):
+        for text in ("rm -rf", "rm - rf", "rm    -rf", "RM -RF"):
+            with self.subTest(text=text):
+                d = route_capability(text)
+                self.assertTrue(d.is_task_request,
+                                f"text='{text}' should be task request")
+                self.assertFalse(d.can_execute)
+                self.assertEqual(d.reason, "not_allowed")
+
+    def test_del_space_pattern_matches_after_normalization(self):
+        for text in ("del file.txt", "del  file.txt", "DEL file.txt"):
+            with self.subTest(text=text):
+                d = route_capability(text)
+                self.assertTrue(d.is_task_request,
+                                f"text='{text}' should be task request")
+                self.assertFalse(d.can_execute)
+                self.assertEqual(d.reason, "not_allowed")
+
+    def test_format_space_pattern_matches_after_normalization(self):
+        for text in ("format c:", "format  c:", "FORMAT c:"):
+            with self.subTest(text=text):
+                d = route_capability(text)
+                self.assertTrue(d.is_task_request,
+                                f"text='{text}' should be task request")
+                self.assertFalse(d.can_execute)
+                self.assertEqual(d.reason, "not_allowed")
+
+    def test_whitelisted_keywords_still_match_after_keyword_normalization(self):
+        cases = [
+            ("打开日志", "open_logs_folder"),
+            ("打开 LOGS", "open_logs_folder"),
+            ("运行检查", "run_preflight_check"),
+            ("查看状态", "get_status"),
+            ("导出诊断", "export_diagnostics"),
+            ("打开控制面板", "open_control_panel"),
+        ]
+        for text, command in cases:
+            with self.subTest(text=text):
+                d = route_capability(text)
+                self.assertTrue(d.is_task_request,
+                                f"text='{text}' should be task request")
+                self.assertTrue(d.can_execute,
+                                f"text='{text}' should be executable")
+                self.assertEqual(d.command, command)
+
+    def test_high_risk_still_denies_even_with_whitelisted_text(self):
+        d = route_capability("打开日志 powershell")
+        self.assertTrue(d.is_task_request)
+        self.assertFalse(d.can_execute)
+        self.assertEqual(d.reason, "not_allowed")
+
+    def test_rm_dash_denies_even_with_status_keyword(self):
+        d = route_capability("查看状态 rm -rf")
+        self.assertTrue(d.is_task_request)
+        self.assertFalse(d.can_execute)
+        self.assertEqual(d.reason, "not_allowed")
+
+    def test_normal_chat_still_not_task(self):
+        for text in ("你好", "你是谁", "给我讲个笑话"):
+            with self.subTest(text=text):
+                d = route_capability(text)
+                self.assertFalse(d.is_task_request)
+                self.assertEqual(d.reason, "not_task")

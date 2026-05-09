@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-Q3.1 Capability Router Risk Pattern Normalization Hardening
+
+- Purpose: Fix high-risk pattern matching — patterns with spaces ("rm -", "del ", "format ") were not matching normalized user input, causing dangerous requests to potentially bypass the deny check. Now all pattern matching uses the same `_normalize_command_text` helper.
+- Key files: `src/xiaohuang/capabilities/local_commands/service.py`, `tests/test_capability_router.py`.
+- Last completed:
+  1. Added `_normalize_command_text()` helper: `str(text or "").replace(" ", "").lower()`
+  2. Applied to all three matching loops: high-risk patterns, whitelist keywords, denied keywords — all normalize both the input AND the pattern/keyword
+  3. Whitelist matching now records the actual matched keyword (not just `keywords[0]`)
+  4. 7 new tests: rm/del/format space patterns properly denied, whitelist regression, high-risk priority over whitelist, normal chat regression
+- Behavior: "rm -rf", "del file.txt", "format c:" (and case/spacing variants) now correctly detected as `not_allowed`; all existing whitelist keywords still work; high-risk check still takes priority over whitelist; normal chat unaffected.
+- Verification: compileall OK; unittest discover OK (893 tests, 1 symlink-permission skip, +7 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: do not add new keywords or patterns; this is normalization hardening only.
+
 ## Current Snapshot（2026-05-09）— V1.4-Q3 Capability Router Test Coverage
 
 - Purpose: Extend capability router test coverage — normalization, route/execute separation, disabled capability, risk labels, refusal messages, and runtime event recording.
