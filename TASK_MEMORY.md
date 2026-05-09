@@ -1,5 +1,14 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D1.1 Text Task Confirmation Card UI
+
+- Purpose: Text chat renders backend `pending_task` responses as an in-window confirmation card without executing the task.
+- Key files: `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed: pending tasks now show title, summary, risk, status, and local confirm/cancel controls inside the full-window text chat.
+- Behavior: confirm/cancel only updates frontend message state and appends a local assistant note; no new backend API or command execution path is added.
+- Verification: compileall OK; unittest discover OK (773 tests); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: do not wire card buttons to task execution until the confirmed readonly execution contract exists; avoid `local_commands` from frontend code.
+
 ## Current Snapshot（2026-05-09）— V1.4-D1 Text Task Confirmation Backend Contract
 
 - Purpose: Text chat can detect local task intent and return a structured `pending_task` that requires confirmation, without executing anything.

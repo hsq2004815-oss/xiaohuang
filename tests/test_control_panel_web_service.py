@@ -359,6 +359,13 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for cls_name in (".glass-card", ".glass-pill", ".glass-input", ".glass-toggle", ".glass-toast", ".status-badge", ".sidebar-item"):
             self.assertIn(cls_name, css, f"Missing component class: {cls_name}")
 
+    def test_css_has_text_task_confirmation_card_classes(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        for cls_name in (".text-task-card", ".text-task-risk", ".text-task-actions",
+                         ".text-task-confirm", ".text-task-cancel",
+                         ".text-task-card.blocked", ".text-task-card.confirmed", ".text-task-card.cancelled"):
+            self.assertIn(cls_name, css, f"Missing text task confirmation class: {cls_name}")
+
     def test_css_no_dark_theme_tokens(self):
         css = self._read("frontend/control_panel/assets/style.css")
         self.assertNotIn("--dark-fill", css)
@@ -412,6 +419,17 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("send_text_message", js)
         self.assertIn("clear_text_session", js)
         self.assertNotIn("apiCall('open_text_chat_window'", js)
+
+    def test_js_renders_text_task_confirmation_cards_without_execution_api(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        for text in ("requires_confirmation", "pending_task", "renderPendingTaskCard",
+                     "handlePendingTaskConfirm", "handlePendingTaskCancel",
+                     "data-task-action", "确认执行", "不处理",
+                     "确认请求已收到，执行功能将在后续版本接入。", "已取消该任务。"):
+            self.assertIn(text, js, f"Missing text task confirmation UI behavior: {text}")
+        self.assertNotIn("confirm_text_task", js)
+        self.assertNotIn("execute_text_task", js)
+        self.assertNotIn("local_commands", js)
 
     def test_js_has_immediate_feedback(self):
         js = self._read("frontend/control_panel/assets/app.js")

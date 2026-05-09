@@ -20,6 +20,7 @@
   var textChatMessages = [];
   var textChatSending = false;
   var textChatInitialized = false;
+  var textTaskCardCounter = 0;
 
   /* ─── API ─── */
   function getApi() {
@@ -461,6 +462,17 @@
     if (clear) clear.addEventListener('click', clearTextChatSession);
     if (newChat) newChat.addEventListener('click', clearTextChatSession);
     if (backControl) backControl.addEventListener('click', function () { switchShell('control'); });
+    var messages = $('text-chat-messages');
+    if (messages) {
+      messages.addEventListener('click', function (event) {
+        var target = event.target.closest('[data-task-action]');
+        if (!target) return;
+        var taskId = target.getAttribute('data-task-id') || '';
+        var action = target.getAttribute('data-task-action') || '';
+        if (action === 'confirm') handlePendingTaskConfirm(taskId);
+        if (action === 'cancel') handlePendingTaskCancel(taskId);
+      });
+    }
     if (input) {
       input.addEventListener('keydown', function (event) {
         if (event.key === 'Enter' && !event.shiftKey) {
@@ -499,20 +511,38 @@
     input.focus();
   }
 
-  function appendTextChatMessage(role, text, meta) {
+  function appendTextChatMessage(role, text, meta, pendingTask) {
+    var normalizedTask = normalizePendingTask(pendingTask);
     textChatMessages.push({
       role: role,
       text: text,
       meta: meta || {},
+      pendingTask: normalizedTask,
+      taskUiStatus: normalizedTask ? (normalizedTask.allowed ? 'pending' : 'blocked') : '',
       ts: new Date().toLocaleTimeString()
     });
     renderTextChatMessages();
   }
 
+  function normalizePendingTask(task) {
+    if (!task || typeof task !== 'object') return null;
+    var risk = String(task.risk || 'medium').toLowerCase();
+    return {
+      task_id: String(task.task_id || ('pending-task-' + (++textTaskCardCounter))),
+      task_type: String(task.task_type || ''),
+      title: String(task.title || '待确认任务'),
+      summary: String(task.summary || ''),
+      risk: risk,
+      allowed: task.allowed !== false,
+      reason: String(task.reason || ''),
+      source: String(task.source || '')
+    };
+  }
+
   function renderTextChatMessages() {
     var el = $('text-chat-messages');
     if (!el) return;
-    el.innerHTML = textChatMessages.map(function (msg) {
+    el.innerHTML = textChatMessages.map(function (msg, index) {
       var meta = msg.meta || {};
       var parts = [];
       if (meta.source) parts.push('source: ' + meta.source);
@@ -520,12 +550,81 @@
       if (meta.llm_configured !== undefined) parts.push('llm configured: ' + (meta.llm_configured ? 'yes' : 'no'));
       if (meta.blocked_panel_command) parts.push('panel command blocked');
       var metaHtml = parts.length ? '<div class="text-chat-message-meta">' + escapeHtml(parts.join(' · ')) + '</div>' : '';
+      var taskHtml = msg.pendingTask ? renderPendingTaskCard(msg, index) : '';
       return '<article class="text-chat-message ' + escapeHtml(msg.role) + '">' +
         '<div class="text-chat-bubble">' + escapeHtml(msg.text) + '</div>' +
+        taskHtml +
         metaHtml +
         '</article>';
     }).join('');
     el.scrollTop = el.scrollHeight;
+  }
+
+  function renderPendingTaskCard(msg, index) {
+    var task = msg.pendingTask || {};
+    var taskId = task.task_id || ('pending-task-' + index);
+    var status = msg.taskUiStatus || (task.allowed ? 'pending' : 'blocked');
+    var risk = (task.risk === 'low' || task.risk === 'high') ? task.risk : 'medium';
+    var disabled = status !== 'pending';
+    var cardClass = 'text-task-card ' + escapeHtml(status);
+    var reason = task.reason ? '<div class="text-task-disabled-note">' + escapeHtml(task.reason) + '</div>' : '';
+    var source = task.source ? '<span>' + escapeHtml(task.source) + '</span>' : '';
+    var type = task.task_type ? '<span>' + escapeHtml(task.task_type) + '</span>' : '';
+    var confirmButton = task.allowed
+      ? '<button type="button" class="text-task-confirm" data-task-action="confirm" data-task-id="' + escapeHtml(taskId) + '"' + (disabled ? ' disabled' : '') + '>确认执行</button>'
+      : '<button type="button" class="text-task-confirm" disabled>确认执行</button>';
+    var cancelLabel = task.allowed ? '取消' : '不处理';
+    var cancelButton = '<button type="button" class="text-task-cancel" data-task-action="cancel" data-task-id="' + escapeHtml(taskId) + '"' + (disabled ? ' disabled' : '') + '>' + cancelLabel + '</button>';
+
+    return '<section class="' + cardClass + '">' +
+      '<div class="text-task-card-header">' +
+        '<div>' +
+          '<div class="text-task-title">' + escapeHtml(task.title || '待确认任务') + '</div>' +
+          '<div class="text-task-meta">' + type + source + '<span>' + escapeHtml(getTaskStatusLabel(status, task.allowed)) + '</span></div>' +
+        '</div>' +
+        '<span class="text-task-risk ' + risk + '">' + escapeHtml(getTaskRiskLabel(risk)) + '</span>' +
+      '</div>' +
+      '<div class="text-task-summary">' + escapeHtml(task.summary || '需要你确认后才能继续。') + '</div>' +
+      reason +
+      '<div class="text-task-actions">' + confirmButton + cancelButton + '</div>' +
+      '</section>';
+  }
+
+  function getTaskRiskLabel(risk) {
+    if (risk === 'low') return '低风险';
+    if (risk === 'high') return '高风险';
+    return '中风险';
+  }
+
+  function getTaskStatusLabel(status, allowed) {
+    if (!allowed || status === 'blocked') return '已拦截';
+    if (status === 'confirmed') return '已确认';
+    if (status === 'cancelled') return '已取消';
+    return '等待确认';
+  }
+
+  function findPendingTaskMessage(taskId) {
+    for (var i = textChatMessages.length - 1; i >= 0; i -= 1) {
+      var msg = textChatMessages[i];
+      if (msg.pendingTask && msg.pendingTask.task_id === taskId) return msg;
+    }
+    return null;
+  }
+
+  function handlePendingTaskConfirm(taskId) {
+    var msg = findPendingTaskMessage(taskId);
+    if (!msg || !msg.pendingTask || !msg.pendingTask.allowed || msg.taskUiStatus !== 'pending') return;
+    msg.taskUiStatus = 'confirmed';
+    renderTextChatMessages();
+    appendTextChatMessage('assistant', '确认请求已收到，执行功能将在后续版本接入。', { source: 'frontend_confirmation' });
+  }
+
+  function handlePendingTaskCancel(taskId) {
+    var msg = findPendingTaskMessage(taskId);
+    if (!msg || !msg.pendingTask || msg.taskUiStatus !== 'pending') return;
+    msg.taskUiStatus = 'cancelled';
+    renderTextChatMessages();
+    appendTextChatMessage('assistant', '已取消该任务。', { source: 'frontend_confirmation' });
   }
 
   function setTextChatSending(on) {
@@ -564,7 +663,7 @@
         latency_ms: data.latency_ms,
         blocked_panel_command: data.blocked_panel_command,
         llm_configured: data.llm_configured
-      });
+      }, data.requires_confirmation ? data.pending_task : null);
     }).catch(function (e) {
       appendTextChatMessage('assistant', '文本消息处理出错：' + e, { source: 'js_error' });
     }).finally(function () {
