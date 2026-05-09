@@ -290,10 +290,17 @@ class ControlPanelWebApi:
                     data=_registry_blocked_result(task_id, reason),
                     message="文本任务已拦截",
                 )
-            result = execute_confirmed_text_task(
-                record.task,
-                project_root=self._project_root,
-            )
+            try:
+                result = execute_confirmed_text_task(
+                    record.task,
+                    project_root=self._project_root,
+                )
+            except Exception:
+                self._text_task_registry.mark_failed(task_id, "confirm_text_task_error")
+                return _ok(
+                    data=_registry_failed_result(task_id, "confirm_text_task_error"),
+                    message="文本任务执行失败",
+                )
             if result.ok and result.status == "completed":
                 self._text_task_registry.mark_completed(task_id)
             elif result.status == "blocked":
@@ -348,18 +355,73 @@ def _extract_task_id(payload: dict | None) -> str:
 
 
 def _registry_blocked_result(task_id: str, reason: str) -> dict:
+    summary, details = _registry_reason_text(reason)
     return {
         "ok": False,
         "task_id": task_id,
         "task_type": "registry",
         "status": "blocked",
         "title": "文本任务无法执行",
-        "summary": "该任务无法执行。",
-        "details": f"原因：{reason or 'registry_blocked'}",
+        "summary": summary,
+        "details": details,
         "risk_level": "medium",
         "read_files": [],
         "error": reason or "registry_blocked",
     }
+
+
+def _registry_failed_result(task_id: str, reason: str) -> dict:
+    return {
+        "ok": False,
+        "task_id": task_id,
+        "task_type": "registry",
+        "status": "failed",
+        "title": "文本任务执行失败",
+        "summary": "任务执行过程中出现异常，已标记为失败。",
+        "details": "原因：confirm_text_task_error",
+        "risk_level": "medium",
+        "read_files": [],
+        "error": reason or "confirm_text_task_error",
+    }
+
+
+def _registry_reason_text(reason: str) -> tuple[str, str]:
+    mapping: dict[str, tuple[str, str]] = {
+        "missing_task_id": (
+            "没有找到要确认的任务。",
+            "前端没有提供有效 task_id，请重新发起任务。",
+        ),
+        "not_found": (
+            "这个任务不存在或已经被清理。",
+            "后端注册表中没有找到该 task_id，请重新发起任务。",
+        ),
+        "expired": (
+            "这个任务已过期。",
+            "为了安全，待确认任务只在短时间内有效，请重新发起任务。",
+        ),
+        "already_executing": (
+            "这个任务正在执行中。",
+            "请等待当前执行结果，不要重复点击确认。",
+        ),
+        "already_completed": (
+            "这个任务已经执行过。",
+            "为了避免重复操作，同一个任务不能再次执行。",
+        ),
+        "already_cancelled": (
+            "这个任务已经取消。",
+            "已取消的任务不能再执行，请重新发起任务。",
+        ),
+        "not_pending": (
+            "这个任务当前状态不允许执行。",
+            "只有 pending 状态的任务可以确认执行。",
+        ),
+    }
+    if reason in mapping:
+        return mapping[reason]
+    return (
+        "该任务无法执行。",
+        f"原因：{reason or 'registry_blocked'}",
+    )
 
 
 def _coerce_optional_int(value: Any) -> int | None:

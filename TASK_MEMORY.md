@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D4.1 Registry Edge Hardening / UX Polish
+
+- Purpose: Small security and UX patch over D4 — prevent tasks stuck in executing, friendly blocked reason text, natural expiry label.
+- Key files: `control_panel_web_service.py`, `frontend/control_panel/assets/app.js`, `tests/test_control_panel_web_service.py`.
+- Last completed:
+  1. `confirm_text_task` wraps execution in inner try/except; unexpected exceptions after claim now call `mark_failed` and return `_registry_failed_result` instead of leaving task stuck in `executing`.
+  2. `_registry_reason_text` maps 7 internal reason codes to friendly Chinese summary/details; `_registry_blocked_result` calls it; `error` field still preserves raw reason code.
+  3. Frontend `formatTaskExpiryLabel` computes remaining time from `expires_at` / `expires_in_seconds` and shows "约 N 分钟内有效" (or "N 秒内有效" for < 60s), replacing the old raw seconds inline format.
+- Behavior: normal completed/blocked/failed result flow unchanged; normal task execution not affected by the new try/except; frontend still sends only `task_id`.
+- Verification: compileall OK; unittest discover OK (813 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: keep this as edge hardening only; do not add new task types, execution capabilities, or modify `text_task_execution_service.py`.
+
 ## Current Snapshot（2026-05-09）— V1.4-D4 Pending Task Registry / Server-side Task Store
 
 - Purpose: Pending text tasks are stored server-side; confirmation now trusts only registry task IDs, not frontend task payloads.

@@ -650,6 +650,24 @@
     });
   }
 
+  function formatTaskExpiryLabel(task) {
+    var expiresAt = Number(task.expires_at);
+    var expiresIn = Number(task.expires_in_seconds);
+    var now = Date.now() / 1000;
+    var remaining;
+    if (Number.isFinite(expiresAt) && expiresAt > 0) {
+      remaining = Math.max(0, expiresAt - now);
+    } else if (Number.isFinite(expiresIn) && expiresIn > 0) {
+      remaining = expiresIn;
+    } else {
+      return '';
+    }
+    if (remaining >= 60) {
+      return '约 ' + Math.round(remaining / 60) + ' 分钟内有效';
+    }
+    return Math.round(remaining) + ' 秒内有效';
+  }
+
   function renderPendingTaskCard(msg, index) {
     var task = msg.pendingTask || {};
     var taskId = task.task_id || ('pending-task-' + index);
@@ -664,7 +682,8 @@
     var source = task.source ? '<span>' + escapeHtml(task.source) + '</span>' : '';
     var type = task.task_type ? '<span>' + escapeHtml(task.task_type) + '</span>' : '';
     var registered = task.registered ? '<span>任务已注册</span>' : '';
-    var expires = task.expires_in_seconds !== undefined ? '<span>' + escapeHtml(Math.round(Number(task.expires_in_seconds) || 0)) + ' 秒内有效</span>' : '';
+    var expiresLabel = formatTaskExpiryLabel(task);
+    var expires = expiresLabel ? '<span>' + escapeHtml(expiresLabel) + '</span>' : '';
     var confirmButton = task.allowed
       ? '<button type="button" class="text-task-confirm" data-task-action="confirm" data-task-id="' + escapeHtml(taskId) + '"' + (disabled ? ' disabled' : '') + '>' + escapeHtml(getTaskConfirmLabel(status)) + '</button>'
       : '<button type="button" class="text-task-confirm" disabled>确认执行</button>';

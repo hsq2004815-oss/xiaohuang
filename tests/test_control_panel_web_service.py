@@ -6,7 +6,15 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from xiaohuang.control_panel_web_service import ControlPanelWebApi, _fail, _ok, _sanitize_dict
+from xiaohuang.control_panel_web_service import (
+    ControlPanelWebApi,
+    _fail,
+    _ok,
+    _registry_blocked_result,
+    _registry_failed_result,
+    _registry_reason_text,
+    _sanitize_dict,
+)
 from xiaohuang.text_interaction_models import TextInteractionResult
 
 
@@ -294,6 +302,65 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertEqual(result["data"]["error"], "not_found")
         json.dumps(result)
 
+    def test_confirm_text_task_exception_marks_failed(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        api._text_task_registry.register(_pending_task("text-task-x"))
+
+        with patch(
+            "xiaohuang.control_panel_web_service.execute_confirmed_text_task",
+            side_effect=RuntimeError("unexpected crash"),
+        ):
+            result = api.confirm_text_task({"task_id": "text-task-x"})
+
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["data"]["ok"])
+        self.assertEqual(result["data"]["status"], "failed")
+        self.assertEqual(result["data"]["error"], "confirm_text_task_error")
+        self.assertEqual(api._text_task_registry.get("text-task-x").status, "failed")
+        json.dumps(result)
+
+    def test_confirm_text_task_exception_does_not_affect_normal_result(self):
+        logs = Path(self.tmp.name) / "logs"
+        logs.mkdir()
+        (logs / "app.log").write_text("ERROR one\n", encoding="utf-8")
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        api._text_task_registry.register(_pending_task("text-task-normal"))
+
+        result = api.confirm_text_task({"task_id": "text-task-normal"})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["ok"])
+        self.assertEqual(result["data"]["status"], "completed")
+        self.assertEqual(api._text_task_registry.get("text-task-normal").status, "completed")
+
+    def test_registry_reason_text_missing_task_id(self):
+        result = api_call_confirm_blocked({}, "missing_task_id")
+        self.assertIn("没有找到", result["data"]["summary"])
+        self.assertIn("task_id", result["data"]["details"])
+
+    def test_registry_reason_text_not_found(self):
+        result = api_call_confirm_blocked({"task_id": "ghost-task"}, "not_found")
+        self.assertIn("不存在", result["data"]["summary"])
+
+    def test_registry_reason_text_expired(self):
+        result = api_call_confirm_blocked({"task_id": "old-task"}, "expired")
+        self.assertIn("已过期", result["data"]["summary"])
+
+    def test_registry_reason_text_already_completed(self):
+        result = api_call_confirm_blocked({"task_id": "done-task"}, "already_completed")
+        self.assertIn("已经执行过", result["data"]["summary"])
+
+    def test_registry_reason_text_already_cancelled(self):
+        result = api_call_confirm_blocked({"task_id": "cancelled-task"}, "already_cancelled")
+        self.assertIn("已经取消", result["data"]["summary"])
+
+    def test_registry_reason_text_preserves_error_field(self):
+        result = api_call_confirm_blocked({"task_id": "any-task"}, "not_pending")
+        self.assertEqual(result["data"]["error"], "not_pending")
+        self.assertEqual(result["data"]["status"], "blocked")
+
     def test_cancel_text_task_blocks_later_confirm(self):
         api = ControlPanelWebApi(config_path=self.config_path)
         api._project_root = Path(self.tmp.name)
@@ -563,6 +630,15 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertNotIn("https://", js)
         self.assertNotIn("cdn.", js)
 
+    def test_js_has_format_task_expiry_label(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        for text in ("formatTaskExpiryLabel", "约", "分钟内有效", "expires_at", "expires_in_seconds"):
+            self.assertIn(text, js, f"Missing formatTaskExpiryLabel behavior: {text}")
+
+    def test_js_expiry_no_longer_hardcodes_300_seconds(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertNotIn("300 秒内有效", js, "No longer hardcode 300 seconds expiry label")
+
 
 def _fake_status():
     from xiaohuang.status_control_service import ControlPanelStatus
@@ -614,3 +690,15 @@ def _fake_save_result(ok, error):
 def _fake_op_result(ok, message):
     from xiaohuang.status_control_service import ControlOperationResult
     return ControlOperationResult(ok=ok, title="", message=message, elapsed_seconds=1.0)
+
+
+def api_call_confirm_blocked(payload, reason):
+    """Helper: call _registry_blocked_result directly to test reason text mapping."""
+    return {
+        "ok": True,
+        "data": _registry_blocked_result(
+            payload.get("task_id", ""),
+            reason,
+        ),
+        "message": "文本任务已拦截",
+    }
