@@ -577,7 +577,7 @@
     var source = task.source ? '<span>' + escapeHtml(task.source) + '</span>' : '';
     var type = task.task_type ? '<span>' + escapeHtml(task.task_type) + '</span>' : '';
     var confirmButton = task.allowed
-      ? '<button type="button" class="text-task-confirm" data-task-action="confirm" data-task-id="' + escapeHtml(taskId) + '"' + (disabled ? ' disabled' : '') + '>确认执行</button>'
+      ? '<button type="button" class="text-task-confirm" data-task-action="confirm" data-task-id="' + escapeHtml(taskId) + '"' + (disabled ? ' disabled' : '') + '>' + escapeHtml(getTaskConfirmLabel(status)) + '</button>'
       : '<button type="button" class="text-task-confirm" disabled>确认执行</button>';
     var cancelLabel = task.allowed ? '取消' : '不处理';
     var cancelButton = '<button type="button" class="text-task-cancel" data-task-action="cancel" data-task-id="' + escapeHtml(taskId) + '"' + (disabled ? ' disabled' : '') + '>' + cancelLabel + '</button>';
@@ -605,9 +605,20 @@
 
   function getTaskStatusLabel(status, allowed) {
     if (!allowed || status === 'blocked') return '已拦截';
+    if (status === 'executing') return '执行中';
+    if (status === 'completed') return '已完成';
+    if (status === 'failed') return '执行失败';
     if (status === 'confirmed') return '已确认';
     if (status === 'cancelled') return '已取消';
     return '等待确认';
+  }
+
+  function getTaskConfirmLabel(status) {
+    if (status === 'executing') return '执行中';
+    if (status === 'completed') return '已完成';
+    if (status === 'blocked') return '已拦截';
+    if (status === 'failed') return '执行失败';
+    return '确认执行';
   }
 
   function findPendingTaskMessage(taskId) {
@@ -621,9 +632,32 @@
   function handlePendingTaskConfirm(taskId) {
     var msg = findPendingTaskMessage(taskId);
     if (!msg || !msg.pendingTask || !msg.pendingTask.allowed || msg.taskUiStatus !== 'pending') return;
-    msg.taskUiStatus = 'confirmed';
+    msg.taskUiStatus = 'executing';
     renderTextChatMessages();
-    appendTextChatMessage('assistant', '确认请求已收到，执行功能将在后续版本接入。', { source: 'frontend_confirmation' });
+    apiCall('confirm_text_task', { pending_task: msg.pendingTask }).then(function (resp) {
+      var data = resp && resp.data ? resp.data : {};
+      if (resp && resp.ok && data.ok) {
+        msg.taskUiStatus = 'completed';
+        renderTextChatMessages();
+        appendTextChatMessage('assistant', formatTextTaskExecutionReply(data), {
+          source: 'text_task_execution',
+          task_status: data.status || 'completed'
+        });
+        return;
+      }
+      msg.taskUiStatus = data.status === 'blocked' ? 'blocked' : 'failed';
+      renderTextChatMessages();
+      appendTextChatMessage('assistant', formatTextTaskExecutionReply(data, (resp && resp.error) || '文本任务执行失败'), {
+        source: 'text_task_execution',
+        task_status: data.status || 'failed'
+      });
+    }).catch(function (e) {
+      msg.taskUiStatus = 'failed';
+      renderTextChatMessages();
+      appendTextChatMessage('assistant', '文本任务执行出错：' + e, { source: 'text_task_execution' });
+    }).finally(function () {
+      focusTextChatInput();
+    });
   }
 
   function handlePendingTaskCancel(taskId) {
@@ -632,6 +666,35 @@
     msg.taskUiStatus = 'cancelled';
     renderTextChatMessages();
     appendTextChatMessage('assistant', '已取消该任务。', { source: 'frontend_confirmation' });
+  }
+
+  function formatTextTaskExecutionReply(data, fallback) {
+    if (!data || !data.summary) return fallback || '文本任务没有返回结果。';
+    var lines = [];
+    if (data.ok) {
+      lines.push('任务执行完成：');
+    } else if (data.status === 'blocked') {
+      lines.push('任务已拦截：');
+    } else {
+      lines.push('任务执行失败：');
+    }
+    lines.push('');
+    lines.push(data.summary || fallback || '');
+    if (data.details) {
+      lines.push('');
+      lines.push('详情：');
+      lines.push(data.details);
+    }
+    if (data.read_files && data.read_files.length) {
+      lines.push('');
+      lines.push('读取文件：');
+      lines.push(data.read_files.join('\n'));
+    }
+    if (data.error && !data.ok) {
+      lines.push('');
+      lines.push('错误：' + data.error);
+    }
+    return lines.join('\n');
   }
 
   function setTextChatSending(on) {

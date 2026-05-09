@@ -434,6 +434,9 @@ select.glass-input{cursor:pointer}
 }
 .text-task-card.blocked{border-color:rgba(248,113,113,0.28);background:rgba(255,247,247,0.82)}
 .text-task-card.confirmed{border-color:rgba(34,197,94,0.28);background:rgba(240,253,244,0.82)}
+.text-task-card.executing{border-color:rgba(8,145,178,0.30);background:rgba(236,254,255,0.82)}
+.text-task-card.completed{border-color:rgba(34,197,94,0.28);background:rgba(240,253,244,0.82)}
+.text-task-card.failed{border-color:rgba(248,113,113,0.32);background:rgba(255,247,247,0.86)}
 .text-task-card.cancelled{opacity:.72}
 .text-task-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .text-task-title{font-size:14px;font-weight:900;color:var(--text-primary);line-height:1.35}

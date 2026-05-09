@@ -226,6 +226,54 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertEqual(result["data"]["pending_task"]["task_type"], "readonly_log_analysis")
         json.dumps(result)
 
+    def test_confirm_text_task_exists_and_completes_readonly_log_analysis(self):
+        logs = Path(self.tmp.name) / "logs"
+        logs.mkdir()
+        (logs / "app.log").write_text("ERROR one\nWARNING two\n", encoding="utf-8")
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+
+        result = api.confirm_text_task({
+            "pending_task": {
+                "task_id": "text-task-1",
+                "title": "分析最近日志错误",
+                "task_type": "readonly_log_analysis",
+                "summary": "读取项目 logs 目录中的最近日志并总结错误信息。",
+                "risk_level": "low",
+                "status": "pending_confirmation",
+                "allowed": True,
+                "original_text": "帮我分析最近日志有没有错误",
+            }
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["ok"])
+        self.assertEqual(result["data"]["status"], "completed")
+        self.assertEqual(result["data"]["task_type"], "readonly_log_analysis")
+        json.dumps(result)
+
+    def test_confirm_text_task_blocks_disallowed_task(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+
+        result = api.confirm_text_task({
+            "pending_task": {
+                "task_id": "text-task-2",
+                "title": "受限本地执行请求",
+                "task_type": "blocked_local_execution",
+                "summary": "用户请求执行本地命令。",
+                "risk_level": "high",
+                "status": "pending_confirmation",
+                "allowed": False,
+            }
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["data"]["ok"])
+        self.assertEqual(result["data"]["status"], "blocked")
+        self.assertEqual(result["data"]["error"], "blocked_task")
+        json.dumps(result)
+
     def test_clear_text_session_returns_ok(self):
         api = ControlPanelWebApi(config_path=self.config_path)
         api._text_interaction_sessions.get_or_create("control_panel").memory.add_user("测试")
@@ -364,6 +412,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for cls_name in (".text-task-card", ".text-task-risk", ".text-task-actions",
                          ".text-task-confirm", ".text-task-cancel",
                          ".text-task-card.blocked", ".text-task-card.confirmed", ".text-task-card.cancelled",
+                         ".text-task-card.executing", ".text-task-card.completed", ".text-task-card.failed",
                          ".text-task-original", ".text-task-original-label", ".text-task-original-text"):
             self.assertIn(cls_name, css, f"Missing text task confirmation class: {cls_name}")
 
@@ -426,10 +475,10 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for text in ("requires_confirmation", "pending_task", "renderPendingTaskCard",
                      "handlePendingTaskConfirm", "handlePendingTaskCancel",
                      "data-task-action", "确认执行", "不处理",
-                     "确认请求已收到，执行功能将在后续版本接入。", "已取消该任务。",
-                     "risk_level", "original_text", "task.risk_level || task.risk", "原始输入"):
+                     "任务执行完成：", "已取消该任务。",
+                     "risk_level", "original_text", "task.risk_level || task.risk", "原始输入",
+                     "confirm_text_task", "executing", "completed", "failed"):
             self.assertIn(text, js, f"Missing text task confirmation UI behavior: {text}")
-        self.assertNotIn("confirm_text_task", js)
         self.assertNotIn("execute_text_task", js)
         self.assertNotIn("local_commands", js)
 

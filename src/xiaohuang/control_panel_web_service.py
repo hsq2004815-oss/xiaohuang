@@ -28,6 +28,7 @@ from xiaohuang.status_control_service import (
 )
 from xiaohuang.text_interaction_service import run_text_interaction_turn
 from xiaohuang.text_interaction_session_service import TextInteractionSessionStore
+from xiaohuang.text_task_execution_service import execute_confirmed_text_task
 
 _SENSITIVE_KEYS = {"api_key", "secret", "password", "token", "api_key_env"}
 
@@ -268,6 +269,19 @@ class ControlPanelWebApi:
             return _ok(data=asdict(result), message="消息已回复" if result.ok else "消息处理失败")
         except Exception:
             return _fail("文本消息处理失败", "send_text_message_error")
+
+    def confirm_text_task(self, payload: dict | None = None) -> dict:
+        try:
+            pending_task = {}
+            if isinstance(payload, dict) and isinstance(payload.get("pending_task"), dict):
+                pending_task = payload["pending_task"]
+            result = execute_confirmed_text_task(
+                pending_task,
+                project_root=self._project_root,
+            )
+            return _ok(data=asdict(result), message="文本任务执行完成" if result.ok else "文本任务已拦截")
+        except Exception:
+            return _fail("确认文本任务失败", "confirm_text_task_error")
 
     def clear_text_session(self, payload: dict | None = None) -> dict:
         try:

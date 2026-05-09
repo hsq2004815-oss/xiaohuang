@@ -1,5 +1,14 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D3 Confirmed Readonly Task Execution
+
+- Purpose: Confirmed text task cards can now call a backend API that executes only whitelisted readonly tasks.
+- Key files: `text_task_execution_models.py`, `text_task_execution_service.py`, `control_panel_web_service.py`, `frontend/control_panel/assets/app.js`.
+- Last completed: added `confirm_text_task`, readonly log/status/diagnostic execution, backend re-validation, and frontend executing/completed/blocked/failed states.
+- Behavior: only `readonly_log_analysis`, `readonly_status_check`, and `readonly_diagnostic_review` can run; blocked/high-risk/unknown tasks return structured blocked results.
+- Verification: compileall OK; unittest discover OK (785 tests); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: do not add generic `execute_text_task`, do not call `local_commands`, subprocess, PowerShell, cmd, or write/export diagnostics from this path.
+
 ## Current Snapshot（2026-05-09）— V1.4-D1.1.1 Text Task Card Field Mapping Fix
 
 - Purpose: Align the text task confirmation card with the D1 backend field names.
