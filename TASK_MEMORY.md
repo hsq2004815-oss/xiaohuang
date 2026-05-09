@@ -1,5 +1,13 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-C.3 Remove Text Chat From Control Sidebar
+
+- Purpose: Keep text chat as a full-window mode entered only from the top control button, not a sidebar category.
+- Key files: `frontend/control_panel/index.html`, `tests/test_control_panel_web_service.py`.
+- Last completed: removed `data-section="text-chat"` from the control sidebar; top `data-action="open-text-chat"` still switches to `text-chat-shell`.
+- Verification: compileall OK; unittest discover OK (759 tests); control_panel_web `--help` OK; diff check OK.
+- Known traps: do not re-add text chat to the control navigation; frontend must not call `open_text_chat_window`.
+
 ## Current Snapshot（2026-05-09）— V1.4-C.2 Fullscreen Text Chat Mode
 
 - Purpose: Make text chat a full-window mode inside the same pywebview app, not a module inside control center.

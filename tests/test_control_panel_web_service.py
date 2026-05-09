@@ -276,8 +276,10 @@ class V13UIFrontendStructureTests(unittest.TestCase):
 
     def test_html_has_localized_nav(self):
         html = self._read("frontend/control_panel/index.html")
-        for text in ("总览", "文本对话", "运行状态", "唤醒与语音", "模型", "工具", "数据库", "核心", "能力", "系统", "开发者"):
+        for text in ("总览", "运行状态", "唤醒与语音", "模型", "工具", "数据库", "核心", "能力", "系统", "开发者"):
             self.assertIn(text, html, f"Missing localized text: {text}")
+        self.assertIn("文本对话", html, "Top text chat entry should remain")
+        self.assertNotIn('data-section="text-chat"', html, "Text chat should not be a control sidebar section")
 
     def test_html_no_english_nav_labels(self):
         html = self._read("frontend/control_panel/index.html")
