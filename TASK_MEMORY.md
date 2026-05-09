@@ -1,5 +1,14 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-Q1 App Config Service Test Coverage
+
+- Purpose: Dedicated test suite for `app_config_service.py` — lock down config loading, merging, coercion, CLI override, and frozen dataclass behavior.
+- Key files: `tests/test_app_config_service.py` (new, 41 tests).
+- Last completed: 5 test classes covering default config, load_config (missing/invalid/non-object/valid), merge_config_dict (non-object section skip), wake phrases/aliases (string/list/empty/invalid), numeric out-of-range fallback, bool coercion (type-strict), assistant overrides, LLM/TTS/overlay field merge, apply_cli_overrides (scalar values, store_true semantics, None passthrough, CLI True overrides config False), and frozen dataclass behavior.
+- Behavior: all existing app_config_service functions unchanged; tests verify current behavior as-is.
+- Verification: compileall OK; unittest discover OK (854 tests, 1 symlink-permission skip, +41 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: `_coerce_bool` accepts only `bool` type, not strings; `_or_config` False means "not passed"; list fields inside frozen dataclass are still mutable in-place.
+
 ## Current Snapshot（2026-05-09）— V1.4-D4.1 Registry Edge Hardening / UX Polish
 
 - Purpose: Small security and UX patch over D4 — prevent tasks stuck in executing, friendly blocked reason text, natural expiry label.
