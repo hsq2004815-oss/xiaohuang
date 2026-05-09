@@ -197,6 +197,35 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertEqual(result["data"]["reply_text"], "我是小黄")
         self.assertEqual(mock_run.call_args.kwargs["session_id"], "control_panel")
 
+    def test_send_text_message_returns_pending_task_fields(self):
+        fake = TextInteractionResult(
+            ok=True,
+            session_id="control_panel",
+            user_text="帮我分析最近日志有没有错误",
+            reply_text="这个任务需要你确认后才能执行。",
+            reply_source="pending_task",
+            requires_confirmation=True,
+            pending_task={
+                "task_id": "text-task-1",
+                "title": "分析最近日志错误",
+                "task_type": "readonly_log_analysis",
+                "summary": "读取项目 logs 目录中的最近日志并总结错误信息。",
+                "risk_level": "low",
+                "status": "pending_confirmation",
+                "allowed": True,
+                "original_text": "帮我分析最近日志有没有错误",
+                "reason": "",
+            },
+        )
+        with patch("xiaohuang.control_panel_web_service.run_text_interaction_turn", return_value=fake):
+            api = ControlPanelWebApi(config_path=self.config_path)
+            result = api.send_text_message({"text": "帮我分析最近日志有没有错误"})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["requires_confirmation"])
+        self.assertEqual(result["data"]["pending_task"]["task_type"], "readonly_log_analysis")
+        json.dumps(result)
+
     def test_clear_text_session_returns_ok(self):
         api = ControlPanelWebApi(config_path=self.config_path)
         api._text_interaction_sessions.get_or_create("control_panel").memory.add_user("测试")

@@ -1,5 +1,15 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D1 Text Task Confirmation Backend Contract
+
+- Purpose: Text chat can detect local task intent and return a structured `pending_task` that requires confirmation, without executing anything.
+- Key files: `text_task_models.py`, `text_task_intent_service.py`, `text_task_confirmation_service.py`, `text_interaction_models.py`, `text_interaction_service.py`.
+- Last completed: deterministic intent detection for readonly log/status/diagnostic review and blocked local execution.
+- Behavior: panel command guard still wins; task intents return `requires_confirmation=True`, `reply_source=pending_task`, and no reply runtime call.
+- Verification: compileall OK; unittest discover OK (771 tests); control_panel_web `--help` OK; diff check OK.
+- Known traps: D1 is contract only; do not call `local_commands.execute_capability`, write DB/files, or add frontend confirmation UI here.
+- Next likely edit points: V1.4-D2 frontend confirmation card UI, V1.4-D3 confirmed readonly execution.
+
 ## Current Snapshot（2026-05-09）— V1.4-C.3 Remove Text Chat From Control Sidebar
 
 - Purpose: Keep text chat as a full-window mode entered only from the top control button, not a sidebar category.

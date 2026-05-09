@@ -30,11 +30,13 @@ class TextInteractionServiceTests(unittest.TestCase):
         self.assertIn("不能为空", result.error)
 
     def test_panel_command_guard_blocks_control_action(self):
-        result = run_text_interaction_turn("启动小黄", session_store=TextInteractionSessionStore())
+        with patch("xiaohuang.text_interaction_service.detect_text_task_intent") as mock_detect:
+            result = run_text_interaction_turn("启动小黄", session_store=TextInteractionSessionStore())
         self.assertTrue(result.ok)
         self.assertTrue(result.blocked_panel_command)
         self.assertEqual(result.reply_source, "panel_command_guard")
         self.assertIn("控制面板", result.reply_text)
+        mock_detect.assert_not_called()
 
     def test_memory_written_after_reply(self):
         store = TextInteractionSessionStore()
@@ -79,6 +81,43 @@ class TextInteractionServiceTests(unittest.TestCase):
         self.assertTrue(result.has_llm_key)
         self.assertTrue(result.llm_configured)
         self.assertNotIn("sk-", str(asdict(result)))
+
+    def test_log_analysis_request_returns_pending_task(self):
+        store = TextInteractionSessionStore()
+        with patch("xiaohuang.text_interaction_service.generate_reply_runtime_result") as mock_generate:
+            result = run_text_interaction_turn(
+                "帮我分析最近日志有没有错误",
+                session_store=store,
+                config_path=self.config_path,
+            )
+
+        self.assertTrue(result.ok)
+        self.assertTrue(result.requires_confirmation)
+        self.assertIsNotNone(result.pending_task)
+        self.assertEqual(result.reply_source, "pending_task")
+        self.assertEqual(result.pending_task["task_type"], "readonly_log_analysis")
+        self.assertEqual(result.pending_task["status"], "pending_confirmation")
+        self.assertTrue(result.pending_task["allowed"])
+        self.assertIn("需要你确认", result.reply_text)
+        mock_generate.assert_not_called()
+        ctx = store.build_context_text("default")
+        self.assertIn("帮我分析最近日志", ctx)
+        self.assertIn("pending_task", ctx)
+
+    def test_blocked_task_returns_high_risk_pending_task_without_execution(self):
+        with patch("xiaohuang.text_interaction_service.generate_reply_runtime_result") as mock_generate:
+            result = run_text_interaction_turn(
+                "执行 powershell 删除文件",
+                session_store=TextInteractionSessionStore(),
+                config_path=self.config_path,
+            )
+
+        self.assertTrue(result.ok)
+        self.assertTrue(result.requires_confirmation)
+        self.assertFalse(result.pending_task["allowed"])
+        self.assertEqual(result.pending_task["risk_level"], "high")
+        self.assertIn("不会执行", result.reply_text)
+        mock_generate.assert_not_called()
 
 
 if __name__ == "__main__":

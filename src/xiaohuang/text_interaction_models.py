@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -22,5 +22,7 @@ class TextInteractionResult:
     has_llm_key: bool = False
     llm_configured: bool = False
     blocked_panel_command: bool = False
+    requires_confirmation: bool = False
+    pending_task: dict[str, Any] | None = None
     latency_ms: int = 0
     error: str = ""

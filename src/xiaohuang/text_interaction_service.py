@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import time
+from dataclasses import asdict
 from pathlib import Path
 
 from xiaohuang.app_config_service import load_config
 from xiaohuang.llm_reply_service import load_llm_provider_config
 from xiaohuang.reply_pipeline_service import ReplyPipelineConfig, ReplyPipelineResult
 from xiaohuang.reply_runtime_service import generate_reply_runtime_result
+from xiaohuang.text_task_confirmation_service import (
+    build_pending_text_task,
+    format_pending_task_reply,
+)
+from xiaohuang.text_task_intent_service import detect_text_task_intent
 from xiaohuang.text_interaction_models import TextInteractionResult
 from xiaohuang.text_interaction_session_service import TextInteractionSessionStore
 
@@ -56,6 +62,24 @@ def run_text_interaction_turn(
             reply_text=_PANEL_COMMAND_REPLY,
             reply_source="panel_command_guard",
             blocked_panel_command=True,
+        )
+
+    intent = detect_text_task_intent(user_text)
+    if intent.is_task:
+        task = build_pending_text_task(intent, user_text)
+        reply_text = format_pending_task_reply(task)
+        session = session_store.get_or_create(sid)
+        session.memory.add_user(user_text)
+        session.memory.add_assistant(reply_text, "pending_task")
+        return _result(
+            True,
+            sid,
+            started,
+            user_text=user_text,
+            reply_text=reply_text,
+            reply_source="pending_task",
+            requires_confirmation=True,
+            pending_task=asdict(task),
         )
 
     app_config = load_config(config_path)
@@ -139,6 +163,8 @@ def _result(
     has_llm_key: bool = False,
     llm_configured: bool = False,
     blocked_panel_command: bool = False,
+    requires_confirmation: bool = False,
+    pending_task: dict | None = None,
     error: str = "",
 ) -> TextInteractionResult:
     return TextInteractionResult(
@@ -150,6 +176,8 @@ def _result(
         has_llm_key=has_llm_key,
         llm_configured=llm_configured,
         blocked_panel_command=blocked_panel_command,
+        requires_confirmation=requires_confirmation,
+        pending_task=pending_task,
         latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
         error=error,
     )
