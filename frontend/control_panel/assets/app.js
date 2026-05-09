@@ -14,6 +14,7 @@
   var lastStartupDiagnostic = null;
   var lastPreflightCheck = null;
   var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
+  var currentShell = 'control';
   var currentSection = 'overview';
   var textChatSessionId = 'control_panel';
   var textChatMessages = [];
@@ -403,6 +404,25 @@
   }
 
   /* ─── Sidebar ─── */
+  function switchShell(shell) {
+    var isText = shell === 'text-chat';
+    currentShell = isText ? 'text-chat' : 'control';
+    document.body.classList.toggle('mode-text-chat', isText);
+    document.body.classList.toggle('mode-control', !isText);
+
+    var controlShell = $('control-shell');
+    var textShell = $('text-chat-shell');
+    if (controlShell) controlShell.classList.toggle('active', !isText);
+    if (textShell) textShell.classList.toggle('active', isText);
+
+    if (isText) {
+      focusTextChatInput();
+      drawerLog('切换文本对话', true, '当前窗口全屏文本模式');
+    } else {
+      drawerLog('返回控制中心', true, '当前窗口');
+    }
+  }
+
   function switchSection(sec) {
     currentSection = sec || 'overview';
     document.querySelectorAll('.sidebar-item').forEach(function (item) {
@@ -411,15 +431,17 @@
     document.querySelectorAll('.content-section').forEach(function (section) {
       section.classList.toggle('active', section.id === 'section-' + currentSection);
     });
-    if (currentSection === 'text-chat') {
-      focusTextChatInput();
-    }
   }
 
   function initNav() {
     document.querySelectorAll('.sidebar-item').forEach(function (item) {
       item.addEventListener('click', function () {
-        switchSection(item.getAttribute('data-section') || 'overview');
+        var sec = item.getAttribute('data-section') || 'overview';
+        if (sec === 'text-chat') {
+          switchShell('text-chat');
+          return;
+        }
+        switchSection(sec);
       });
     });
   }
@@ -434,9 +456,11 @@
     var clear = $('text-chat-clear');
     var input = $('text-chat-input');
     var newChat = $('text-chat-new');
+    var backControl = $('btn-back-control');
     if (send) send.addEventListener('click', sendTextChatMessage);
     if (clear) clear.addEventListener('click', clearTextChatSession);
     if (newChat) newChat.addEventListener('click', clearTextChatSession);
+    if (backControl) backControl.addEventListener('click', function () { switchShell('control'); });
     if (input) {
       input.addEventListener('keydown', function (event) {
         if (event.key === 'Enter' && !event.shiftKey) {
@@ -592,9 +616,8 @@
   }
 
   function doOpenTextChat() {
-    switchSection('text-chat');
+    switchShell('text-chat');
     toast('已切换到文本对话', 'info');
-    drawerLog('切换文本对话', true, '当前窗口');
   }
 
   function doRefresh(btn) {
@@ -918,6 +941,7 @@
     initNav();
     initDrawerControls();
     initTextChat();
+    switchShell(currentShell);
     switchSection(currentSection);
     updateBridgeIndicator();
     refreshStatus();

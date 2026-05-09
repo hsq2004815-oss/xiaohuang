@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
+  <div id="control-shell" class="control-shell active">
   <div class="app-shell" id="app-shell">
     <!-- Top Bar -->
     <header class="topbar glass-card" id="topbar">
@@ -124,64 +125,6 @@
         <div class="glass-card" id="wake-voice-detail"><div class="card-body">加载中...</div></div>
       </section>
 
-      <!-- 文本对话 -->
-      <section class="content-section" id="section-text-chat">
-        <div class="text-chat-header">
-          <div>
-            <h2 class="section-title">文本对话</h2>
-            <p>不用语音，直接和小黄打字交流</p>
-          </div>
-          <span class="text-chat-status" id="text-chat-status">本地文本入口</span>
-        </div>
-        <div class="text-chat-layout">
-          <aside class="text-chat-sessions glass-card">
-            <button class="text-chat-new" id="text-chat-new" type="button">+ 新对话</button>
-            <input class="glass-input text-chat-search" type="text" placeholder="搜索对话..." disabled>
-            <div class="text-chat-label">今天</div>
-            <button class="text-chat-session active" type="button">
-              <span>默认对话</span>
-              <small>当前窗口</small>
-            </button>
-          </aside>
-
-          <div class="text-chat-main glass-card">
-            <div class="text-chat-messages" id="text-chat-messages" aria-live="polite"></div>
-            <div class="text-chat-composer">
-              <div class="text-chat-prompts">
-                <button type="button" data-text-prompt="介绍一下你自己">介绍一下你自己</button>
-                <button type="button" data-text-prompt="我现在正在测试小黄项目">我现在正在测试小黄项目</button>
-                <button type="button" data-text-prompt="那它下一步最应该做什么">那它下一步最应该做什么</button>
-              </div>
-              <div class="text-chat-input-row">
-                <span class="text-chat-model">DeepSeek V4 Flash</span>
-                <textarea id="text-chat-input" rows="2" placeholder="输入消息，例如：我现在正在测试小黄项目"></textarea>
-                <button class="text-chat-send" id="text-chat-send" type="button">发送</button>
-              </div>
-              <div class="text-chat-footer">
-                <span>Enter 发送，Shift + Enter 换行</span>
-                <button id="text-chat-clear" type="button">清空会话</button>
-              </div>
-            </div>
-          </div>
-
-          <aside class="text-chat-workspace glass-card">
-            <div class="workspace-block">
-              <h3>工作空间</h3>
-              <dl>
-                <div><dt>项目信息</dt><dd>小黄桌面 AI 助手</dd></div>
-                <div><dt>上下文</dt><dd>当前窗口内短期记忆</dd></div>
-              </dl>
-            </div>
-            <div class="workspace-block">
-              <h3>常用入口</h3>
-              <button type="button" data-text-prompt="解释一下当前状态">解释当前状态</button>
-              <button type="button" data-text-prompt="规划一下小黄项目下一步">规划下一步</button>
-              <button type="button" data-text-prompt="总结本轮对话">总结本轮对话</button>
-            </div>
-          </aside>
-        </div>
-      </section>
-
       <!-- 占位 -->
       <section class="content-section" id="section-models"><h2 class="section-title">模型</h2><div class="glass-card"><div class="card-body">即将推出 — 模型管理、下载状态、运行时选择</div></div></section>
       <section class="content-section" id="section-tools"><h2 class="section-title">工具</h2><div class="glass-card"><div class="card-body">即将推出 — 工具配置、权限管理、执行日志</div></div></section>
@@ -260,6 +203,75 @@
 
     <!-- Toast -->
     <div class="toast-container" id="toast-container"></div>
+  </div>
+  </div>
+
+  <div id="text-chat-shell" class="text-chat-shell">
+    <header class="chat-topbar">
+      <div class="chat-brand">
+        <span class="chat-brand-mark">XH</span>
+        <div>
+          <h1>小黄文本对话</h1>
+          <p>不用语音，直接和小黄打字交流</p>
+        </div>
+      </div>
+      <div class="chat-top-actions">
+        <span class="chat-pill">当前会话：默认对话</span>
+        <span class="chat-pill model">DeepSeek V4 Flash</span>
+        <span class="chat-pill status" id="text-chat-status">本地文本入口</span>
+        <button class="chat-back-control" id="btn-back-control" type="button">返回控制中心</button>
+      </div>
+    </header>
+
+    <aside class="chat-sidebar">
+      <button class="text-chat-new" id="text-chat-new" type="button">+ 新对话</button>
+      <input class="glass-input text-chat-search" type="text" placeholder="搜索对话..." disabled>
+      <div class="text-chat-label">今天</div>
+      <button class="text-chat-session active" type="button">
+        <span>默认对话</span>
+        <small>当前窗口</small>
+      </button>
+    </aside>
+
+    <main class="chat-content">
+      <div class="text-chat-messages" id="text-chat-messages" aria-live="polite"></div>
+      <div class="text-chat-composer">
+        <div class="text-chat-prompts">
+          <button type="button" data-text-prompt="介绍一下你自己">介绍一下你自己</button>
+          <button type="button" data-text-prompt="我现在正在测试小黄项目">我现在正在测试小黄项目</button>
+          <button type="button" data-text-prompt="那它下一步最应该做什么">那它下一步最应该做什么</button>
+        </div>
+        <div class="text-chat-input-row">
+          <span class="text-chat-model">DeepSeek V4 Flash</span>
+          <textarea id="text-chat-input" rows="2" placeholder="输入消息，例如：我现在正在测试小黄项目"></textarea>
+          <button class="text-chat-send" id="text-chat-send" type="button">发送</button>
+        </div>
+        <div class="text-chat-footer">
+          <span>Enter 发送，Shift + Enter 换行</span>
+          <button id="text-chat-clear" type="button">清空会话</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="chat-workspace">
+      <div class="workspace-block">
+        <h3>工作空间</h3>
+        <dl>
+          <div><dt>项目信息</dt><dd>小黄桌面 AI 助手</dd></div>
+          <div><dt>上下文</dt><dd>当前窗口内短期记忆</dd></div>
+        </dl>
+      </div>
+      <div class="workspace-block">
+        <h3>常用入口</h3>
+        <button type="button" data-text-prompt="解释一下当前状态">解释当前状态</button>
+        <button type="button" data-text-prompt="规划一下小黄项目下一步">规划下一步</button>
+        <button type="button" data-text-prompt="总结本轮对话">总结本轮对话</button>
+      </div>
+      <div class="workspace-block">
+        <h3>未来扩展</h3>
+        <p>文件、任务执行、长期记录将在后续版本接入。</p>
+      </div>
+    </aside>
   </div>
 
   <script src="assets/app.js"></script>

@@ -357,8 +357,10 @@ class V13UIFrontendStructureTests(unittest.TestCase):
 
     def test_html_has_text_chat_shell(self):
         html = self._read("frontend/control_panel/index.html")
-        for text in ("section-text-chat", "text-chat-messages", "text-chat-input", "text-chat-send", "text-chat-workspace"):
+        for text in ("control-shell", "text-chat-shell", "text-chat-messages",
+                     "text-chat-input", "text-chat-send", "btn-back-control", "chat-workspace"):
             self.assertIn(text, html, f"Missing text chat shell element: {text}")
+        self.assertNotIn('id="section-text-chat"', html)
 
     def test_html_has_bridge_indicator(self):
         html = self._read("frontend/control_panel/index.html")
@@ -374,9 +376,11 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         js = self._read("frontend/control_panel/assets/app.js")
         self.assertIn("data-action", js)
         self.assertIn("handleButtonClick", js)
-        self.assertIn("switchSection('text-chat')", js)
+        self.assertIn("switchShell('text-chat')", js)
+        self.assertIn("switchShell('control')", js)
         self.assertIn("send_text_message", js)
         self.assertIn("clear_text_session", js)
+        self.assertNotIn("apiCall('open_text_chat_window'", js)
 
     def test_js_has_immediate_feedback(self):
         js = self._read("frontend/control_panel/assets/app.js")

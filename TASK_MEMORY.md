@@ -1,5 +1,15 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-C.2 Fullscreen Text Chat Mode
+
+- Purpose: Make text chat a full-window mode inside the same pywebview app, not a module inside control center.
+- Key files: `frontend/control_panel/index.html`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed: `control-shell` and `text-chat-shell` are top-level siblings; text mode hides control nav/topbar/diagnostic drawer.
+- Behavior: top button and left nav switch to `text-chat-shell`; `btn-back-control` returns to control shell.
+- Verification: compileall OK; unittest discover OK (759 tests after rerun); control_panel/voice_overlay/text_chat `--help` OK; diff check OK.
+- Known traps: frontend must not call `open_text_chat_window`; keep using `send_text_message` / `clear_text_session`.
+- Next likely edit points: visual click-through QA in pywebview, legacy standalone removal, task confirmation flow.
+
 ## Current Snapshot（2026-05-09）— V1.4-C.1 Single Shell UI
 
 - Purpose: Merge control center and text chat into one pywebview control panel window.
