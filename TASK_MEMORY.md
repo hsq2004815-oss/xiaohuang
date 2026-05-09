@@ -1,5 +1,14 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D4 Pending Task Registry / Server-side Task Store
+
+- Purpose: Pending text tasks are stored server-side; confirmation now trusts only registry task IDs, not frontend task payloads.
+- Key files: `text_task_registry_models.py`, `text_task_registry_service.py`, `control_panel_web_service.py`, `frontend/control_panel/assets/app.js`.
+- Last completed: added in-memory registry with TTL/capacity/status transitions, registered pending tasks on `send_text_message`, changed confirm to `task_id`, and added `cancel_text_task`.
+- Behavior: unknown, expired, repeated, cancelled, or forged pending task confirmations return blocked registry-compatible result cards.
+- Verification: compileall OK; unittest discover OK (803 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: keep registry in memory only; do not add persistence, new task types, generic execution, `local_commands`, or database access.
+
 ## Current Snapshot（2026-05-09）— V1.4-D3.1 Readonly Task Result Card UI
 
 - Purpose: Render confirmed readonly task execution results as structured cards instead of plain assistant text.

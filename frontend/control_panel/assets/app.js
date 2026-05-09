@@ -540,6 +540,10 @@
       allowed: task.allowed !== false,
       reason: String(task.reason || ''),
       original_text: String(task.original_text || ''),
+      registered: task.registered === true,
+      registry_status: String(task.registry_status || ''),
+      expires_at: task.expires_at,
+      expires_in_seconds: task.expires_in_seconds,
       source: String(task.source || '')
     };
   }
@@ -659,6 +663,8 @@
       : '';
     var source = task.source ? '<span>' + escapeHtml(task.source) + '</span>' : '';
     var type = task.task_type ? '<span>' + escapeHtml(task.task_type) + '</span>' : '';
+    var registered = task.registered ? '<span>任务已注册</span>' : '';
+    var expires = task.expires_in_seconds !== undefined ? '<span>' + escapeHtml(Math.round(Number(task.expires_in_seconds) || 0)) + ' 秒内有效</span>' : '';
     var confirmButton = task.allowed
       ? '<button type="button" class="text-task-confirm" data-task-action="confirm" data-task-id="' + escapeHtml(taskId) + '"' + (disabled ? ' disabled' : '') + '>' + escapeHtml(getTaskConfirmLabel(status)) + '</button>'
       : '<button type="button" class="text-task-confirm" disabled>确认执行</button>';
@@ -669,7 +675,7 @@
       '<div class="text-task-card-header">' +
         '<div>' +
           '<div class="text-task-title">' + escapeHtml(task.title || '待确认任务') + '</div>' +
-          '<div class="text-task-meta">' + type + source + '<span>' + escapeHtml(getTaskStatusLabel(status, task.allowed)) + '</span></div>' +
+          '<div class="text-task-meta">' + type + source + registered + expires + '<span>' + escapeHtml(getTaskStatusLabel(status, task.allowed)) + '</span></div>' +
         '</div>' +
         '<span class="text-task-risk ' + risk + '">' + escapeHtml(getTaskRiskLabel(risk)) + '</span>' +
       '</div>' +
@@ -717,7 +723,7 @@
     if (!msg || !msg.pendingTask || !msg.pendingTask.allowed || msg.taskUiStatus !== 'pending') return;
     msg.taskUiStatus = 'executing';
     renderTextChatMessages();
-    apiCall('confirm_text_task', { pending_task: msg.pendingTask }).then(function (resp) {
+    apiCall('confirm_text_task', { task_id: msg.pendingTask.task_id }).then(function (resp) {
       var data = resp && resp.data ? resp.data : {};
       if (resp && resp.ok && data.ok) {
         msg.taskUiStatus = 'completed';
@@ -761,6 +767,7 @@
     if (!msg || !msg.pendingTask || msg.taskUiStatus !== 'pending') return;
     msg.taskUiStatus = 'cancelled';
     renderTextChatMessages();
+    apiCall('cancel_text_task', { task_id: msg.pendingTask.task_id }).catch(function () {});
     appendTextChatMessage('assistant', '已取消该任务。', { source: 'frontend_confirmation' });
   }
 

@@ -29,6 +29,7 @@ from xiaohuang.status_control_service import (
 from xiaohuang.text_interaction_service import run_text_interaction_turn
 from xiaohuang.text_interaction_session_service import TextInteractionSessionStore
 from xiaohuang.text_task_execution_service import execute_confirmed_text_task
+from xiaohuang.text_task_registry_service import PendingTextTaskRegistry
 
 _SENSITIVE_KEYS = {"api_key", "secret", "password", "token", "api_key_env"}
 
@@ -59,6 +60,7 @@ class ControlPanelWebApi:
             self._config_path = None
         self._project_root = get_project_root()
         self._text_interaction_sessions = TextInteractionSessionStore()
+        self._text_task_registry = PendingTextTaskRegistry()
         self._init_runtime_events()
 
     def _init_runtime_events(self) -> None:
@@ -266,22 +268,53 @@ class ControlPanelWebApi:
                 session_id=session_id,
                 config_path=self._resolve_config_path(),
             )
-            return _ok(data=asdict(result), message="消息已回复" if result.ok else "消息处理失败")
+            data = asdict(result)
+            if data.get("requires_confirmation") and isinstance(data.get("pending_task"), dict):
+                record = self._text_task_registry.register(data["pending_task"])
+                data["pending_task"] = dict(record.task)
+            return _ok(data=data, message="消息已回复" if result.ok else "消息处理失败")
         except Exception:
             return _fail("文本消息处理失败", "send_text_message_error")
 
     def confirm_text_task(self, payload: dict | None = None) -> dict:
         try:
-            pending_task = {}
-            if isinstance(payload, dict) and isinstance(payload.get("pending_task"), dict):
-                pending_task = payload["pending_task"]
+            task_id = _extract_task_id(payload)
+            if not task_id:
+                return _ok(
+                    data=_registry_blocked_result("", "missing_task_id"),
+                    message="文本任务已拦截",
+                )
+            record, reason = self._text_task_registry.claim_for_execution(task_id)
+            if record is None:
+                return _ok(
+                    data=_registry_blocked_result(task_id, reason),
+                    message="文本任务已拦截",
+                )
             result = execute_confirmed_text_task(
-                pending_task,
+                record.task,
                 project_root=self._project_root,
             )
+            if result.ok and result.status == "completed":
+                self._text_task_registry.mark_completed(task_id)
+            elif result.status == "blocked":
+                self._text_task_registry.mark_blocked(task_id, result.error)
+            else:
+                self._text_task_registry.mark_failed(task_id, result.error)
             return _ok(data=asdict(result), message="文本任务执行完成" if result.ok else "文本任务已拦截")
         except Exception:
             return _fail("确认文本任务失败", "confirm_text_task_error")
+
+    def cancel_text_task(self, payload: dict | None = None) -> dict:
+        try:
+            task_id = _extract_task_id(payload)
+            record = self._text_task_registry.cancel(task_id) if task_id else None
+            status = record.status if record else "not_found"
+            return _ok(
+                data={"task_id": task_id, "status": status},
+                message="文本任务已取消" if record else "文本任务未找到",
+            )
+        except Exception:
+            return _fail("取消文本任务失败", "cancel_text_task_error")
 
     def clear_text_session(self, payload: dict | None = None) -> dict:
         try:
@@ -300,6 +333,33 @@ def _record_cp_event(event_type: str, message: str, level: str = "info") -> None
         record_event("control_panel", event_type, message, level=level)
     except Exception:
         pass
+
+
+def _extract_task_id(payload: dict | None) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    task_id = payload.get("task_id")
+    if task_id:
+        return str(task_id)
+    pending_task = payload.get("pending_task")
+    if isinstance(pending_task, dict) and pending_task.get("task_id"):
+        return str(pending_task.get("task_id"))
+    return ""
+
+
+def _registry_blocked_result(task_id: str, reason: str) -> dict:
+    return {
+        "ok": False,
+        "task_id": task_id,
+        "task_type": "registry",
+        "status": "blocked",
+        "title": "文本任务无法执行",
+        "summary": "该任务无法执行。",
+        "details": f"原因：{reason or 'registry_blocked'}",
+        "risk_level": "medium",
+        "read_files": [],
+        "error": reason or "registry_blocked",
+    }
 
 
 def _coerce_optional_int(value: Any) -> int | None:
