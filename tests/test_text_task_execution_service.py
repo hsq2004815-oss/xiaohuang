@@ -192,6 +192,138 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
         self.assertEqual(result.status, "completed")
         self.assertIn("未发现已有诊断文件", result.details)
 
+    def test_readonly_recent_errors_review_reads_logs(self):
+        logs = self.project_root / "logs"
+        logs.mkdir()
+        (logs / "app.log").write_text(
+            "INFO boot\nERROR failed startup\nWARNING disk full\nCRITICAL crash\n",
+            encoding="utf-8",
+        )
+
+        result = execute_confirmed_text_task(
+            _task("readonly_recent_errors_review"),
+            project_root=self.project_root,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.status, "completed")
+        self.assertIn("readonly_recent_errors_review", result.task_type)
+        self.assertIn("logs/app.log", result.read_files)
+
+    def test_readonly_recent_errors_review_no_logs_dir(self):
+        result = execute_confirmed_text_task(
+            _task("readonly_recent_errors_review"),
+            project_root=self.project_root,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.status, "completed")
+        self.assertIn("未发现可读取的日志文件", result.summary)
+
+    def test_readonly_recent_errors_redacts_sensitive_info(self):
+        logs = self.project_root / "logs"
+        logs.mkdir()
+        (logs / "app.log").write_text(
+            "api_key=sk-test-exposed-token\ntoken=abc123\npassword=123456\nsecret=hello\n",
+            encoding="utf-8",
+        )
+
+        result = execute_confirmed_text_task(
+            _task("readonly_recent_errors_review"),
+            project_root=self.project_root,
+        )
+
+        details = result.details.lower()
+        self.assertNotIn("sk-test-exposed-token", details)
+        self.assertNotIn("abc123", details)
+
+    def test_readonly_runtime_events_review_with_events(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        es._ring.clear()
+
+        try:
+            record_event("voice_overlay", "started", "overlay started")
+            record_event("capability_router", "capability_failed", "failed",
+                        level="error", details={"command": "test"})
+            record_event("control_panel", "start_xiaohuang", "started")
+
+            result = execute_confirmed_text_task(
+                _task("readonly_runtime_events_review"),
+                project_root=self.project_root,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "completed")
+            self.assertIn("3 条", result.summary)
+            self.assertIn("error", result.summary)
+            self.assertIn("voice_overlay", result.details)
+            self.assertIn("capability_router", result.details)
+            self.assertIn("capability_failed", result.details)
+            self.assertIn("[ERROR]", result.details)
+        finally:
+            es._ring.clear()
+
+    def test_readonly_runtime_events_review_empty_events(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        es._ring.clear()
+
+        try:
+            result = execute_confirmed_text_task(
+                _task("readonly_runtime_events_review"),
+                project_root=self.project_root,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.status, "completed")
+            self.assertIn("没有可用运行事件", result.summary)
+        finally:
+            es._ring.clear()
+
+    def test_readonly_runtime_events_review_does_not_clear_ring(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        from xiaohuang.capabilities.runtime_events.service import record_event, get_recent_events
+        es._ring.clear()
+
+        try:
+            record_event("s", "t", "msg")
+            before_count = len(get_recent_events(50))
+
+            result = execute_confirmed_text_task(
+                _task("readonly_runtime_events_review"),
+                project_root=self.project_root,
+            )
+
+            after_count = len(get_recent_events(50))
+            self.assertTrue(result.ok)
+            self.assertEqual(after_count, before_count)
+        finally:
+            es._ring.clear()
+
+    def test_readonly_config_summary(self):
+        result = execute_confirmed_text_task(
+            _task("readonly_config_summary"),
+            project_root=self.project_root,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.status, "completed")
+        self.assertIn("LLM", result.details)
+        self.assertIn("TTS", result.details)
+        self.assertIn("deepseek", result.details)
+        self.assertIn("DEEPSEEK_API_KEY", result.details)
+
+    def test_readonly_config_summary_no_secrets(self):
+        result = execute_confirmed_text_task(
+            _task("readonly_config_summary"),
+            project_root=self.project_root,
+        )
+
+        self.assertTrue(result.ok)
+        details_lower = result.details.lower()
+        self.assertNotIn("secret", details_lower.split())
+        self.assertNotIn("password", details_lower.split())
+
 
 def _task(
     task_type: str,

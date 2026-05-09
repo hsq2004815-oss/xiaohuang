@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D5 More Readonly Task Types
+
+- Purpose: Add 3 new safe readonly task types — recent errors review, runtime events review, and config summary — extending the existing confirm → execute → result card pipeline.
+- Key files: `text_task_intent_service.py` (new term sets), `text_task_execution_service.py` (3 new handlers + whitelist), `tests/` (intent + execution + control panel API tests).
+- Last completed:
+  1. `readonly_recent_errors_review` — keyword detection (最近错误/报错/异常 etc.), reads logs safety (reuses existing helpers), redacts sensitive values, handles empty logs directory gracefully
+  2. `readonly_runtime_events_review` — keyword detection (最近事件/运行事件/运行记录 etc.), calls `get_recent_events()`, aggregates by source/type, counts errors/warnings, handles empty events gracefully, does NOT clear ring buffer
+  3. `readonly_config_summary` — keyword detection (当前配置/配置摘要 etc.), calls `load_config()`, outputs human-readable summary (LLM/TTS/wake/STT/conversation/overlay/runtime), shows env var name (not value), no API keys/secrets/passwords
+  4. All 3 types follow the existing pipeline: intent → pending_task → registry → confirm (task_id only) → execute → result card
+- Detection order: blocked_local_execution > recent_errors_review > log_analysis > status_check > diagnostic_review > runtime_events_review > config_summary
+- Verification: compileall OK; unittest discover OK (906 tests, 1 symlink-permission skip, +13 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: _RECENT_ERRORS_TERMS before _LOG_TERMS in detection order (overlap on "报错"); config summary reads default config in tests (no user config); events review reads from memory ring.
+
 ## Current Snapshot（2026-05-09）— V1.4-Q3.1 Capability Router Risk Pattern Normalization Hardening
 
 - Purpose: Fix high-risk pattern matching — patterns with spaces ("rm -", "del ", "format ") were not matching normalized user input, causing dangerous requests to potentially bypass the deny check. Now all pattern matching uses the same `_normalize_command_text` helper.

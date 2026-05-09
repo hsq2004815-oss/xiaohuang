@@ -385,6 +385,45 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertEqual(result["data"]["session_id"], "control_panel")
         self.assertEqual(len(api._text_interaction_sessions.get_or_create("control_panel").memory), 0)
 
+    def test_new_task_type_runtime_events_review_full_flow(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        es._ring.clear()
+
+        try:
+            record_event("voice_overlay", "started", "test")
+
+            api = ControlPanelWebApi(config_path=self.config_path)
+            api._project_root = Path(self.tmp.name)
+            api._text_task_registry.register(_pending_task(
+                "text-task-events", task_type="readonly_runtime_events_review",
+            ))
+
+            result = api.confirm_text_task({"task_id": "text-task-events"})
+
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["data"]["ok"])
+            self.assertEqual(result["data"]["status"], "completed")
+            self.assertEqual(result["data"]["task_type"], "readonly_runtime_events_review")
+            self.assertIn("voice_overlay", result["data"]["details"])
+            json.dumps(result)
+        finally:
+            es._ring.clear()
+
+    def test_new_task_type_repeated_confirm_still_blocked(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        api._text_task_registry.register(_pending_task(
+            "text-task-cfg", task_type="readonly_config_summary",
+        ))
+
+        first = api.confirm_text_task({"task_id": "text-task-cfg"})
+        second = api.confirm_text_task({"task_id": "text-task-cfg"})
+
+        self.assertTrue(first["data"]["ok"])
+        self.assertFalse(second["data"]["ok"])
+        self.assertEqual(second["data"]["error"], "already_completed")
+
     # ------------------------------------------------------------------
     # refresh / get_config_summary / log paths
     # ------------------------------------------------------------------

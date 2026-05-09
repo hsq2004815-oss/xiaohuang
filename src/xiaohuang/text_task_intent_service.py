@@ -41,6 +41,45 @@ _DIAGNOSTIC_TERMS = (
     "启动失败",
 )
 
+_RECENT_ERRORS_TERMS = (
+    "最近错误",
+    "最近报错",
+    "最近异常",
+    "最近日志错误",
+    "最近日志报错",
+    "有什么报错",
+    "有没有报错",
+    "找错误",
+    "查错误",
+    "看错误",
+    "帮我看下最近异常",
+    "有什么异常",
+)
+
+_RUNTIME_EVENTS_TERMS = (
+    "最近事件",
+    "运行事件",
+    "最近运行记录",
+    "事件摘要",
+    "总结最近",
+    "最近发生了什么",
+    "运行记录",
+)
+
+_CONFIG_TERMS = (
+    "当前配置",
+    "配置摘要",
+    "检查配置",
+    "看配置",
+    "查看配置",
+    "配置怎么样",
+    "唤醒和tts配置",
+    "唤醒和 tts 配置",
+    "唤醒配置",
+    "tts配置",
+    "配置信息",
+)
+
 
 def detect_text_task_intent(text: str) -> TextTaskIntentResult:
     original = str(text or "").strip()
@@ -58,6 +97,17 @@ def detect_text_task_intent(text: str) -> TextTaskIntentResult:
             risk_level="high",
             allowed=False,
             reason="文本入口当前不允许执行本地命令或操作外部应用。",
+        )
+
+    if _contains_any(normalized, _RECENT_ERRORS_TERMS):
+        return TextTaskIntentResult(
+            is_task=True,
+            task_type="readonly_recent_errors_review",
+            title="查看最近错误",
+            summary="读取最近日志中的错误、异常和失败线索并给出摘要。",
+            risk_level="low",
+            allowed=True,
+            reason="只读错误分析任务，需要用户确认后才能执行。",
         )
 
     if _contains_any(normalized, _LOG_TERMS):
@@ -91,6 +141,28 @@ def detect_text_task_intent(text: str) -> TextTaskIntentResult:
             risk_level="low",
             allowed=True,
             reason="只读诊断分析任务，需要用户确认后才能执行。",
+        )
+
+    if _contains_any(normalized, _RUNTIME_EVENTS_TERMS):
+        return TextTaskIntentResult(
+            is_task=True,
+            task_type="readonly_runtime_events_review",
+            title="总结最近运行事件",
+            summary="读取内存中的运行事件记录并汇总来源、类型和级别分布。",
+            risk_level="low",
+            allowed=True,
+            reason="只读运行事件摘要，需要用户确认后才能执行。",
+        )
+
+    if _contains_any(normalized, _CONFIG_TERMS):
+        return TextTaskIntentResult(
+            is_task=True,
+            task_type="readonly_config_summary",
+            title="查看当前配置摘要",
+            summary="读取当前配置文件并输出安全的摘要信息。",
+            risk_level="low",
+            allowed=True,
+            reason="只读配置摘要任务，需要用户确认后才能执行。",
         )
 
     return TextTaskIntentResult(is_task=False)

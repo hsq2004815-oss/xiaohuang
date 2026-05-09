@@ -12,6 +12,9 @@ ALLOWED_READONLY_TASK_TYPES = {
     "readonly_log_analysis",
     "readonly_status_check",
     "readonly_diagnostic_review",
+    "readonly_recent_errors_review",
+    "readonly_runtime_events_review",
+    "readonly_config_summary",
 }
 
 _LOG_EXTENSIONS = {".log", ".txt"}
@@ -49,6 +52,12 @@ def execute_confirmed_text_task(
             return _execute_readonly_status_check(task, root)
         if task_type == "readonly_diagnostic_review":
             return _execute_readonly_diagnostic_review(task, root)
+        if task_type == "readonly_recent_errors_review":
+            return _execute_readonly_errors_review(task, root)
+        if task_type == "readonly_runtime_events_review":
+            return _execute_readonly_events_review(task, root)
+        if task_type == "readonly_config_summary":
+            return _execute_readonly_config_summary(task, root)
     except Exception as exc:  # Defensive boundary: UI should receive a structured failure.
         return _failed_result(task_id, task_type, title, f"只读任务执行失败: {exc}", risk_level=risk_level)
 
@@ -229,6 +238,175 @@ def _relative_log_path(path: Path, project_root: Path) -> str:
         return path.resolve().relative_to(project_root.resolve()).as_posix()
     except ValueError:
         return path.name
+
+
+def _execute_readonly_errors_review(task: dict[str, Any], project_root: Path) -> TextTaskExecutionResult:
+    analysis = _analyze_recent_logs(project_root)
+    if not analysis["read_files"]:
+        return TextTaskExecutionResult(
+            ok=True,
+            task_id=str(task.get("task_id") or ""),
+            task_type="readonly_recent_errors_review",
+            status="completed",
+            title=str(task.get("title") or "查看最近错误"),
+            summary="未发现可读取的日志文件，或日志目录不存在。",
+            details="logs 目录不存在或未发现 .log/.txt 文件。",
+            risk_level=_safe_risk(task),
+            read_files=(),
+        )
+    return TextTaskExecutionResult(
+        ok=True,
+        task_id=str(task.get("task_id") or ""),
+        task_type="readonly_recent_errors_review",
+        status="completed",
+        title=str(task.get("title") or "查看最近错误"),
+        summary=analysis["summary"],
+        details=analysis["details"],
+        risk_level=_safe_risk(task),
+        read_files=tuple(analysis["read_files"]),
+    )
+
+
+def _execute_readonly_events_review(task: dict[str, Any], project_root: Path) -> TextTaskExecutionResult:
+    try:
+        from xiaohuang.capabilities.runtime_events.service import get_recent_events
+    except Exception:
+        return TextTaskExecutionResult(
+            ok=True,
+            task_id=str(task.get("task_id") or ""),
+            task_type="readonly_runtime_events_review",
+            status="completed",
+            title=str(task.get("title") or "总结最近运行事件"),
+            summary="无法读取运行事件。",
+            details="运行事件模块当前不可用。",
+            risk_level=_safe_risk(task),
+            read_files=(),
+        )
+
+    events = get_recent_events(100)
+    if not events:
+        return TextTaskExecutionResult(
+            ok=True,
+            task_id=str(task.get("task_id") or ""),
+            task_type="readonly_runtime_events_review",
+            status="completed",
+            title=str(task.get("title") or "总结最近运行事件"),
+            summary="当前没有可用运行事件。",
+            details="runtime events 是内存态，程序重启后可能为空。可以在小黄运行一段时间后再查看。",
+            risk_level=_safe_risk(task),
+            read_files=(),
+        )
+
+    source_counts: dict[str, int] = {}
+    type_counts: dict[str, int] = {}
+    error_count = 0
+    warning_count = 0
+    for e in events:
+        src = str(e.get("source") or "")
+        et = str(e.get("event_type") or "")
+        source_counts[src] = source_counts.get(src, 0) + 1
+        type_counts[et] = type_counts.get(et, 0) + 1
+        lv = str(e.get("level") or "info")
+        if lv == "error":
+            error_count += 1
+        elif lv == "warning":
+            warning_count += 1
+
+    detail_lines: list[str] = [
+        f"共 {len(events)} 条事件",
+        f"error: {error_count} 条, warning: {warning_count} 条",
+        "",
+        "来源分布：",
+    ]
+    for src in sorted(source_counts, key=source_counts.get, reverse=True):
+        detail_lines.append(f"  {src}: {source_counts[src]} 条")
+    detail_lines.append("")
+    detail_lines.append("类型分布：")
+    for et in sorted(type_counts, key=type_counts.get, reverse=True):
+        detail_lines.append(f"  {et}: {type_counts[et]} 条")
+    detail_lines.append("")
+    detail_lines.append("最近事件：")
+    for e in events[-10:]:
+        ts = str(e.get("timestamp") or "")[-8:]
+        src = str(e.get("source") or "")
+        et = str(e.get("event_type") or "")
+        msg = str(e.get("message") or "")[:80]
+        lv = str(e.get("level") or "info")
+        marker = " [ERROR]" if lv == "error" else " [WARN]" if lv == "warning" else ""
+        detail_lines.append(f"  {ts} {src}/{et}{marker}: {msg}")
+
+    return TextTaskExecutionResult(
+        ok=True,
+        task_id=str(task.get("task_id") or ""),
+        task_type="readonly_runtime_events_review",
+        status="completed",
+        title=str(task.get("title") or "总结最近运行事件"),
+        summary=(
+            f"最近运行事件摘要：共 {len(events)} 条，"
+            f"error {error_count} 条、warning {warning_count} 条"
+        ),
+        details="\n".join(detail_lines),
+        risk_level=_safe_risk(task),
+        read_files=(),
+    )
+
+
+_CONFIG_REDACT_KEYS = {"api_key", "secret", "password", "token", "authorization"}
+
+
+def _execute_readonly_config_summary(task: dict[str, Any], project_root: Path) -> TextTaskExecutionResult:
+    from xiaohuang.app_config_service import load_config
+
+    cfg = load_config()
+    awake = cfg.wake
+    stt = cfg.stt
+    llm = cfg.llm
+    tts = cfg.tts
+    conv = cfg.conversation
+    overlay = cfg.overlay
+    runtime = cfg.runtime
+    assistant = cfg.assistant
+
+    detail_lines = [
+        f"助手名称: {assistant.display_name}",
+        f"唤醒引擎: {awake.engine}",
+        f"唤醒词数量: {len(awake.phrases)}",
+        f"唤醒回退: {'开启' if awake.fallback_enabled else '关闭'}",
+        f"唤醒冷却: {awake.cooldown_seconds}s",
+        f"唤醒灵敏度: {awake.sensitivity}",
+        "",
+        f"STT 引擎: {stt.engine}",
+        f"STT 模型: {stt.model_name}",
+        f"STT 设备: {stt.device}",
+        "",
+        f"LLM 启用: {'是' if llm.enabled else '否'}",
+        f"LLM 提供方: {llm.provider}",
+        f"LLM 模型: {llm.model}",
+        f"LLM Key 环境变量: {llm.api_key_env}",
+        f"LLM 超时: {llm.timeout_seconds}s",
+        "",
+        f"TTS 启用: {'是' if tts.enabled else '否'}",
+        f"TTS 语音: {tts.voice}",
+        "",
+        f"会话启用: {'是' if conv.enabled else '否'}",
+        f"会话最大轮次: {conv.max_turns}",
+        f"跟进超时: {conv.followup_timeout}s",
+        "",
+        f"悬浮窗常驻隐藏: {'是' if overlay.resident_hidden else '否'}",
+        f"调试模式: {'是' if runtime.debug else '否'}",
+    ]
+
+    return TextTaskExecutionResult(
+        ok=True,
+        task_id=str(task.get("task_id") or ""),
+        task_type="readonly_config_summary",
+        status="completed",
+        title=str(task.get("title") or "查看当前配置摘要"),
+        summary=f"当前配置摘要：LLM {'开启' if llm.enabled else '关闭'} / TTS {'开启' if tts.enabled else '关闭'} / 唤醒引擎 {awake.engine}",
+        details="\n".join(detail_lines),
+        risk_level=_safe_risk(task),
+        read_files=(),
+    )
 
 
 def _blocked_result(
