@@ -1,5 +1,14 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D3.0.1 Log Symlink Safety Hardening
+
+- Purpose: Harden readonly log selection so confirmed text tasks cannot follow log symlinks outside `logs/`.
+- Key files: `text_task_execution_service.py`, `tests/test_text_task_execution_service.py`.
+- Last completed: `_recent_log_files()` now skips symlinks, checks resolved path containment under `logs/`, isolates per-file errors, and uses safe mtime sorting.
+- Behavior: normal `.log` and `.txt` files under `logs/` are still read; symlinked log files are skipped.
+- Verification: compileall OK; unittest discover OK (787 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: keep this as log selection hardening only; do not change frontend, ControlPanel API, task types, or execution capability.
+
 ## Current Snapshot（2026-05-09）— V1.4-D3 Confirmed Readonly Task Execution
 
 - Purpose: Confirmed text task cards can now call a backend API that executes only whitelisted readonly tasks.

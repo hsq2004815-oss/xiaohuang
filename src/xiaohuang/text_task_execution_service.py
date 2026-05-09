@@ -184,12 +184,39 @@ def _analyze_recent_logs(project_root: Path) -> dict[str, Any]:
 def _recent_log_files(logs_dir: Path) -> list[Path]:
     if not logs_dir.is_dir():
         return []
-    candidates = [
-        path
-        for path in logs_dir.iterdir()
-        if path.is_file() and path.suffix.lower() in _LOG_EXTENSIONS
-    ]
-    return sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)
+    candidates: list[Path] = []
+    for path in logs_dir.iterdir():
+        try:
+            if _is_safe_log_file(path, logs_dir):
+                candidates.append(path)
+        except OSError:
+            continue
+    return sorted(candidates, key=_safe_mtime, reverse=True)
+
+
+def _is_safe_log_file(path: Path, logs_dir: Path) -> bool:
+    if path.is_symlink():
+        return False
+    if not path.is_file():
+        return False
+    if path.suffix.lower() not in _LOG_EXTENSIONS:
+        return False
+    return _is_within_directory(path, logs_dir)
+
+
+def _is_within_directory(path: Path, directory: Path) -> bool:
+    try:
+        path.resolve().relative_to(directory.resolve())
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _safe_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 def _read_text_prefix(path: Path) -> str:
