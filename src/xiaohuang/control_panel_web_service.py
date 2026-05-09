@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import traceback
 from dataclasses import asdict
 from pathlib import Path
@@ -55,6 +57,7 @@ class ControlPanelWebApi:
         else:
             self._config_path = None
         self._project_root = get_project_root()
+        self._text_chat_process: subprocess.Popen | None = None
         self._init_runtime_events()
 
     def _init_runtime_events(self) -> None:
@@ -241,6 +244,35 @@ class ControlPanelWebApi:
             msg = f"启动前检查失败: {traceback.format_exc()}"
             _record_cp_event("preflight_check", msg, "error")
             return _fail(msg, "preflight_error")
+
+    def open_text_chat_window(self) -> dict:
+        try:
+            if self._text_chat_process is not None and self._text_chat_process.poll() is None:
+                return _ok(data={"already_running": True}, message="文本对话已打开")
+
+            script_path = self._project_root / "scripts" / "text_chat_web.py"
+            if not script_path.exists():
+                return _fail(f"文本对话启动脚本不存在: {script_path}", "text_chat_missing")
+
+            cmd = [sys.executable, str(script_path)]
+            if self._config_path is not None:
+                cmd.extend(["--config", str(self._config_path)])
+
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            self._text_chat_process = subprocess.Popen(
+                cmd,
+                cwd=str(self._project_root),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creationflags,
+            )
+            _record_cp_event("open_text_chat_window", "文本对话窗口已启动")
+            return _ok(data={"pid": self._text_chat_process.pid}, message="文本对话已打开")
+        except Exception:
+            msg = f"打开文本对话失败: {traceback.format_exc()}"
+            _record_cp_event("open_text_chat_window", msg, "error")
+            return _fail(msg, "text_chat_open_error")
 
 
 def _record_cp_event(event_type: str, message: str, level: str = "info") -> None:

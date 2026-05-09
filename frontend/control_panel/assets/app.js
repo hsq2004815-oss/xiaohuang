@@ -233,6 +233,7 @@
       stop: '停止小黄',
       restart: '重启小黄',
       refresh: '刷新状态',
+      'open-text-chat': '打开文本对话',
       'save-config': '保存配置',
       'save-restart': '保存并重启'
     };
@@ -245,6 +246,7 @@
       stop: '停止中...',
       restart: '重启中...',
       refresh: '刷新中...',
+      'open-text-chat': '打开中...',
       'save-config': '保存中...',
       'save-restart': '保存中...'
     };
@@ -433,12 +435,34 @@
     if (action === 'start') { doStart(btn); return; }
     if (action === 'stop') { doStop(btn); return; }
     if (action === 'restart') { doRestart(btn); return; }
+    if (action === 'open-text-chat') { doOpenTextChat(btn); return; }
     if (action === 'save-config') { doSaveConfig(btn); return; }
     if (action === 'save-restart') { doSaveAndRestart(btn); return; }
     if (action === 'export-diag') { doExportDiag(btn); return; }
     if (action === 'open-logs-folder') { doOpenLogsFolder(btn); return; }
     if (action === 'preflight-check') { doPreflightCheck(btn); return; }
     toast('未识别的操作: ' + action, 'err');
+  }
+
+  function doOpenTextChat(btn) {
+    if (!btn || btn.disabled) return;
+    setButtonLoading(btn, getLoadingText('open-text-chat'), 'open-text-chat');
+    drawerLog('打开文本对话', null, '已发送请求');
+
+    apiCall('open_text_chat_window').then(function (r) {
+      if (r && r.ok) {
+        toast(r.message || '文本对话已打开', 'ok');
+        drawerLog('打开文本对话', true, r.message || '');
+      } else {
+        toast((r && r.error) || '打开文本对话失败', 'err');
+        drawerLog('打开文本对话', false, (r && r.error));
+      }
+    }).catch(function (e) {
+      toast('打开文本对话出错: ' + e, 'err');
+      drawerLog('打开文本对话', false, String(e));
+    }).finally(function () {
+      restoreButton(btn, getButtonText('open-text-chat'), 'open-text-chat');
+    });
   }
 
   function doRefresh(btn) {

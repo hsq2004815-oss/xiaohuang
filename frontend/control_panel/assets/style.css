@@ -462,6 +462,15 @@ body{min-width:0}
 .topbar-right{min-width:0;justify-content:flex-end;gap:8px}
 .status-badge,.wake-badge{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .drawer-toggle{min-width:74px;padding-left:16px;padding-right:16px}
+.text-chat-entry{
+  background:rgba(139,92,246,0.14);
+  border-color:rgba(139,92,246,0.34);
+  color:#6d28d9;
+}
+.text-chat-entry:hover:not(:disabled){
+  background:rgba(139,92,246,0.22);
+  box-shadow:0 10px 26px rgba(139,92,246,0.16),inset 0 1px 1px rgba(255,255,255,0.72);
+}
 
 .card-grid-4{
   grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
@@ -616,6 +625,7 @@ body{min-width:0}
   .topbar-left>div{min-width:0}
   .topbar-title{white-space:nowrap}
   .topbar-right .status-badge{display:none}
+  .text-chat-entry{padding-left:12px;padding-right:12px}
   .main-workspace{padding:16px 14px 20px}
   .form-grid{grid-template-columns:1fr}
 }

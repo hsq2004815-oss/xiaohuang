@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小黄文本对话</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="chat-shell">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">XH</span>
+        <div>
+          <h1>小黄文本对话</h1>
+          <p>不用语音，直接和小黄打字交流</p>
+        </div>
+      </div>
+      <div class="topbar-meta">
+        <span class="pill" id="session-pill">当前会话：默认对话</span>
+        <span class="pill model-pill" id="model-pill">DeepSeek V4 Flash</span>
+        <span class="pill status-pill" id="bridge-status">连接中...</span>
+      </div>
+    </header>
+
+    <aside class="sessions-panel">
+      <button class="primary-action" id="new-chat-btn" type="button">+ 新对话</button>
+      <input class="search-input" type="text" placeholder="搜索对话..." disabled>
+      <div class="panel-label">今天</div>
+      <button class="session-item active" type="button">
+        <span>默认对话</span>
+        <small>当前窗口</small>
+      </button>
+    </aside>
+
+    <main class="chat-main">
+      <section class="messages" id="messages" aria-live="polite"></section>
+      <section class="composer">
+        <div class="quick-prompts">
+          <button type="button" data-prompt="介绍一下你自己">介绍一下你自己</button>
+          <button type="button" data-prompt="我现在正在测试小黄项目">我现在正在测试小黄项目</button>
+          <button type="button" data-prompt="那它下一步最应该做什么">那它下一步最应该做什么</button>
+        </div>
+        <div class="input-row">
+          <button class="icon-button" type="button" title="保留入口">+</button>
+          <button class="tool-button" type="button" title="工具暂未启用" disabled>工具</button>
+          <span class="model-chip">DeepSeek V4 Flash</span>
+          <textarea id="message-input" rows="2" placeholder="输入消息，例如：我现在正在测试小黄项目"></textarea>
+          <button class="send-button" id="send-btn" type="button">发送</button>
+        </div>
+        <div class="composer-footer">
+          <span>Enter 发送，Shift + Enter 换行</span>
+          <button id="clear-btn" type="button">清空会话</button>
+        </div>
+      </section>
+    </main>
+
+    <aside class="workspace-panel">
+      <section>
+        <h2>工作空间</h2>
+        <dl>
+          <div><dt>项目信息</dt><dd>小黄桌面 AI 助手</dd></div>
+          <div><dt>上下文</dt><dd>当前窗口内短期记忆</dd></div>
+        </dl>
+      </section>
+      <section>
+        <h3>常用入口</h3>
+        <button type="button" data-prompt="解释一下当前状态">解释当前状态</button>
+        <button type="button" data-prompt="规划一下小黄项目下一步">规划下一步</button>
+        <button type="button" data-prompt="总结本轮对话">总结本轮对话</button>
+      </section>
+      <section>
+        <h3>未来扩展</h3>
+        <p>文件、任务执行和长期记录将在后续版本接入。</p>
+      </section>
+    </aside>
+  </div>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

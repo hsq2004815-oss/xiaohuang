@@ -174,6 +174,28 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         api = ControlPanelWebApi(config_path="")
         self.assertIsNotNone(api._project_root)
 
+    def test_open_text_chat_window_starts_subprocess(self):
+        fake_process = Mock()
+        fake_process.pid = 12345
+        fake_process.poll.return_value = None
+        with patch("xiaohuang.control_panel_web_service.subprocess.Popen", return_value=fake_process) as mock_popen:
+            api = ControlPanelWebApi(config_path=self.config_path)
+            result = api.open_text_chat_window()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["pid"], 12345)
+        cmd = mock_popen.call_args.args[0]
+        self.assertIn("text_chat_web.py", cmd[1])
+        self.assertIn("--config", cmd)
+
+    def test_open_text_chat_window_reuses_running_process(self):
+        fake_process = Mock()
+        fake_process.poll.return_value = None
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._text_chat_process = fake_process
+        result = api.open_text_chat_window()
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["already_running"])
+
     # ------------------------------------------------------------------
     # refresh / get_config_summary / log paths
     # ------------------------------------------------------------------

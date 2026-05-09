@@ -1,5 +1,16 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-C Standalone Text Chat Window
+
+- Purpose: Add a second user entry for typed XiaoHuang conversations without touching voice/STT/TTS startup.
+- Key files: `scripts/text_chat_web.py`, `frontend/text_chat/*`, `src/xiaohuang/text_interaction_*`, `src/xiaohuang/text_chat_web_service.py`, control panel open button/API.
+- Startup/test: `F:\for_xiaohuang\conda310\python.exe scripts\text_chat_web.py`; control panel opens it through `open_text_chat_window`.
+- Behavior: in-process short-term `ConversationMemory` only; no database, no long-term chat files, no mic/STT/openWakeWord/TTS.
+- Guard: panel control phrases return `reply_source=panel_command_guard` and `blocked_panel_command=True`.
+- Verification: compileall OK; unittest discover OK; text_chat/control_panel/voice_overlay `--help` OK; guard smoke OK.
+- Known traps: text entry deliberately bypasses capability execution by using a text-only reply pipeline function.
+- Next likely edit points: temporary multi-session UI, text task confirmation flow, shared voice/text task routing.
+
 ## Current Snapshot（2026-05-06）— V1.3 PySide6 Voice Dock + Configurable CUDA STT
 
 - 当前阶段：V1.3 PySide6 transparent voice dock + configurable CUDA STT
