@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D5.1 Readonly Review Safety Fixes
+
+- Purpose: Fix two D5 issues — real sensitive field redaction in log details, and config_path propagation from control panel to config summary.
+- Key files: `text_task_execution_service.py`, `control_panel_web_service.py`, tests.
+- Last completed:
+  1. Added `_redact_sensitive_text()` helper with 3 regex patterns covering: `api_key=xxx`, `token=xxx`, `password=xxx`, `secret=xxx`, `authorization=xxx`, `Bearer xxx` (case-insensitive). Applied BEFORE truncation in `_analyze_recent_logs()` detail_lines.
+  2. Added optional `config_path` parameter to `execute_confirmed_text_task()` and `_execute_readonly_config_summary()`; `control_panel_web_service.confirm_text_task` now passes `self._resolve_config_path()`.
+  3. Fixed old redaction test to use log lines containing error/warning/failed keywords (so they actually get sampled into detail_lines), proving redaction works. Tests use: `ERROR api_key=sk-..., WARNING token=abc123, FAILED password=..., etc.`
+  4. Added config_path execution test (temp custom config) + ControlPanel API-level test (ControlPanelWebApi passes config_path through).
+- Verification: compileall OK; unittest discover OK (909 tests, 1 symlink-permission skip, +3 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: None config_path uses default config; redaction is regex-based, covers common formats but not exhaustive; don't add new task types or keywords.
+
 ## Current Snapshot（2026-05-09）— V1.4-D5 More Readonly Task Types
 
 - Purpose: Add 3 new safe readonly task types — recent errors review, runtime events review, and config summary — extending the existing confirm → execute → result card pipeline.

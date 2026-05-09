@@ -224,7 +224,12 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
         logs = self.project_root / "logs"
         logs.mkdir()
         (logs / "app.log").write_text(
-            "api_key=sk-test-exposed-token\ntoken=abc123\npassword=123456\nsecret=hello\n",
+            "ERROR api_key=sk-test-exposed-token\n"
+            "WARNING token=abc123\n"
+            "FAILED password=123456\n"
+            "Exception secret=hello\n"
+            "Traceback authorization=Bearer abc.def\n"
+            "ERROR Bearer standalone-token\n",
             encoding="utf-8",
         )
 
@@ -233,9 +238,18 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
             project_root=self.project_root,
         )
 
-        details = result.details.lower()
+        self.assertTrue(result.ok)
+        details = result.details
         self.assertNotIn("sk-test-exposed-token", details)
         self.assertNotIn("abc123", details)
+        self.assertNotIn("123456", details)
+        self.assertNotIn("hello", details)
+        self.assertNotIn("abc.def", details)
+        self.assertNotIn("standalone-token", details)
+        self.assertIn("<redacted>", details)
+        self.assertIn("ERROR", details)
+        self.assertIn("WARNING", details)
+        self.assertIn("FAILED", details)
 
     def test_readonly_runtime_events_review_with_events(self):
         from xiaohuang.capabilities.runtime_events import service as es
@@ -323,6 +337,47 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
         details_lower = result.details.lower()
         self.assertNotIn("secret", details_lower.split())
         self.assertNotIn("password", details_lower.split())
+
+    def test_readonly_config_summary_uses_explicit_config_path(self):
+        import os as _os
+        cfg = self.project_root / "custom_config.json"
+        cfg.write_text(
+            '{"assistant":{"display_name":"小黄自定义配置"},'
+            '"tts":{"enabled":true,"voice":"zh-CN-YunxiNeural"},'
+            '"llm":{"enabled":true,"provider":"deepseek","model":"custom-model",'
+            '"api_key_env":"CUSTOM_DEEPSEEK_KEY"}}',
+            encoding="utf-8",
+        )
+
+        old = _os.environ.get("CUSTOM_DEEPSEEK_KEY")
+        _os.environ["CUSTOM_DEEPSEEK_KEY"] = "real-secret-value"
+        try:
+            result = execute_confirmed_text_task(
+                _task("readonly_config_summary"),
+                project_root=self.project_root,
+                config_path=cfg,
+            )
+        finally:
+            if old is not None:
+                _os.environ["CUSTOM_DEEPSEEK_KEY"] = old
+            else:
+                _os.environ.pop("CUSTOM_DEEPSEEK_KEY", None)
+
+        self.assertTrue(result.ok)
+        self.assertIn("小黄自定义配置", result.details)
+        self.assertIn("zh-CN-YunxiNeural", result.details)
+        self.assertIn("custom-model", result.details)
+        self.assertIn("CUSTOM_DEEPSEEK_KEY", result.details)
+        self.assertNotIn("real-secret-value", result.details)
+
+    def test_readonly_config_summary_none_config_path_uses_default(self):
+        result = execute_confirmed_text_task(
+            _task("readonly_config_summary"),
+            project_root=self.project_root,
+            config_path=None,
+        )
+        self.assertTrue(result.ok)
+        self.assertIn("deepseek", result.details)
 
 
 def _task(

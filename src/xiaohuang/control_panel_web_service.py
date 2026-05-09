@@ -294,6 +294,7 @@ class ControlPanelWebApi:
                 result = execute_confirmed_text_task(
                     record.task,
                     project_root=self._project_root,
+                    config_path=self._resolve_config_path(),
                 )
             except Exception:
                 self._text_task_registry.mark_failed(task_id, "confirm_text_task_error")

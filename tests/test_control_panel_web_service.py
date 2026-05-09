@@ -410,6 +410,25 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         finally:
             es._ring.clear()
 
+    def test_new_task_type_config_summary_uses_api_config_path(self):
+        cfg = Path(self.tmp.name) / "xiao_config.json"
+        cfg.write_text(
+            '{"assistant":{"display_name":"小黄控制面板自定义"},'
+            '"tts":{"voice":"zh-CN-YunxiNeural"}}',
+            encoding="utf-8",
+        )
+        api = ControlPanelWebApi(config_path=cfg)
+        api._project_root = Path(self.tmp.name)
+        api._text_task_registry.register(_pending_task(
+            "text-task-cfg-path", task_type="readonly_config_summary",
+        ))
+
+        result = api.confirm_text_task({"task_id": "text-task-cfg-path"})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["ok"])
+        self.assertIn("小黄控制面板自定义", result["data"]["details"])
+
     def test_new_task_type_repeated_confirm_still_blocked(self):
         api = ControlPanelWebApi(config_path=self.config_path)
         api._project_root = Path(self.tmp.name)

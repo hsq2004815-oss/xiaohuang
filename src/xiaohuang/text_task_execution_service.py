@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ def execute_confirmed_text_task(
     pending_task: dict[str, Any] | None,
     *,
     project_root: Path | str | None = None,
+    config_path: Path | str | None = None,
 ) -> TextTaskExecutionResult:
     root = Path(project_root) if project_root is not None else get_project_root()
     task = pending_task if isinstance(pending_task, dict) else {}
@@ -57,7 +59,7 @@ def execute_confirmed_text_task(
         if task_type == "readonly_runtime_events_review":
             return _execute_readonly_events_review(task, root)
         if task_type == "readonly_config_summary":
-            return _execute_readonly_config_summary(task, root)
+            return _execute_readonly_config_summary(task, root, config_path=config_path)
     except Exception as exc:  # Defensive boundary: UI should receive a structured failure.
         return _failed_result(task_id, task_type, title, f"只读任务执行失败: {exc}", risk_level=risk_level)
 
@@ -167,7 +169,8 @@ def _analyze_recent_logs(project_root: Path) -> dict[str, Any]:
             for keyword in matched:
                 counts[keyword] += 1
             if len(detail_lines) < _MAX_DETAIL_LINES:
-                detail_lines.append(f"{rel}:{line_no}: {line.strip()[:220]}")
+                safe_line = _redact_sensitive_text(line.strip())[:220]
+                detail_lines.append(f"{rel}:{line_no}: {safe_line}")
 
     summary = (
         f"已读取最近 {len(read_files)} 个日志文件，发现 "
@@ -354,10 +357,15 @@ def _execute_readonly_events_review(task: dict[str, Any], project_root: Path) ->
 _CONFIG_REDACT_KEYS = {"api_key", "secret", "password", "token", "authorization"}
 
 
-def _execute_readonly_config_summary(task: dict[str, Any], project_root: Path) -> TextTaskExecutionResult:
+def _execute_readonly_config_summary(
+    task: dict[str, Any],
+    project_root: Path,
+    *,
+    config_path: Path | str | None = None,
+) -> TextTaskExecutionResult:
     from xiaohuang.app_config_service import load_config
 
-    cfg = load_config()
+    cfg = load_config(config_path)
     awake = cfg.wake
     stt = cfg.stt
     llm = cfg.llm
@@ -407,6 +415,21 @@ def _execute_readonly_config_summary(task: dict[str, Any], project_root: Path) -
         risk_level=_safe_risk(task),
         read_files=(),
     )
+
+
+_SENSITIVE_VALUE_PATTERNS = (
+    re.compile(r"(?i)\b(api[_-]?key|apikey|token|password|secret)\b\s*[:=]\s*([^\s,;]+)"),
+    re.compile(r"(?i)\b(authorization)\b\s*[:=]\s*(bearer\s+)?([^\s,;]+)"),
+    re.compile(r"(?i)\bbearer\s+([^\s,;]+)"),
+)
+
+
+def _redact_sensitive_text(text: str) -> str:
+    value = str(text or "")
+    value = _SENSITIVE_VALUE_PATTERNS[0].sub(r"\g<1>=<redacted>", value)
+    value = _SENSITIVE_VALUE_PATTERNS[1].sub(r"\g<1>=<redacted>", value)
+    value = _SENSITIVE_VALUE_PATTERNS[2].sub(r"Bearer <redacted>", value)
+    return value
 
 
 def _blocked_result(
