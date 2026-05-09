@@ -1,5 +1,14 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D1.1.1 Text Task Card Field Mapping Fix
+
+- Purpose: Align the text task confirmation card with the D1 backend field names.
+- Key files: `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed: card risk now prefers `pending_task.risk_level` before `risk`, clamps unknown risks to medium, and shows optional `original_text` as “原始输入”.
+- Behavior: confirm/cancel still only update frontend state and append local assistant feedback; no backend execution path was added.
+- Verification: compileall OK; unittest discover OK after rerun (773 tests; first run hit existing diagnostic export timestamp collision); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: keep this as UI-only mapping; do not connect card actions to task execution or `local_commands`.
+
 ## Current Snapshot（2026-05-09）— V1.4-D1.1 Text Task Confirmation Card UI
 
 - Purpose: Text chat renders backend `pending_task` responses as an in-window confirmation card without executing the task.

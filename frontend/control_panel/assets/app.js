@@ -526,15 +526,18 @@
 
   function normalizePendingTask(task) {
     if (!task || typeof task !== 'object') return null;
-    var risk = String(task.risk || 'medium').toLowerCase();
+    var risk = String(task.risk_level || task.risk || 'medium').toLowerCase();
+    if (risk !== 'low' && risk !== 'medium' && risk !== 'high') risk = 'medium';
     return {
       task_id: String(task.task_id || ('pending-task-' + (++textTaskCardCounter))),
       task_type: String(task.task_type || ''),
       title: String(task.title || '待确认任务'),
       summary: String(task.summary || ''),
       risk: risk,
+      risk_level: risk,
       allowed: task.allowed !== false,
       reason: String(task.reason || ''),
+      original_text: String(task.original_text || ''),
       source: String(task.source || '')
     };
   }
@@ -568,6 +571,9 @@
     var disabled = status !== 'pending';
     var cardClass = 'text-task-card ' + escapeHtml(status);
     var reason = task.reason ? '<div class="text-task-disabled-note">' + escapeHtml(task.reason) + '</div>' : '';
+    var original = task.original_text
+      ? '<div class="text-task-original"><span class="text-task-original-label">原始输入</span><span class="text-task-original-text">' + escapeHtml(task.original_text) + '</span></div>'
+      : '';
     var source = task.source ? '<span>' + escapeHtml(task.source) + '</span>' : '';
     var type = task.task_type ? '<span>' + escapeHtml(task.task_type) + '</span>' : '';
     var confirmButton = task.allowed
@@ -585,6 +591,7 @@
         '<span class="text-task-risk ' + risk + '">' + escapeHtml(getTaskRiskLabel(risk)) + '</span>' +
       '</div>' +
       '<div class="text-task-summary">' + escapeHtml(task.summary || '需要你确认后才能继续。') + '</div>' +
+      original +
       reason +
       '<div class="text-task-actions">' + confirmButton + cancelButton + '</div>' +
       '</section>';

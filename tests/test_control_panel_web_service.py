@@ -363,7 +363,8 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         css = self._read("frontend/control_panel/assets/style.css")
         for cls_name in (".text-task-card", ".text-task-risk", ".text-task-actions",
                          ".text-task-confirm", ".text-task-cancel",
-                         ".text-task-card.blocked", ".text-task-card.confirmed", ".text-task-card.cancelled"):
+                         ".text-task-card.blocked", ".text-task-card.confirmed", ".text-task-card.cancelled",
+                         ".text-task-original", ".text-task-original-label", ".text-task-original-text"):
             self.assertIn(cls_name, css, f"Missing text task confirmation class: {cls_name}")
 
     def test_css_no_dark_theme_tokens(self):
@@ -425,7 +426,8 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for text in ("requires_confirmation", "pending_task", "renderPendingTaskCard",
                      "handlePendingTaskConfirm", "handlePendingTaskCancel",
                      "data-task-action", "确认执行", "不处理",
-                     "确认请求已收到，执行功能将在后续版本接入。", "已取消该任务。"):
+                     "确认请求已收到，执行功能将在后续版本接入。", "已取消该任务。",
+                     "risk_level", "original_text", "task.risk_level || task.risk", "原始输入"):
             self.assertIn(text, js, f"Missing text task confirmation UI behavior: {text}")
         self.assertNotIn("confirm_text_task", js)
         self.assertNotIn("execute_text_task", js)
