@@ -1,5 +1,14 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-D3.1 Readonly Task Result Card UI
+
+- Purpose: Render confirmed readonly task execution results as structured cards instead of plain assistant text.
+- Key files: `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed: execution result messages now carry `executionResult`, render completed/blocked/failed cards, and show summary, details, read files, and error code.
+- Behavior: `confirm_text_task` call and pending task card logic stay unchanged; result display is frontend-only.
+- Verification: compileall OK; unittest discover OK (789 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: do not modify backend execution, task types, `confirm_text_task`, or any local command capability from this UI task.
+
 ## Current Snapshot（2026-05-09）— V1.4-D3.0.1 Log Symlink Safety Hardening
 
 - Purpose: Harden readonly log selection so confirmed text tasks cannot follow log symlinks outside `logs/`.

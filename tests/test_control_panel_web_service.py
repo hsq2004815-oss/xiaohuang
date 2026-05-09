@@ -416,6 +416,14 @@ class V13UIFrontendStructureTests(unittest.TestCase):
                          ".text-task-original", ".text-task-original-label", ".text-task-original-text"):
             self.assertIn(cls_name, css, f"Missing text task confirmation class: {cls_name}")
 
+    def test_css_has_text_task_result_card_classes(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        for cls_name in (".text-task-result-card", ".text-task-result-card.completed",
+                         ".text-task-result-card.blocked", ".text-task-result-card.failed",
+                         ".text-task-result-details", ".text-task-result-files",
+                         ".text-task-result-error"):
+            self.assertIn(cls_name, css, f"Missing text task result class: {cls_name}")
+
     def test_css_no_dark_theme_tokens(self):
         css = self._read("frontend/control_panel/assets/style.css")
         self.assertNotIn("--dark-fill", css)
@@ -475,10 +483,21 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for text in ("requires_confirmation", "pending_task", "renderPendingTaskCard",
                      "handlePendingTaskConfirm", "handlePendingTaskCancel",
                      "data-task-action", "确认执行", "不处理",
-                     "任务执行完成：", "已取消该任务。",
+                     "已取消该任务。",
                      "risk_level", "original_text", "task.risk_level || task.risk", "原始输入",
                      "confirm_text_task", "executing", "completed", "failed"):
             self.assertIn(text, js, f"Missing text task confirmation UI behavior: {text}")
+        self.assertNotIn("execute_text_task", js)
+        self.assertNotIn("local_commands", js)
+
+    def test_js_renders_text_task_execution_result_cards(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        for text in ("normalizeTextTaskExecutionResult", "renderTextTaskExecutionResultCard",
+                     "getExecutionStatusLabel", "getExecutionStatusClass", "splitExecutionDetails",
+                     "executionResult", "text_task_execution", "completed", "blocked", "failed",
+                     "read_files", "details", "任务执行完成", "任务已拦截", "任务执行失败"):
+            self.assertIn(text, js, f"Missing text task execution result UI behavior: {text}")
+        self.assertIn("appendTextChatMessage('assistant', '',", js)
         self.assertNotIn("execute_text_task", js)
         self.assertNotIn("local_commands", js)
 

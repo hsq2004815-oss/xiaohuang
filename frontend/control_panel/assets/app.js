@@ -511,13 +511,15 @@
     input.focus();
   }
 
-  function appendTextChatMessage(role, text, meta, pendingTask) {
+  function appendTextChatMessage(role, text, meta, pendingTask, executionResult) {
     var normalizedTask = normalizePendingTask(pendingTask);
+    var normalizedResult = normalizeTextTaskExecutionResult(executionResult);
     textChatMessages.push({
       role: role,
       text: text,
       meta: meta || {},
       pendingTask: normalizedTask,
+      executionResult: normalizedResult,
       taskUiStatus: normalizedTask ? (normalizedTask.allowed ? 'pending' : 'blocked') : '',
       ts: new Date().toLocaleTimeString()
     });
@@ -554,13 +556,94 @@
       if (meta.blocked_panel_command) parts.push('panel command blocked');
       var metaHtml = parts.length ? '<div class="text-chat-message-meta">' + escapeHtml(parts.join(' · ')) + '</div>' : '';
       var taskHtml = msg.pendingTask ? renderPendingTaskCard(msg, index) : '';
+      var resultHtml = msg.executionResult ? renderTextTaskExecutionResultCard(msg.executionResult) : '';
+      var bubbleHtml = msg.text ? '<div class="text-chat-bubble">' + escapeHtml(msg.text) + '</div>' : '';
       return '<article class="text-chat-message ' + escapeHtml(msg.role) + '">' +
-        '<div class="text-chat-bubble">' + escapeHtml(msg.text) + '</div>' +
+        bubbleHtml +
         taskHtml +
+        resultHtml +
         metaHtml +
         '</article>';
     }).join('');
     el.scrollTop = el.scrollHeight;
+  }
+
+  function normalizeTextTaskExecutionResult(data) {
+    if (!data || typeof data !== 'object') return null;
+    var status = String(data.status || (data.ok ? 'completed' : 'failed')).toLowerCase();
+    if (status !== 'completed' && status !== 'blocked' && status !== 'failed') {
+      status = data.ok ? 'completed' : 'failed';
+    }
+    var risk = String(data.risk_level || data.risk || 'low').toLowerCase();
+    if (risk !== 'low' && risk !== 'medium' && risk !== 'high') risk = 'medium';
+    var readFiles = Array.isArray(data.read_files) ? data.read_files.map(function (item) {
+      return String(item || '');
+    }).filter(Boolean) : [];
+    return {
+      ok: data.ok === true,
+      task_id: String(data.task_id || ''),
+      task_type: String(data.task_type || ''),
+      status: status,
+      title: String(data.title || '只读任务结果'),
+      summary: String(data.summary || ''),
+      details: String(data.details || ''),
+      risk_level: risk,
+      read_files: readFiles,
+      error: String(data.error || '')
+    };
+  }
+
+  function renderTextTaskExecutionResultCard(result) {
+    var statusClass = getExecutionStatusClass(result.status, result.ok);
+    var details = splitExecutionDetails(result.details).join('\n');
+    var detailsHtml = details
+      ? '<div class="text-task-result-details"><div class="text-task-result-section-label">详情</div><pre>' + escapeHtml(details) + '</pre></div>'
+      : '';
+    var filesHtml = result.read_files.length
+      ? '<div class="text-task-result-files"><div class="text-task-result-section-label">读取文件</div><ul>' + result.read_files.map(function (file) {
+        return '<li>' + escapeHtml(file) + '</li>';
+      }).join('') + '</ul></div>'
+      : '';
+    var errorHtml = result.error && !result.ok
+      ? '<div class="text-task-result-error"><span>错误码</span><code>' + escapeHtml(result.error) + '</code></div>'
+      : '';
+
+    return '<section class="text-task-result-card ' + statusClass + '">' +
+      '<div class="text-task-result-header">' +
+        '<div>' +
+          '<div class="text-task-result-title">' + escapeHtml(getExecutionStatusLabel(result.status, result.ok)) + '</div>' +
+          '<div class="text-task-result-meta">' +
+            '<span>' + escapeHtml(result.title || '只读任务结果') + '</span>' +
+            '<span>' + escapeHtml(result.task_type || 'unknown') + '</span>' +
+            '<span>' + escapeHtml(result.status) + '</span>' +
+            '<span>风险：' + escapeHtml(result.risk_level) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<span class="text-task-result-status ' + statusClass + '">' + escapeHtml(getExecutionStatusLabel(result.status, result.ok)) + '</span>' +
+      '</div>' +
+      '<div class="text-task-result-summary">' + escapeHtml(result.summary || '没有返回摘要。') + '</div>' +
+      detailsHtml +
+      filesHtml +
+      errorHtml +
+      '</section>';
+  }
+
+  function getExecutionStatusLabel(status, ok) {
+    if (status === 'completed' || ok) return '任务执行完成';
+    if (status === 'blocked') return '任务已拦截';
+    return '任务执行失败';
+  }
+
+  function getExecutionStatusClass(status, ok) {
+    if (status === 'completed' || ok) return 'completed';
+    if (status === 'blocked') return 'blocked';
+    return 'failed';
+  }
+
+  function splitExecutionDetails(details) {
+    return String(details || '').split(/\r?\n/).filter(function (line) {
+      return line.trim() !== '';
+    });
   }
 
   function renderPendingTaskCard(msg, index) {
@@ -639,22 +722,35 @@
       if (resp && resp.ok && data.ok) {
         msg.taskUiStatus = 'completed';
         renderTextChatMessages();
-        appendTextChatMessage('assistant', formatTextTaskExecutionReply(data), {
+        appendTextChatMessage('assistant', '', {
           source: 'text_task_execution',
           task_status: data.status || 'completed'
-        });
+        }, null, data);
         return;
       }
       msg.taskUiStatus = data.status === 'blocked' ? 'blocked' : 'failed';
       renderTextChatMessages();
-      appendTextChatMessage('assistant', formatTextTaskExecutionReply(data, (resp && resp.error) || '文本任务执行失败'), {
+      if (!data.summary && resp && resp.error) data.summary = resp.error;
+      if (!data.error) data.error = data.status === 'blocked' ? 'blocked_task' : 'execution_failed';
+      appendTextChatMessage('assistant', '', {
         source: 'text_task_execution',
         task_status: data.status || 'failed'
-      });
+      }, null, data);
     }).catch(function (e) {
       msg.taskUiStatus = 'failed';
       renderTextChatMessages();
-      appendTextChatMessage('assistant', '文本任务执行出错：' + e, { source: 'text_task_execution' });
+      appendTextChatMessage('assistant', '', { source: 'text_task_execution' }, null, {
+        ok: false,
+        task_id: msg.pendingTask.task_id || '',
+        task_type: msg.pendingTask.task_type || '',
+        status: 'failed',
+        title: msg.pendingTask.title || '只读任务执行失败',
+        summary: '文本任务执行出错。',
+        details: String(e),
+        risk_level: msg.pendingTask.risk_level || msg.pendingTask.risk || 'medium',
+        read_files: [],
+        error: 'frontend_error'
+      });
     }).finally(function () {
       focusTextChatInput();
     });
@@ -666,35 +762,6 @@
     msg.taskUiStatus = 'cancelled';
     renderTextChatMessages();
     appendTextChatMessage('assistant', '已取消该任务。', { source: 'frontend_confirmation' });
-  }
-
-  function formatTextTaskExecutionReply(data, fallback) {
-    if (!data || !data.summary) return fallback || '文本任务没有返回结果。';
-    var lines = [];
-    if (data.ok) {
-      lines.push('任务执行完成：');
-    } else if (data.status === 'blocked') {
-      lines.push('任务已拦截：');
-    } else {
-      lines.push('任务执行失败：');
-    }
-    lines.push('');
-    lines.push(data.summary || fallback || '');
-    if (data.details) {
-      lines.push('');
-      lines.push('详情：');
-      lines.push(data.details);
-    }
-    if (data.read_files && data.read_files.length) {
-      lines.push('');
-      lines.push('读取文件：');
-      lines.push(data.read_files.join('\n'));
-    }
-    if (data.error && !data.ok) {
-      lines.push('');
-      lines.push('错误：' + data.error);
-    }
-    return lines.join('\n');
   }
 
   function setTextChatSending(on) {
