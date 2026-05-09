@@ -1,5 +1,19 @@
 # Task Memory
 
+## Current Snapshot（2026-05-09）— V1.4-Q2 Runtime Events Test Coverage
+
+- Purpose: Extend runtime events test coverage — blank/empty edge cases, leveled events, details JSON-friendliness, ControlPanelWebApi exposure, and capability router event recording.
+- Key files: `tests/test_runtime_events_service.py` (extended, +17 tests, now 38 total).
+- Last completed: 5 new test classes:
+  - `LevelPreservationTests` (4) — info/warning/error/default level preserved
+  - `BlankSourceOrTypeTests` (3) — empty string source/event_type/message accepted as-is
+  - `DetailsEdgeCaseTests` (5) — None/empty dict details, JSON-friendly complex dicts, nested sensitive field filtering
+  - `ControlPanelRuntimeEventsApiTests` (2) — `get_runtime_events()` returns ok with events, response is JSON-serializable
+  - `CapabilityEventRecordingTests` (2) — `get_status` and `export_diagnostics` capabilities record `capability_router` events
+- Key observations: `get_recent_events` returns oldest-first (FIFO), not newest-first; there is no public `clear_events` function; empty strings are stored as-is; system unchanged.
+- Verification: compileall OK; unittest discover OK (871 tests, 1 symlink-permission skip, +17 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: no clear/reset API — use `svc._ring.clear()` for test isolation; ring buffer max 200, limit clamped to [1,100]; empty strings for source/type are stored as empty strings, not "unknown".
+
 ## Current Snapshot（2026-05-09）— V1.4-Q1 App Config Service Test Coverage
 
 - Purpose: Dedicated test suite for `app_config_service.py` — lock down config loading, merging, coercion, CLI override, and frozen dataclass behavior.

@@ -202,5 +202,197 @@ class DiagnosticExportRuntimeEventsTests(unittest.TestCase):
         self.assertNotIn("m49", text)
 
 
+# ---------------------------------------------------------------------------
+# V1.4-Q2 additions — level, blank fields, details edge cases, API exposure
+# ---------------------------------------------------------------------------
+
+class LevelPreservationTests(unittest.TestCase):
+    def setUp(self):
+        from xiaohuang.capabilities.runtime_events import service as svc
+        svc._ring.clear()
+
+    def test_record_event_preserves_info_level(self):
+        evt = record_event("s", "t", "msg", level="info")
+        self.assertEqual(evt.level, "info")
+
+    def test_record_event_preserves_warning_level(self):
+        evt = record_event("s", "t", "msg", level="warning")
+        self.assertEqual(evt.level, "warning")
+
+    def test_record_event_preserves_error_level(self):
+        evt = record_event("s", "t", "msg", level="error")
+        self.assertEqual(evt.level, "error")
+
+    def test_record_event_defaults_to_info(self):
+        evt = record_event("s", "t", "msg")
+        self.assertEqual(evt.level, "info")
+
+
+class BlankSourceOrTypeTests(unittest.TestCase):
+    def setUp(self):
+        from xiaohuang.capabilities.runtime_events import service as svc
+        svc._ring.clear()
+
+    def test_record_event_allows_empty_string_source(self):
+        evt = record_event("", "t", "msg")
+        self.assertEqual(evt.source, "")
+
+    def test_record_event_allows_empty_string_event_type(self):
+        evt = record_event("s", "", "msg")
+        self.assertEqual(evt.event_type, "")
+
+    def test_record_event_allows_empty_string_message(self):
+        evt = record_event("s", "t", "")
+        self.assertEqual(evt.message, "")
+
+
+class DetailsEdgeCaseTests(unittest.TestCase):
+    def setUp(self):
+        from xiaohuang.capabilities.runtime_events import service as svc
+        svc._ring.clear()
+
+    def test_record_event_with_none_details(self):
+        evt = record_event("s", "t", "msg", details=None)
+        self.assertIsInstance(evt.details, dict)
+        json.dumps(evt.to_dict())
+
+    def test_record_event_with_empty_details(self):
+        evt = record_event("s", "t", "msg", details={})
+        self.assertIsInstance(evt.details, dict)
+        json.dumps(evt.to_dict())
+
+    def test_record_event_details_are_json_friendly(self):
+        evt = record_event("s", "t", "msg", details={
+            "command": "open_logs_folder",
+            "ok": True,
+            "count": 3,
+            "items": ["a", "b"],
+        })
+        data = json.dumps(evt.to_dict(), ensure_ascii=False)
+        parsed = json.loads(data)
+        self.assertEqual(parsed["details"]["command"], "open_logs_folder")
+        self.assertEqual(parsed["details"]["ok"], True)
+        self.assertEqual(parsed["details"]["count"], 3)
+        self.assertEqual(parsed["details"]["items"], ["a", "b"])
+
+    def test_record_event_details_with_bool_int_list_mixed(self):
+        evt = record_event("s", "t", "msg", details={
+            "executed": True,
+            "risk": "low",
+            "cost": 0,
+            "labels": ["info", "warning"],
+        })
+        data = json.dumps(evt.to_dict(), ensure_ascii=False)
+        parsed = json.loads(data)
+        self.assertEqual(parsed["details"]["executed"], True)
+        self.assertEqual(parsed["details"]["cost"], 0)
+        self.assertEqual(parsed["details"]["labels"], ["info", "warning"])
+
+    def test_record_event_details_with_nested_dict(self):
+        evt = record_event("s", "t", "msg", details={
+            "status": {"ok": True, "code": 200},
+        })
+        data = json.dumps(evt.to_dict(), ensure_ascii=False)
+        parsed = json.loads(data)
+        self.assertIsInstance(parsed["details"]["status"], dict)
+        self.assertTrue(parsed["details"]["status"]["ok"])
+
+    def test_record_event_details_removes_sensitive_in_nested(self):
+        evt = record_event("s", "t", "msg", details={
+            "outer": {"api_key": "sk-nested", "name": "ok"},
+        })
+        self.assertNotIn("api_key", evt.details.get("outer", {}))
+        self.assertIn("name", evt.details["outer"])
+
+
+class ControlPanelRuntimeEventsApiTests(unittest.TestCase):
+    def setUp(self):
+        from xiaohuang.capabilities.runtime_events import service as svc
+        svc._ring.clear()
+
+    def test_control_panel_exposes_runtime_events_json_friendly(self):
+        record_event("control_panel", "test_event", "test message",
+                     level="info", details={"key": "value"})
+
+        from xiaohuang.control_panel_web_service import ControlPanelWebApi
+        with self._patch_web_api_deps():
+            api = ControlPanelWebApi(config_path=None)
+            result = api.get_runtime_events(20)
+            self.assertTrue(result["ok"])
+            self.assertIn("events", result["data"])
+            self.assertGreaterEqual(len(result["data"]["events"]), 1)
+            self.assertIn("test_event", str(result["data"]["events"]))
+            json.dumps(result)
+
+    def test_get_runtime_events_returns_json_friendly_response(self):
+        from xiaohuang.control_panel_web_service import ControlPanelWebApi
+        with self._patch_web_api_deps():
+            api = ControlPanelWebApi(config_path=None)
+            result = api.get_runtime_events(5)
+            data = json.dumps(result, ensure_ascii=False)
+            parsed = json.loads(data)
+            self.assertTrue(parsed["ok"])
+
+    @staticmethod
+    def _patch_web_api_deps():
+        parent = unittest.mock
+        return parent.patch.multiple(
+            "xiaohuang.control_panel_web_service",
+            get_project_root=parent.DEFAULT,
+            _record_cp_event=parent.DEFAULT,
+        )
+
+
+class CapabilityEventRecordingTests(unittest.TestCase):
+    def setUp(self):
+        from xiaohuang.capabilities.runtime_events import service as svc
+        svc._ring.clear()
+
+    def test_get_status_capability_records_runtime_event(self):
+        from xiaohuang.capabilities.local_commands.service import execute_capability
+        from xiaohuang.capabilities.local_commands.models import RouteDecision
+
+        decision = RouteDecision(
+            is_task_request=True,
+            can_execute=True,
+            command="get_status",
+            reason="capability_matched",
+            message="匹配到能力：读取当前小黄运行状态",
+        )
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            import json as _json
+            cfg = Path(tmp) / "config.json"
+            cfg.write_text(_json.dumps({"wake": {"phrases": ["小黄"]}}), encoding="utf-8")
+            result = execute_capability(decision, project_root=Path(tmp), config_path=cfg)
+
+        events = get_recent_events(50)
+        capability_events = [e for e in events if e.get("source") == "capability_router"]
+        self.assertGreaterEqual(len(capability_events), 1)
+        self.assertIn("capability_invoked", [e["event_type"] for e in capability_events])
+
+    def test_export_diagnostics_records_runtime_event(self):
+        from xiaohuang.capabilities.local_commands.service import execute_capability
+        from xiaohuang.capabilities.local_commands.models import RouteDecision
+        from pathlib import Path
+
+        decision = RouteDecision(
+            is_task_request=True,
+            can_execute=True,
+            command="export_diagnostics",
+            reason="capability_matched",
+            message="匹配到能力：导出诊断信息 TXT",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            import json as _json
+            cfg = Path(tmp) / "config.json"
+            cfg.write_text(_json.dumps({"wake": {"phrases": ["小黄"]}}), encoding="utf-8")
+            result = execute_capability(decision, project_root=Path(tmp), config_path=cfg)
+
+        events = get_recent_events(50)
+        capability_events = [e for e in events if e.get("source") == "capability_router"]
+        self.assertGreaterEqual(len(capability_events), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
