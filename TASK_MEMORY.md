@@ -1,5 +1,20 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-B1 Task Result History Service Foundation
+
+- Purpose: Implement the task result history backend service per B0 design — new module, JSONL persistence, sanitization, and minimal integration into confirm_text_task.
+- Key files: `src/xiaohuang/task_result_history_service.py` (new, ~180 lines), `tests/test_task_result_history_service.py` (new, 40 tests), `src/xiaohuang/control_panel_web_service.py` (+10 lines integration), `tests/test_control_panel_web_service.py` (+2 integration tests + 2 module boundary tests), `.gitignore` (+data/task_history/).
+- Last completed:
+  1. `task_result_history_service.py` — standalone module with `append_task_result()`, `get_recent_task_results()`, `sanitize_task_result_for_history()`, `init_task_history()`. Manages `data/task_history/task_results.jsonl` path. In-memory cache (max 100 entries). Never raises.
+  2. Sanitization: `_redact_sensitive_text()` (api_key/token/password/secret/authorization/Bearer → <redacted>), `_compact_text()` (single-line + Traceback strip), `_truncate_text()` (title ≤100, summary ≤300, excerpt ≤500). Applied to all text fields before write.
+  3. Save policy: only `status in ("completed", "failed")` AND `task_type in ALLOWED_READONLY_TASK_TYPES`. Returns None for blocked/cancelled/pending/expired/non-readonly.
+  4. Schema: 16 fields (history_id, task_id, created_at, completed_at, task_type, title, status, ok, risk_level, summary, safe_details_excerpt, source, read_files_count, result_kind, tags, schema_version).
+  5. Tags: all readonly → ["readonly"]; health → +"health"; logs/errors → +"logs"; config → +"config"; events → +"events"; diagnostic → +"diagnostic".
+  6. Integration: `ControlPanelWebApi.confirm_text_task()` calls `append_task_result()` after task execution completes and registry is updated. Append failure is caught and silently records a runtime event warning — never affects the task result returned to the frontend.
+  7. Module boundary enforced: `control_panel_web_service.py` does not open JSONL directly; `text_task_execution_service.py` does not contain `task_results.jsonl`; verified via static assertion tests.
+- Verification: compileall OK; unittest discover OK (989 tests, 1 symlink-permission skip, +42 new); control_panel_web --help OK; voice_overlay --help OK; diff check OK.
+- Known traps: `_reset_for_test()` must be called in setUp/tearDown for test isolation; inner try/except in confirm_text_task catches append failures silently; B1 is backend-only — no UI.
+
 ## Current Snapshot（2026-05-10）— V1.5-B0 Task Result History Design Doc
 
 - Purpose: Design the task result history layer before any implementation. No code changes — design document only.

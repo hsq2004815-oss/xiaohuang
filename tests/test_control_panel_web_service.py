@@ -464,6 +464,54 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertIn("总体状态", result["data"]["summary"])
         json.dumps(result)
 
+    def test_confirm_task_writes_task_history_jsonl(self):
+        from xiaohuang.task_result_history_service import (
+            _reset_for_test,
+            get_task_history_path,
+        )
+        _reset_for_test()
+
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        api._text_task_registry.register(_pending_task(
+            "text-task-hist", task_type="readonly_health_report",
+        ))
+
+        result = api.confirm_text_task({"task_id": "text-task-hist"})
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["ok"])
+
+        jsonl_path = get_task_history_path(api._project_root)
+        self.assertTrue(jsonl_path.is_file(), f"Expected {jsonl_path} to exist")
+
+        text = jsonl_path.read_text(encoding="utf-8")
+        entry = json.loads(text.strip())
+        self.assertEqual(entry["task_type"], "readonly_health_report")
+        self.assertEqual(entry["status"], "completed")
+        self.assertTrue(entry["ok"])
+        self.assertIn("summary", entry)
+        self.assertIn("safe_details_excerpt", entry)
+        _reset_for_test()
+
+    def test_confirm_task_history_append_failure_does_not_affect_result(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        api._text_task_registry.register(_pending_task(
+            "text-task-append-fail", task_type="readonly_health_report",
+        ))
+
+        with patch(
+            "xiaohuang.task_result_history_service.append_task_result",
+            side_effect=OSError("disk full"),
+        ):
+            result = api.confirm_text_task({"task_id": "text-task-append-fail"})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["ok"])
+        self.assertEqual(result["data"]["status"], "completed")
+        self.assertEqual(result["data"]["task_type"], "readonly_health_report")
+        json.dumps(result)
+
     def test_clear_runtime_events_removes_events(self):
         from xiaohuang.capabilities.runtime_events import service as es
         from xiaohuang.capabilities.runtime_events.service import (
@@ -549,6 +597,22 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         js = root / "frontend" / "control_panel" / "assets" / "app.js"
         self.assertTrue(js.exists(), f"Missing: {js}")
+
+    # ------------------------------------------------------------------
+    # module boundary: task history must not leak file I/O into other modules
+    # ------------------------------------------------------------------
+
+    def test_control_panel_web_service_does_not_open_task_results_jsonl(self):
+        src = Path(__file__).resolve().parents[1] / "src" / "xiaohuang" / "control_panel_web_service.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertNotIn("task_results.jsonl", text,
+                         "control_panel_web_service.py must not reference task_results.jsonl directly")
+
+    def test_text_task_execution_service_does_not_contain_task_results_jsonl(self):
+        src = Path(__file__).resolve().parents[1] / "src" / "xiaohuang" / "text_task_execution_service.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertNotIn("task_results.jsonl", text,
+                         "text_task_execution_service.py must not reference task_results.jsonl")
 
 
 class V13UIFrontendStructureTests(unittest.TestCase):

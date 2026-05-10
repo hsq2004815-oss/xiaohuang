@@ -308,6 +308,14 @@ class ControlPanelWebApi:
                 self._text_task_registry.mark_blocked(task_id, result.error)
             else:
                 self._text_task_registry.mark_failed(task_id, result.error)
+
+            if result.status in ("completed", "failed"):
+                try:
+                    from xiaohuang.task_result_history_service import append_task_result
+                    append_task_result(self._project_root, result, task=record.task)
+                except Exception:
+                    _record_cp_event("control_panel", "task_history_append_failed", "warning")
+
             return _ok(data=asdict(result), message="文本任务执行完成" if result.ok else "文本任务已拦截")
         except Exception:
             return _fail("确认文本任务失败", "confirm_text_task_error")
