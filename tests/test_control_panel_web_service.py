@@ -607,6 +607,42 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "handoff file not found")
 
+    def test_open_agent_handoff_terminal_uses_target_path(self):
+        from xiaohuang.agent_handoff.terminal_launcher import TerminalOpenResult
+
+        api = ControlPanelWebApi(config_path=self.config_path)
+        target_path = str(Path(self.tmp.name))
+
+        with patch(
+            "xiaohuang.agent_handoff.terminal_launcher.open_target_project_terminal",
+            return_value=TerminalOpenResult(True, "已打开目标项目终端。", target_path),
+        ) as launcher:
+            result = api.open_agent_handoff_terminal({"target_project_path": target_path})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["target_project_path"], target_path)
+        launcher.assert_called_once_with(target_path)
+
+    def test_open_agent_handoff_terminal_rejects_missing_path(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+
+        result = api.open_agent_handoff_terminal({"target_project_path": ""})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "missing_target_project_path")
+        self.assertIn("目标项目路径未指定", result["error"])
+
+    def test_open_agent_handoff_terminal_rejects_nonexistent_path_without_fallback(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        missing = str(Path(self.tmp.name) / "missing-project")
+
+        result = api.open_agent_handoff_terminal({"target_project_path": missing})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "target_project_path_not_found")
+        self.assertEqual(result["data"]["target_project_path"], missing)
+        self.assertIn("不能回退到小黄项目", result["error"])
+
     def test_confirm_task_history_append_failure_does_not_affect_result(self):
         api = ControlPanelWebApi(config_path=self.config_path)
         api._project_root = Path(self.tmp.name)
@@ -1133,15 +1169,23 @@ class V13UIFrontendStructureTests(unittest.TestCase):
             "copyTextToClipboard",
             "renderAgentHandoffResultCard",
             "data-handoff-copy=\"full\"",
+            "data-handoff-terminal",
+            "data-target-project-path",
             "复制完整提示词",
+            "打开目标项目终端",
             "复制文件路径",
             "复制预览",
             "read_agent_handoff_file",
+            "open_agent_handoff_terminal",
             "parseAgentHandoffDetails",
+            "target_project_path",
+            "目标项目路径",
+            "可打开终端",
         ):
             self.assertIn(text, js, f"Missing Agent Handoff copy UX JS: {text}")
         for text in (
             ".agent-handoff-actions",
+            ".agent-handoff-target-meta",
             ".agent-handoff-preview",
             ".agent-handoff-detail",
             "user-select:text",

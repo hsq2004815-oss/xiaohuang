@@ -73,6 +73,7 @@ def create_agent_handoff(
     )
     if target_project_kind == "xiaohuang" and not target_project_path:
         target_project_path = str(root)
+    can_open_terminal, terminal_hint = _target_terminal_availability(target_project_path)
     route_text = f"{user_request} {actual_task} {target_project_kind} {project_relation}"
     domains = list(request.domain_hints or route_domains(route_text))
 
@@ -123,6 +124,11 @@ def create_agent_handoff(
             summary="Agent Handoff 草稿生成完成，但保存文件失败。",
             target_agent=target_agent,
             domains=domains,
+            target_project_path=target_project_path,
+            target_project_kind=target_project_kind,
+            project_relation=project_relation,
+            can_open_terminal=can_open_terminal,
+            terminal_hint=terminal_hint,
             handoff_preview=preview,
             database_used=database.database_used,
             database_status=database.database_status,
@@ -139,6 +145,11 @@ def create_agent_handoff(
         ),
         target_agent=target_agent,
         domains=domains,
+        target_project_path=target_project_path,
+        target_project_kind=target_project_kind,
+        project_relation=project_relation,
+        can_open_terminal=can_open_terminal,
+        terminal_hint=terminal_hint,
         handoff_path=rel_path,
         handoff_preview=preview,
         database_used=database.database_used,
@@ -159,3 +170,13 @@ def _default_file_writer(root: Path, target_agent: str, user_request: str, promp
         user_request=user_request,
         content=prompt,
     )
+
+
+def _target_terminal_availability(target_project_path: str | None) -> tuple[bool, str]:
+    raw_path = str(target_project_path or "").strip()
+    if not raw_path:
+        return False, "目标项目路径未指定，不能打开终端。"
+    path = Path(raw_path)
+    if path.exists() and path.is_dir():
+        return True, "可打开目标项目终端。"
+    return False, "目标项目路径不存在或不是目录，不能回退到小黄项目。"

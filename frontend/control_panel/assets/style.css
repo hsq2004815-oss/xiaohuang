@@ -505,9 +505,16 @@ select.glass-input{cursor:pointer}
 .agent-handoff-actions button:hover{background:rgba(255,255,255,0.88);color:var(--accent-blue)}
 .agent-handoff-actions button:disabled{opacity:.6;cursor:default}
 .agent-handoff-copy-status{color:var(--text-muted);font-size:12px;font-weight:800}
-.agent-handoff-path,.agent-handoff-preview{
+.agent-handoff-target-meta,.agent-handoff-path,.agent-handoff-preview{
   margin-top:10px;padding:10px;border-radius:12px;border:1px solid rgba(79,110,246,0.12);
   background:rgba(255,255,255,0.52);user-select:text
+}
+.agent-handoff-target-meta{display:grid;gap:7px;color:var(--text-secondary);font-size:12px}
+.agent-handoff-target-meta div{display:grid;grid-template-columns:88px minmax(0,1fr);gap:8px;align-items:start}
+.agent-handoff-target-meta span{font-weight:900;color:var(--text-muted)}
+.agent-handoff-target-meta code,.agent-handoff-target-meta strong{
+  min-width:0;color:var(--text-secondary);font-weight:800;word-break:break-all;
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;user-select:text
 }
 .agent-handoff-detail{user-select:text}
 .agent-handoff-path{display:flex;gap:8px;align-items:flex-start;color:var(--text-secondary);font-size:12px}

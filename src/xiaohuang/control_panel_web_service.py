@@ -382,6 +382,26 @@ class ControlPanelWebApi:
                 "error": "handoff file read failed",
             }
 
+    def open_agent_handoff_terminal(self, payload: dict | None = None) -> dict:
+        try:
+            target_project_path = ""
+            if isinstance(payload, dict):
+                target_project_path = str(payload.get("target_project_path") or "")
+            from xiaohuang.agent_handoff import terminal_launcher
+            result = terminal_launcher.open_target_project_terminal(target_project_path)
+            data = {"target_project_path": result.target_project_path}
+            if result.ok:
+                return _ok(data=data, message=result.message)
+            return {
+                "ok": False,
+                "error": result.message,
+                "code": result.error_code or "open_terminal_failed",
+                "error_code": result.error_code or "open_terminal_failed",
+                "data": data,
+            }
+        except Exception:
+            return _fail("打开目标项目终端失败", "open_terminal_failed")
+
 
 def _record_cp_event(event_type: str, message: str, level: str = "info") -> None:
     try:

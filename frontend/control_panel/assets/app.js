@@ -551,6 +551,12 @@
           handleAgentHandoffCopy(copyButton);
           return;
         }
+        var terminalButton = event.target.closest('[data-handoff-terminal]');
+        if (terminalButton) {
+          event.preventDefault();
+          handleAgentHandoffTerminal(terminalButton);
+          return;
+        }
         var target = event.target.closest('[data-task-action]');
         if (!target) return;
         var taskId = target.getAttribute('data-task-id') || '';
@@ -794,12 +800,23 @@
     var statusClass = getExecutionStatusClass(result.status, result.ok);
     var handoff = parseAgentHandoffDetails(result.details || '');
     var details = splitExecutionDetails(result.details).join('\n');
+    var terminalDisabled = !handoff.canOpenTerminal || !handoff.targetProjectPath;
+    var terminalTitle = terminalDisabled ? (handoff.terminalHint || '目标项目路径不可用') : '打开目标项目终端';
+    var terminalButton = '<button type="button" data-handoff-terminal data-target-project-path="' + escapeHtml(handoff.targetProjectPath) + '"' +
+      (terminalDisabled ? ' disabled' : '') + ' title="' + escapeHtml(terminalTitle) + '">打开目标项目终端</button>';
     var actionsHtml = result.ok ? '<div class="agent-handoff-actions">' +
       '<button type="button" data-handoff-copy="full" data-handoff-path="' + escapeHtml(handoff.path) + '">复制完整提示词</button>' +
+      terminalButton +
       '<button type="button" data-handoff-copy="path" data-handoff-path="' + escapeHtml(handoff.path) + '">复制文件路径</button>' +
       '<button type="button" data-handoff-copy="preview" data-handoff-preview="' + escapeHtml(handoff.preview) + '">复制预览</button>' +
       '<span class="agent-handoff-copy-status" aria-live="polite"></span>' +
       '</div>' : '';
+    var targetMetaHtml = '<div class="agent-handoff-target-meta">' +
+      '<div><span>目标项目路径</span><code>' + escapeHtml(handoff.targetProjectPath || '未指定') + '</code></div>' +
+      '<div><span>目标项目类型</span><strong>' + escapeHtml(handoff.targetProjectKind || 'auto') + '</strong></div>' +
+      '<div><span>项目关系</span><strong>' + escapeHtml(handoff.projectRelation || 'auto') + '</strong></div>' +
+      (handoff.terminalHint ? '<div><span>终端状态</span><strong>' + escapeHtml(handoff.terminalHint) + '</strong></div>' : '') +
+      '</div>';
     var pathHtml = handoff.path
       ? '<div class="agent-handoff-path"><span>文件</span><code>' + escapeHtml(handoff.path) + '</code></div>'
       : '';
@@ -820,6 +837,7 @@
       '</div>' +
       '<div class="text-task-result-summary">' + escapeHtml(result.summary || 'Agent Handoff 已生成。') + '</div>' +
       actionsHtml +
+      targetMetaHtml +
       pathHtml +
       previewHtml +
       '<div class="text-task-result-details agent-handoff-detail"><div class="text-task-result-section-label">详情</div><pre>' + escapeHtml(details) + '</pre></div>' +
@@ -830,10 +848,20 @@
   function parseAgentHandoffDetails(details) {
     var text = String(details || '');
     var pathMatch = text.match(/(?:^|\n)文件：([^\n\r]+)/);
+    var targetPathMatch = text.match(/(?:^|\n)目标项目路径：([^\n\r]+)/);
+    var targetKindMatch = text.match(/(?:^|\n)目标项目类型：([^\n\r]+)/);
+    var relationMatch = text.match(/(?:^|\n)与小黄项目关系：([^\n\r]+)/);
+    var canOpenMatch = text.match(/(?:^|\n)可打开终端：([^\n\r]+)/);
+    var terminalHintMatch = text.match(/(?:^|\n)终端提示：([^\n\r]+)/);
     var marker = '\n预览：\n';
     var idx = text.indexOf(marker);
     return {
       path: pathMatch ? pathMatch[1].trim() : '',
+      targetProjectPath: targetPathMatch ? targetPathMatch[1].trim() : '',
+      targetProjectKind: targetKindMatch ? targetKindMatch[1].trim() : '',
+      projectRelation: relationMatch ? relationMatch[1].trim() : '',
+      canOpenTerminal: canOpenMatch ? canOpenMatch[1].trim() === '是' : false,
+      terminalHint: terminalHintMatch ? terminalHintMatch[1].trim() : '',
       preview: idx >= 0 ? text.slice(idx + marker.length).trim() : ''
     };
   }
@@ -863,6 +891,25 @@
     }).catch(function () {
       if (status) status.textContent = '复制失败';
       toast('复制失败，请手动打开 handoff 文件', 'err');
+    }).finally(function () {
+      btn.disabled = false;
+    });
+  }
+
+  function handleAgentHandoffTerminal(btn) {
+    var status = btn.parentElement ? btn.parentElement.querySelector('.agent-handoff-copy-status') : null;
+    var targetProjectPath = btn.getAttribute('data-target-project-path') || '';
+    btn.disabled = true;
+    if (status) status.textContent = '正在打开终端';
+    return apiCall('open_agent_handoff_terminal', { target_project_path: targetProjectPath }).then(function (resp) {
+      if (!resp || !resp.ok) {
+        throw new Error((resp && (resp.error || resp.message || resp.code)) || 'open terminal failed');
+      }
+      if (status) status.textContent = '已打开终端';
+      toast(resp.message || '已打开目标项目终端', 'ok');
+    }).catch(function (err) {
+      if (status) status.textContent = '打开失败';
+      toast((err && err.message) || '打开目标项目终端失败', 'err');
     }).finally(function () {
       btn.disabled = false;
     });

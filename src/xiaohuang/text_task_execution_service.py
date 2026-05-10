@@ -117,7 +117,13 @@ def _format_agent_handoff_details(result: Any) -> str:
         f"目标 Agent：{result.target_agent}",
         f"相关领域：{', '.join(result.domains) if result.domains else '未指定'}",
         f"数据库：{result.database_status}",
+        f"目标项目路径：{result.target_project_path or '未指定'}",
+        f"目标项目类型：{result.target_project_kind or 'auto'}",
+        f"与小黄项目关系：{result.project_relation or 'auto'}",
+        f"可打开终端：{'是' if result.can_open_terminal else '否'}",
     ]
+    if result.terminal_hint:
+        lines.append(f"终端提示：{result.terminal_hint}")
     if result.handoff_path:
         lines.append(f"文件：{result.handoff_path}")
     if result.handoff_preview:

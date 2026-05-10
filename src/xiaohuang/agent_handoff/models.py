@@ -34,6 +34,11 @@ class AgentHandoffResult:
     summary: str
     target_agent: str
     domains: list[str]
+    target_project_path: str | None = None
+    target_project_kind: str = "auto"
+    project_relation: str = "auto"
+    can_open_terminal: bool = False
+    terminal_hint: str = ""
     handoff_path: str | None = None
     handoff_preview: str = ""
     database_used: bool = False

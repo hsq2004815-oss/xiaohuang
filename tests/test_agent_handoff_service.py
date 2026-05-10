@@ -38,6 +38,9 @@ class AgentHandoffServiceTests(unittest.TestCase):
             self.assertIn("目标项目类型：xiaohuang", brief_calls[0][0])
             self.assertIn("用户原始需求", brief_calls[0][0])
             self.assertIn("## 实际工程任务", result.handoff_preview)
+            self.assertEqual(result.target_project_kind, "xiaohuang")
+            self.assertEqual(result.target_project_path, str(root))
+            self.assertTrue(result.can_open_terminal)
 
     def test_database_unavailable_still_succeeds(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -147,6 +150,52 @@ class AgentHandoffServiceTests(unittest.TestCase):
         self.assertIn("目标项目类型：external_new", brief_calls[0][0])
         self.assertIn("目标项目路径：E:\\Projects\\wine-ui", brief_calls[0][0])
         self.assertNotIn("xiaohuang_project", brief_calls[0][1])
+        self.assertEqual(result.target_project_path, "E:\\Projects\\wine-ui")
+        self.assertEqual(result.target_project_kind, "external_new")
+        self.assertEqual(result.project_relation, "unrelated_to_xiaohuang")
+        self.assertFalse(result.can_open_terminal)
+        self.assertIn("不能回退到小黄项目", result.terminal_hint)
+
+    def test_existing_external_project_can_open_terminal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "xiaohuang"
+            external = Path(tmp) / "wine-ui"
+            root.mkdir()
+            external.mkdir()
+            result = create_agent_handoff(
+                AgentHandoffRequest(
+                    user_request="给 Claude Code 生成提示词，在外部项目里优化首页",
+                    target_agent="claude_code",
+                    target_project_path=str(external),
+                    target_project_kind="external_existing",
+                    project_relation="unrelated_to_xiaohuang",
+                ),
+                project_root=root,
+                brief_fetcher=lambda query, domains: DatabaseBriefResult(False, "unavailable"),
+            )
+
+            self.assertTrue(result.ok)
+            self.assertEqual(result.target_project_path, str(external))
+            self.assertEqual(result.target_project_kind, "external_existing")
+            self.assertEqual(result.project_relation, "unrelated_to_xiaohuang")
+            self.assertTrue(result.can_open_terminal)
+
+    def test_unspecified_external_project_cannot_open_terminal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = create_agent_handoff(
+                AgentHandoffRequest(
+                    user_request="给 Claude Code 生成一个提示词，让它接手一个外部项目",
+                    target_agent="claude_code",
+                    target_project_kind="external_existing",
+                    project_relation="unrelated_to_xiaohuang",
+                ),
+                project_root=Path(tmp),
+                brief_fetcher=lambda query, domains: DatabaseBriefResult(False, "unavailable"),
+            )
+
+            self.assertTrue(result.ok)
+            self.assertFalse(result.can_open_terminal)
+            self.assertIn("未指定", result.terminal_hint)
 
 
 if __name__ == "__main__":
