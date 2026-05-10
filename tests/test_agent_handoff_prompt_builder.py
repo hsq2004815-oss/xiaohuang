@@ -86,12 +86,16 @@ class AgentHandoffPromptBuilderTests(unittest.TestCase):
             "目标项目类型：external_new",
             "与小黄项目关系：unrelated_to_xiaohuang",
             "不要修改 E:\\Projects\\xiaohuang",
+            "小黄只生成任务包，不创建外部项目",
+            "只能在用户指定的目标路径内操作",
             "package.json",
             "src/App.jsx 或 src/App.tsx",
             "vite.config.*",
             "做高端酒类品牌视觉",
             "Hero、精选酒款、品牌故事、年份/产区信息、品鉴 CTA",
             "ui_design, agent_workflow",
+            "React + Tailwind",
+            "如果 package.json 不存在或没有这些 scripts，不要强行新增依赖或脚本",
         ):
             self.assertIn(text, prompt)
 
@@ -114,8 +118,42 @@ class AgentHandoffPromptBuilderTests(unittest.TestCase):
 
         self.assertIn("目标项目路径：未指定", prompt)
         self.assertIn("目标项目类型：external_unspecified", prompt)
-        self.assertIn("目标路径未指定。不要执行修改；先向用户确认项目路径。", prompt)
+        self.assertIn("目标路径未指定", prompt)
+        self.assertIn("不要执行项目文件修改", prompt)
+        self.assertIn("先向用户确认目标项目路径", prompt)
         self.assertIn("不要修改 E:\\Projects\\xiaohuang", prompt)
+        self.assertIn("ui_design", prompt)
+        self.assertIn("agent_workflow", prompt)
+        self.assertNotIn("cd E:\\Projects\\xiaohuang", prompt)
+        self.assertNotIn("src/xiaohuang/task_result_history_service.py", prompt)
+        self.assertNotIn("frontend/control_panel/assets/app.js", prompt)
+
+    def test_xiaohuang_project_prompt_regression(self):
+        prompt = build_agent_handoff_prompt(
+            AgentHandoffRequest(
+                user_request="给 Claude Code 生成一个提示词，让它继续优化小黄任务历史页面",
+                target_agent="claude_code",
+                actual_task="继续优化小黄任务历史页面",
+                target_project_path="E:\\Projects\\xiaohuang",
+                target_project_kind="xiaohuang",
+                project_relation="xiaohuang_project",
+            ),
+            project_root="E:\\Projects\\xiaohuang",
+            domains=["xiaohuang_project", "ui_design", "agent_workflow"],
+            database_brief=DatabaseBriefResult(database_used=True, database_status="used", brief="任务历史上下文"),
+        )
+
+        for text in (
+            "目标项目类型：xiaohuang",
+            "与小黄项目关系：xiaohuang_project",
+            "E:\\Projects\\xiaohuang",
+            "frontend/control_panel/assets/app.js",
+            "src/xiaohuang/task_result_history_service.py",
+            "tests/test_task_result_history_service.py",
+            "compileall",
+            "unittest",
+        ):
+            self.assertIn(text, prompt)
 
     def test_title_prefers_actual_task(self):
         title = build_handoff_title(AgentHandoffRequest(

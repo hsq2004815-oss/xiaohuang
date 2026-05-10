@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-11）— V1.5-C3.1 Generic Handoff Smoke Polish
+
+- Purpose: Tighten generic external-project handoff wording before real smoke use.
+- Key files: `src/xiaohuang/agent_handoff/prompt_builder.py`, `tests/test_agent_handoff_prompt_builder.py`, `tests/test_agent_handoff_service.py`, `docs/agent-handoff-design.md`, `TASK_MEMORY.md`.
+- Last completed:
+  1. external_new prompts now explicitly say XiaoHuang only generates the task package and does not create external projects.
+  2. External project creation is constrained to the user-specified target path and requires path confirmation by the target Agent.
+  3. external_unspecified prompts hard-stop project file modification and tell the target Agent to confirm the target path first.
+  4. External validation command notes now forbid adding dependencies/scripts just to run lint/test/build.
+  5. Tests cover wine-ui external_new, external_unspecified, and XiaoHuang task-history regression prompts.
+- Verification: run focused handoff tests plus full compileall/unittest/help/diff check before reporting final completion.
+- Known traps: External prompts must not include XiaoHuang internal source suggestions or `cd E:\Projects\xiaohuang` verification when the target path is unspecified.
+
 ## Current Snapshot（2026-05-10）— V1.5-C3 Generic Project Agent Handoff
 
 - Purpose: Upgrade Agent Handoff from XiaoHuang-only prompts to generic project task packages with a distinct target project path.

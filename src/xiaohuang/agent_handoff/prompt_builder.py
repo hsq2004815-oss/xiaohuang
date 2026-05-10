@@ -263,13 +263,13 @@ def _execution_requirement_lines(
         lines.append(f"{idx}. 本任务和小黄项目无关；不要修改 {xiaohuang_project_root}，不要把小黄项目当作目标项目。")
         idx += 1
     if target_project_kind == "external_new":
-        lines.append(f"{idx}. 如果目标项目路径不存在，可以在目标路径处新建项目，但必须只在该目标路径内操作。")
+        lines.append(f"{idx}. 小黄只生成任务包，不创建外部项目。目标 Agent 如需新建项目，只能在用户指定的目标路径内操作，并在执行前确认路径。")
         idx += 1
     elif target_project_kind == "external_existing":
         lines.append(f"{idx}. 把目标路径当作已有项目处理；修改前先阅读项目结构和 package 配置。")
         idx += 1
     elif target_project_kind == "external_unspecified":
-        lines.append(f"{idx}. 目标路径未指定。不要执行修改；先向用户确认项目路径。")
+        lines.append(f"{idx}. 目标路径未指定。不要执行项目文件修改；先向用户确认目标项目路径。")
         idx += 1
     if _contains_any(text, ("任务历史", "task history", "history")):
         lines.append(f"{idx}. 优化任务历史页面或历史详情的可读性和结构，避免长文本堆叠。")
@@ -342,6 +342,7 @@ def _allowed_scope_lines(
     if str(target_project_kind or "").startswith("external"):
         lines = [
             "- 只修改目标项目路径内与任务直接相关的源码、测试、文档和任务记忆。",
+            f"- 不要修改 {xiaohuang_project_root}，除非目标项目类型明确是 xiaohuang。",
         ]
         if project_relation == "unrelated_to_xiaohuang":
             lines.append(f"- 本任务和小黄项目无关，不要修改 {xiaohuang_project_root}。")
@@ -372,7 +373,7 @@ def _verification_lines(*, target_project_path: str, target_project_kind: str) -
     if target_project_kind == "external_unspecified":
         return [
             "```text",
-            "目标项目路径未指定：先向用户确认路径，再按目标项目技术栈选择验证命令。",
+            "目标项目路径未指定：不要 cd 到小黄项目，不要执行项目文件修改；先向用户确认目标项目路径，再按目标项目技术栈选择验证命令。",
             "```",
         ]
     return [
@@ -384,7 +385,7 @@ def _verification_lines(*, target_project_path: str, target_project_kind: str) -
         "git diff --check",
         "git status --short",
         "```",
-        "如果目标项目没有上述脚本，请先读取 package.json，再运行该项目已有的等价验证命令。",
+        "如果 package.json 不存在或没有这些 scripts，不要强行新增依赖或脚本；先读取项目结构，使用已有等价验证方式，并在完成报告中说明。",
     ]
 
 

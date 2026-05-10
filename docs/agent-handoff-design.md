@@ -58,6 +58,8 @@ Domain routing no longer defaults every handoff to `xiaohuang_project`. XiaoHuan
 
 External project prompts use external file suggestions such as `package.json`, `src/App.*`, `src/main.*`, `src/index.css`, `vite.config.*`, and `tailwind.config.*` instead of XiaoHuang control-panel files. If the external target path is missing, the prompt instructs the target agent to ask the user to confirm the path before making changes.
 
+C3.1 tightens the smoke-use wording for external projects. Prompts now state that XiaoHuang only generates the task package and does not create external projects. If a target agent needs to create a new project, it must confirm the specified target path and work only inside that path. External validation commands are examples, not mandates: if `package.json` or scripts are missing, the target agent should use the existing project structure and report the chosen verification instead of adding dependencies or scripts just to satisfy the prompt.
+
 ## Why Not Auto-Launch Agents
 
 Auto-launching engineering agents crosses from low-risk prompt generation into local process execution. C1 keeps the workflow reviewable: the user can inspect and copy the prompt before any external agent acts.
