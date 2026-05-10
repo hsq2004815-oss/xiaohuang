@@ -1,5 +1,19 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-B2.1 Task History UI Error State and Escaping Polish
+
+- Purpose: Two small fixes over B2 — error/grid state mutual exclusion (was showing both on API failure), and read_files_count escaping (was raw number concatenation).
+- Key files: `frontend/control_panel/assets/app.js` (refactored state management + added getHistoryReadFilesCount helper), `tests/test_control_panel_web_service.py` (+4 new B2.1 tests).
+- Last completed:
+  1. Replaced `showTaskHistoryLoading(on)` / `showTaskHistoryError(on)` pair with unified `setTaskHistoryViewState(state)` — guarantees exactly one of loading/error/empty/grid is visible.
+  2. `loadTaskHistory()` now uses `setTaskHistoryViewState` at every branch: loading on start, grid on success with items, empty on success without items, error on API failure or non-ok response.
+  3. `renderTaskHistory()` no longer manipulates empty/error display — state management is centralized in `loadTaskHistory()`.
+  4. Added `getHistoryReadFilesCount(item)` helper — safe String conversion with undefined/null handling.
+  5. `read_files_count` now always goes through `escapeHtml(getHistoryReadFilesCount(item))` in both list meta and detail panel.
+  6. No feature creep verified: no task-history-search/delete/pagination/export in JS.
+- Verification: compileall OK; unittest discover OK (1014 tests, 1 symlink-permission skip, +4 new); control_panel_web --help OK; voice_overlay --help OK; diff check OK.
+- Known traps: `finally` block no longer calls any show/hide function that could overwrite error state; state function uses simple display toggle — all 4 elements toggled each call.
+
 ## Current Snapshot（2026-05-10）— V1.5-B2 Task History Tasks Page UI
 
 - Purpose: Implement the Tasks page as the main task history entry point — list + detail panel. No search, no pagination, no Chat rail changes.

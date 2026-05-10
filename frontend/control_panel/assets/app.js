@@ -1205,6 +1205,11 @@
     return s;
   }
 
+  function getHistoryReadFilesCount(item) {
+    if (!item || item.read_files_count === undefined || item.read_files_count === null) return '0';
+    return String(item.read_files_count);
+  }
+
   function formatHistoryRelativeTime(completedAt) {
     if (!completedAt) return '';
     try {
@@ -1224,68 +1229,55 @@
     }
   }
 
+  function setTaskHistoryViewState(state) {
+    var loading = $('tasks-history-loading');
+    var error = $('tasks-history-error');
+    var empty = $('tasks-history-empty');
+    var grid = $('tasks-history-grid');
+    if (loading) loading.style.display = state === 'loading' ? '' : 'none';
+    if (error) error.style.display = state === 'error' ? '' : 'none';
+    if (empty) empty.style.display = state === 'empty' ? '' : 'none';
+    if (grid) grid.style.display = state === 'grid' ? '' : 'none';
+  }
+
   function loadTaskHistory() {
     if (taskHistoryLoading) return;
     taskHistoryLoading = true;
     taskHistorySelectedId = null;
-    showTaskHistoryLoading(true);
+    setTaskHistoryViewState('loading');
 
     apiCall('get_recent_task_history', { limit: 20 }).then(function (resp) {
       if (resp && resp.ok && resp.data && Array.isArray(resp.data.items)) {
         taskHistoryItems = resp.data.items;
         renderTaskHistory();
         if (taskHistoryItems.length > 0) {
+          setTaskHistoryViewState('grid');
           selectTaskHistoryItem(taskHistoryItems[0].history_id);
         } else {
+          setTaskHistoryViewState('empty');
           renderTaskHistoryDetail(null);
         }
       } else {
-        showTaskHistoryError(true);
+        taskHistoryItems = [];
+        renderTaskHistoryDetail(null);
+        setTaskHistoryViewState('error');
       }
     }).catch(function () {
-      showTaskHistoryError(true);
+      taskHistoryItems = [];
+      renderTaskHistoryDetail(null);
+      setTaskHistoryViewState('error');
     }).finally(function () {
       taskHistoryLoading = false;
-      showTaskHistoryLoading(false);
     });
-  }
-
-  function showTaskHistoryLoading(on) {
-    var el = $('tasks-history-loading');
-    var grid = $('tasks-history-grid');
-    var empty = $('tasks-history-empty');
-    var error = $('tasks-history-error');
-    if (el) el.style.display = on ? '' : 'none';
-    if (grid) grid.style.display = on ? 'none' : '';
-    if (on) {
-      if (empty) empty.style.display = 'none';
-      if (error) error.style.display = 'none';
-    }
-  }
-
-  function showTaskHistoryError(on) {
-    var el = $('tasks-history-error');
-    var grid = $('tasks-history-grid');
-    var empty = $('tasks-history-empty');
-    if (el) el.style.display = on ? '' : 'none';
-    if (grid) grid.style.display = on ? 'none' : '';
-    if (on && empty) empty.style.display = 'none';
   }
 
   function renderTaskHistory() {
     var list = $('tasks-history-list');
-    var empty = $('tasks-history-empty');
-    var error = $('tasks-history-error');
-
-    if (error) error.style.display = 'none';
 
     if (!taskHistoryItems.length) {
-      if (empty) empty.style.display = '';
       if (list) list.innerHTML = '';
       return;
     }
-
-    if (empty) empty.style.display = 'none';
 
     var html = '';
     taskHistoryItems.forEach(function (item) {
@@ -1296,7 +1288,7 @@
       var activeCls = taskHistorySelectedId === item.history_id ? ' active' : '';
       var timeDisplay = formatHistoryRelativeTime(item.completed_at) || formatHistoryTime(item.completed_at);
       var tags = (item.tags && item.tags.length) ? item.tags.map(escapeHtml).join(', ') : '';
-      var metaParts = [timeDisplay, tags, (item.read_files_count || 0) + ' files'].filter(function (p) { return p; });
+      var metaParts = [timeDisplay, tags, getHistoryReadFilesCount(item) + ' files'].filter(function (p) { return p; });
 
       html += '<div class="task-history-card' + activeCls + '" data-history-id="' + escapeHtml(item.history_id) + '">' +
         '<div class="task-history-title-row">' +
@@ -1357,7 +1349,7 @@
         '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">类型</span><span>' + escapeHtml(item.task_type || '') + '</span></div>' +
         '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">风险</span><span>' + escapeHtml(item.risk_level || 'low') + '</span></div>' +
         '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">时间</span><span>' + escapeHtml(formatHistoryTime(item.completed_at)) + '</span></div>' +
-        (item.read_files_count !== undefined ? '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">读取文件</span><span>' + item.read_files_count + '</span></div>' : '') +
+        (item.read_files_count !== undefined && item.read_files_count !== null ? '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">读取文件</span><span>' + escapeHtml(getHistoryReadFilesCount(item)) + '</span></div>' : '') +
           (tags ? '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">标签</span><div class="tasks-history-detail-tags">' + tags + '</div></div>' : '') +
       '</div>' +
       '<div class="tasks-history-detail-section">' +

@@ -1190,6 +1190,8 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
         self.assertIn("function selectTaskHistoryItem", js)
         self.assertIn("function getHistorySignal", js)
         self.assertIn("function formatHistoryTime", js)
+        self.assertIn("function setTaskHistoryViewState", js)
+        self.assertIn("function getHistoryReadFilesCount", js)
         self.assertIn("get_recent_task_history", js)
 
     def test_js_task_history_uses_escape_html(self):
@@ -1197,6 +1199,13 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
         self.assertIn("escapeHtml(item.title", js)
         self.assertIn("escapeHtml(item.summary", js)
         self.assertIn("escapeHtml(item.safe_details_excerpt", js)
+
+    def test_js_read_files_count_is_escaped(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("escapeHtml(getHistoryReadFilesCount(item))", js,
+                       "read_files_count must be escaped via getHistoryReadFilesCount")
+        self.assertNotIn("+ item.read_files_count +", js,
+                         "raw read_files_count must not be directly concatenated into HTML")
 
     def test_js_no_dangerously_set_inner_html(self):
         js = self._read("frontend/control_panel/assets/app.js")
@@ -1238,3 +1247,22 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
         self.assertNotIn("chat-recent-tasks", js)
         self.assertNotIn("chat-recent-tasks", css)
         self.assertNotIn("chat-recent-tasks", html)
+
+    def test_no_unplanned_task_history_features(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertNotIn("task-history-search", js)
+        self.assertNotIn("task-history-delete", js)
+        self.assertNotIn("task-history-pagination", js)
+        self.assertNotIn("task-history-export", js)
+
+    def test_view_state_has_four_modes(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("state === 'loading'", js)
+        self.assertIn("state === 'error'", js)
+        self.assertIn("state === 'empty'", js)
+        self.assertIn("state === 'grid'", js)
+
+    def test_view_state_not_calls_show_task_history_loading_in_finally(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertNotIn("showTaskHistoryLoading(false)", js,
+                         "finally block must not call showTaskHistoryLoading which could overwrite error state")
