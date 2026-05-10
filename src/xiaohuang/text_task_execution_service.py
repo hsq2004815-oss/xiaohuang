@@ -23,7 +23,15 @@ ALLOWED_AGENT_HANDOFF_TASK_TYPES = {
     "agent_handoff_draft",
 }
 
-ALLOWED_TEXT_TASK_TYPES = ALLOWED_READONLY_TASK_TYPES | ALLOWED_AGENT_HANDOFF_TASK_TYPES
+ALLOWED_AGENT_REVIEW_TASK_TYPES = {
+    "agent_completion_review",
+}
+
+ALLOWED_TEXT_TASK_TYPES = (
+    ALLOWED_READONLY_TASK_TYPES
+    | ALLOWED_AGENT_HANDOFF_TASK_TYPES
+    | ALLOWED_AGENT_REVIEW_TASK_TYPES
+)
 
 _LOG_EXTENSIONS = {".log", ".txt"}
 _MAX_LOG_FILES = 5
@@ -55,6 +63,8 @@ def execute_confirmed_text_task(
         return _blocked_result(task_id, task_type, title, "文本任务执行器只允许白名单受控任务。", risk_level=risk_level)
 
     try:
+        if task_type == "agent_completion_review":
+            return _execute_agent_completion_review(task)
         if task_type == "agent_handoff_draft":
             return _execute_agent_handoff_draft(task, root)
         if task_type == "readonly_log_analysis":
@@ -115,6 +125,26 @@ def _format_agent_handoff_details(result: Any) -> str:
     if result.error_message and not result.ok:
         lines.extend(["", f"错误：{result.error_message}"])
     return "\n".join(lines)
+
+
+def _execute_agent_completion_review(task: dict[str, Any]) -> TextTaskExecutionResult:
+    from xiaohuang.agent_review.service import review_agent_completion_report
+
+    report_text = str(task.get("original_text") or task.get("summary") or "").strip()
+    review = review_agent_completion_report(report_text)
+    status = "completed" if review.ok else "failed"
+    return TextTaskExecutionResult(
+        ok=review.ok,
+        task_id=str(task.get("task_id") or ""),
+        task_type="agent_completion_review",
+        status=status,
+        title=review.title or str(task.get("title") or "审查 Agent 完成报告"),
+        summary=review.summary,
+        details=review.safe_details_excerpt,
+        risk_level=_safe_risk(task),
+        read_files=(),
+        error="" if review.ok else (review.error_message or "agent_completion_review_failed"),
+    )
 
 
 def _execute_readonly_log_analysis(task: dict[str, Any], project_root: Path) -> TextTaskExecutionResult:

@@ -44,6 +44,12 @@ C1.2 separates the user's wrapper request from the real engineering task. For ex
 
 C1.3 keeps Agent Handoff as a draft-only workflow but makes the generated prompt easier to copy from Chat. The control panel exposes a readonly `read_agent_handoff_file` API that only reads UTF-8 `.txt` files under `runtime/agent_handoffs/` and rejects absolute paths, `..` escapes, non-text files, missing files, and oversized files. The Chat result card can copy the full prompt, the relative handoff path, or the visible preview without opening terminals or launching agents.
 
+## Completion Report Review
+
+C2 closes the handoff loop by recognizing an Agent completion report pasted back into Chat as `agent_completion_review`. The review parser extracts the task title, changed files, implemented items, safety claims, verification claims, manual acceptance notes, commit hash, and commit message from Chinese or English structured text.
+
+The review is intentionally text-only. It does not query GitHub, run `git show`, run shell commands, open terminals, launch agents, or read `E:\DataBase`. Risk rules classify the report as `keep`, `needs_review`, `reject`, or `insufficient`, then the result card shows a concise acceptance summary, risk points, and next steps. Task history stores only the generated review excerpt with `result_kind=agent_review`; it does not store the raw pasted report. The user remains the final reviewer.
+
 ## Why Not Auto-Launch Agents
 
 Auto-launching engineering agents crosses from low-risk prompt generation into local process execution. C1 keeps the workflow reviewable: the user can inspect and copy the prompt before any external agent acts.
@@ -51,8 +57,9 @@ Auto-launching engineering agents crosses from low-risk prompt generation into l
 ## Roadmap
 
 - C1: Database-Aware Agent Handoff Draft
-- C2: Agent Handoff Result UI Polish
+- C2: Completion Report Review
+- C2.1: Agent Handoff Result UI Polish
 - C3: Open Project Terminal + Copy Prompt
 - C4: Whitelisted Agent Launcher
-- C5: Commit/Completion Report Review
+- C5: Commit/GitHub Review Assist
 - C6: Multi-Agent Workflow Board

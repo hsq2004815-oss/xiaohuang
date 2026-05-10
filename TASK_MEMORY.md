@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-C2 Agent Completion Report Review
+
+- Purpose: Let users paste Claude Code / Codex / OpenClaw / opencode completion reports back into Chat and receive a structured acceptance review without executing tools.
+- Key files: `src/xiaohuang/agent_review/`, `src/xiaohuang/text_task_intent_service.py`, `src/xiaohuang/text_task_execution_service.py`, `src/xiaohuang/task_result_history_service.py`, `docs/agent-handoff-design.md`, tests.
+- Last completed:
+  1. Added `agent_review` parser/risk/builder/service modules for pure text completion report review.
+  2. Added `agent_completion_review` as a confirmed low-risk text task type.
+  3. Parser extracts task title, changed files, implemented items, safety claims, verification claims, manual acceptance, commit hash, and commit message.
+  4. Risk rules produce `keep`, `needs_review`, `reject`, or `insufficient` with confidence, risk points, and next steps.
+  5. Task history stores sanitized review excerpts as `result_kind=agent_review` with `agent`, `review`, and verdict tags.
+- Verification: run compileall + unittest discover + control_panel_web `--help` + voice_overlay `--help` + diff check before reporting final completion.
+- Known traps: C2 is text-only; do not add GitHub lookup, `git show`, shell execution, terminal opening, agent launching, or raw report storage.
+
 ## Current Snapshot（2026-05-10）— V1.5-C1.3 Agent Handoff Copy UX
 
 - Purpose: Let users copy generated Agent Handoff content directly from the Chat result card without opening terminals, launching agents, or manually browsing runtime files.

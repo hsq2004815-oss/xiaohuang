@@ -123,6 +123,20 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
         self.assertEqual(result.status, "failed")
         self.assertEqual(result.error, "empty_user_request")
 
+    def test_agent_completion_review_executes_without_reading_files(self):
+        task = _task("agent_completion_review")
+        task["original_text"] = _agent_completion_report()
+
+        result = execute_confirmed_text_task(task, project_root=self.project_root)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.task_type, "agent_completion_review")
+        self.assertEqual(result.read_files, ())
+        self.assertIn("验收结论", result.details)
+        self.assertIn("风险点", result.details)
+        self.assertIn("下一步建议", result.details)
+
     def test_read_files_are_relative_strings(self):
         logs = self.project_root / "logs"
         logs.mkdir()
@@ -687,3 +701,31 @@ def _task(
 def _brief_result(database_used: bool, status: str):
     from xiaohuang.agent_handoff.models import DatabaseBriefResult
     return DatabaseBriefResult(database_used=database_used, database_status=status)
+
+
+def _agent_completion_report() -> str:
+    return """完成：V1.5-C1.3 Agent Handoff Copy UX
+
+一、改了哪些文件
+- src/xiaohuang/control_panel_web_service.py
+- frontend/control_panel/assets/app.js
+
+二、实现了什么
+- 增加复制完整提示词能力。
+
+三、安全边界
+- 不启动 Agent：是
+- 不执行 shell：是
+
+五、人工验收
+- 真实窗口点击通过。
+
+六、验证结果
+- compileall：exit 0
+- unittest discover：OK
+- git diff --check：通过
+
+七、最新提交
+- 5dfce798f2e37e91ba7316004e72d4ccdfb8c485
+- feat: add agent handoff copy ux
+"""

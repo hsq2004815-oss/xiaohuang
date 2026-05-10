@@ -101,6 +101,37 @@ class TextTaskIntentServiceTests(unittest.TestCase):
         self.assertEqual(result.task_type, "agent_handoff_draft")
         self.assertTrue(result.allowed)
 
+    def test_agent_completion_report_detected_before_blocked_terms(self):
+        text = """完成：V1.5-C1.3 Agent Handoff Copy UX
+
+一、改了哪些文件
+- src/xiaohuang/control_panel_web_service.py
+
+三、安全边界
+- 不执行 shell：是
+
+六、验证结果
+- compileall：exit 0
+- unittest discover：OK
+- git diff --check：通过
+
+七、最新提交
+- 5dfce798f2e37e91ba7316004e72d4ccdfb8c485
+- feat: add agent handoff copy ux
+"""
+        result = detect_text_task_intent(text)
+
+        self.assertTrue(result.is_task)
+        self.assertEqual(result.task_type, "agent_completion_review")
+        self.assertTrue(result.allowed)
+        self.assertEqual(result.risk_level, "low")
+
+    def test_completion_report_does_not_break_handoff_detection(self):
+        result = detect_text_task_intent("给 Claude Code 生成提示词，让它继续优化任务历史页面")
+
+        self.assertTrue(result.is_task)
+        self.assertEqual(result.task_type, "agent_handoff_draft")
+
 
 if __name__ == "__main__":
     unittest.main()

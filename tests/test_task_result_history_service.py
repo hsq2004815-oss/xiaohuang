@@ -131,6 +131,34 @@ class TaskResultHistoryServiceTests(unittest.TestCase):
         self.assertIn("claude_code", entry["tags"])
         self.assertIn("runtime/agent_handoffs/demo.txt", entry["safe_details_excerpt"])
 
+    def test_append_agent_completion_review_writes_safe_summary(self):
+        raw_report = "完成：Secret Raw Report\n一、改了哪些文件\n- src/x.py"
+        entry = append_task_result(
+            self.project_root,
+            _result(
+                task_type="agent_completion_review",
+                title="Agent 完成报告审查",
+                summary="建议保留，但需要补充复查",
+                details=(
+                    "【Agent 完成报告审查】\n"
+                    "验收结论：建议保留，但需要补充复查\n"
+                    "verdict：needs_review\n"
+                    "commit：abc1234\n"
+                    "四、风险点\n- 未做真实窗口点击验收"
+                ),
+            ),
+            task={"original_text": raw_report},
+        )
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["task_type"], "agent_completion_review")
+        self.assertEqual(entry["result_kind"], "agent_review")
+        self.assertIn("agent", entry["tags"])
+        self.assertIn("review", entry["tags"])
+        self.assertIn("needs_review", entry["tags"])
+        self.assertIn("commit：abc1234", entry["safe_details_excerpt"])
+        self.assertNotIn("Secret Raw Report", entry["safe_details_excerpt"])
+
     def test_append_blocked_status_returns_none(self):
         entry = append_task_result(
             self.project_root,
@@ -381,6 +409,11 @@ class ShouldSaveTests(unittest.TestCase):
     def test_agent_handoff_should_save(self):
         self.assertTrue(_should_save_result(
             _result(task_type="agent_handoff_draft")
+        ))
+
+    def test_agent_completion_review_should_save(self):
+        self.assertTrue(_should_save_result(
+            _result(task_type="agent_completion_review")
         ))
 
 

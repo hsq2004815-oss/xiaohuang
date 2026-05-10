@@ -526,6 +526,39 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertIn("claude_code", entry["tags"])
         _reset_for_test()
 
+    def test_agent_completion_review_chat_confirm_flow_writes_history(self):
+        from xiaohuang.task_result_history_service import (
+            _reset_for_test,
+            get_task_history_path,
+        )
+        _reset_for_test()
+
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+
+        sent = api.send_text_message({"text": _agent_completion_report()})
+        self.assertTrue(sent["ok"])
+        self.assertTrue(sent["data"]["requires_confirmation"])
+        pending = sent["data"]["pending_task"]
+        self.assertEqual(pending["task_type"], "agent_completion_review")
+        self.assertEqual(pending["title"], "审查 Agent 完成报告")
+
+        result = api.confirm_text_task({"task_id": pending["task_id"]})
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["ok"])
+        self.assertEqual(result["data"]["task_type"], "agent_completion_review")
+        self.assertIn("验收结论", result["data"]["details"])
+        self.assertIn("commit：5dfce798f2e37e91ba7316004e72d4ccdfb8c485", result["data"]["details"])
+
+        jsonl_path = get_task_history_path(api._project_root)
+        entry = json.loads(jsonl_path.read_text(encoding="utf-8").strip())
+        self.assertEqual(entry["task_type"], "agent_completion_review")
+        self.assertEqual(entry["result_kind"], "agent_review")
+        self.assertIn("agent", entry["tags"])
+        self.assertIn("review", entry["tags"])
+        self.assertNotIn("完成：V1.5-C1.3", entry["safe_details_excerpt"])
+        _reset_for_test()
+
     def test_read_agent_handoff_file_returns_content(self):
         from xiaohuang.agent_handoff.handoff_file_service import (
             relative_handoff_path,
@@ -1249,6 +1282,31 @@ def _fake_op_result(ok, message):
 def _brief_result(database_used, status):
     from xiaohuang.agent_handoff.models import DatabaseBriefResult
     return DatabaseBriefResult(database_used=database_used, database_status=status)
+
+
+def _agent_completion_report():
+    return """完成：V1.5-C1.3 Agent Handoff Copy UX
+
+一、改了哪些文件
+- src/xiaohuang/control_panel_web_service.py
+- frontend/control_panel/assets/app.js
+
+三、安全边界
+- 不启动 Agent：是
+- 不执行 shell：是
+
+五、人工验收
+- 真实窗口点击通过。
+
+六、验证结果
+- compileall：exit 0
+- unittest discover：OK
+- git diff --check：通过
+
+七、最新提交
+- 5dfce798f2e37e91ba7316004e72d4ccdfb8c485
+- feat: add agent handoff copy ux
+"""
 
 
 def api_call_confirm_blocked(payload, reason):

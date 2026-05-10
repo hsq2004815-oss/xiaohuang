@@ -21,6 +21,7 @@ from typing import Any
 from xiaohuang.text_task_execution_models import TextTaskExecutionResult
 from xiaohuang.text_task_execution_service import (
     ALLOWED_AGENT_HANDOFF_TASK_TYPES,
+    ALLOWED_AGENT_REVIEW_TASK_TYPES,
     ALLOWED_READONLY_TASK_TYPES,
 )
 
@@ -70,6 +71,8 @@ def _tags_for_task_type(task_type: str) -> list[str]:
     tags: set[str] = {"readonly"}
     if task_type == "agent_handoff_draft":
         return ["agent", "handoff"]
+    if task_type == "agent_completion_review":
+        return ["agent", "review"]
     if task_type == "readonly_health_report":
         tags.add("health")
     elif task_type in ("readonly_recent_errors_review", "readonly_log_analysis"):
@@ -149,8 +152,10 @@ def sanitize_task_result_for_history(
     tags = _tags_for_task_type(task_type)
     if task_type == "agent_handoff_draft":
         tags = _agent_handoff_tags(task_dict)
+    elif task_type == "agent_completion_review":
+        tags = _agent_review_tags(result)
     read_files_count = len(getattr(result, "read_files", ()) or ())
-    result_kind = "agent_handoff" if task_type == "agent_handoff_draft" else "readonly_report"
+    result_kind = _result_kind_for_task_type(task_type)
 
     return {
         "history_id": _make_history_id(),
@@ -177,7 +182,19 @@ def _should_save_result(result: TextTaskExecutionResult) -> bool:
     if status not in _SAVEABLE_STATUSES:
         return False
     task_type = str(result.task_type or "")
-    return task_type in (ALLOWED_READONLY_TASK_TYPES | ALLOWED_AGENT_HANDOFF_TASK_TYPES)
+    return task_type in (
+        ALLOWED_READONLY_TASK_TYPES
+        | ALLOWED_AGENT_HANDOFF_TASK_TYPES
+        | ALLOWED_AGENT_REVIEW_TASK_TYPES
+    )
+
+
+def _result_kind_for_task_type(task_type: str) -> str:
+    if task_type == "agent_handoff_draft":
+        return "agent_handoff"
+    if task_type == "agent_completion_review":
+        return "agent_review"
+    return "readonly_report"
 
 
 def _agent_handoff_tags(task: dict[str, Any]) -> list[str]:
@@ -189,6 +206,20 @@ def _agent_handoff_tags(task: dict[str, Any]) -> list[str]:
         target = "generic"
     if target:
         tags.add(target)
+    return sorted(tags)
+
+
+def _agent_review_tags(result: TextTaskExecutionResult) -> list[str]:
+    tags = {"agent", "review"}
+    text = f"{result.summary}\n{result.details}".lower()
+    if "verdict：reject" in text or "verdict: reject" in text or "不建议保留" in text:
+        tags.add("reject")
+    elif "verdict：insufficient" in text or "verdict: insufficient" in text or "信息不足" in text:
+        tags.add("insufficient")
+    elif "verdict：needs_review" in text or "verdict: needs_review" in text or "补充复查" in text:
+        tags.add("needs_review")
+    elif "verdict：keep" in text or "verdict: keep" in text or "建议保留" in text:
+        tags.add("keep")
     return sorted(tags)
 
 

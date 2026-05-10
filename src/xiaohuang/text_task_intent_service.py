@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from xiaohuang.agent_review.report_parser import is_completion_report
 from xiaohuang.agent_handoff.intent_parser import parse_agent_handoff_intent
 from xiaohuang.text_task_models import TextTaskIntentResult
 
@@ -108,6 +109,17 @@ def detect_text_task_intent(text: str) -> TextTaskIntentResult:
         return TextTaskIntentResult(is_task=False)
 
     normalized = _normalize(original)
+
+    if is_completion_report(original):
+        return TextTaskIntentResult(
+            is_task=True,
+            task_type="agent_completion_review",
+            title="审查 Agent 完成报告",
+            summary="解析完成报告并生成验收摘要、风险点和下一步建议。",
+            risk_level="low",
+            allowed=True,
+            reason="只解析用户粘贴的文本，不执行命令、不查 GitHub、不修改文件。",
+        )
 
     handoff = parse_agent_handoff_intent(original)
     if handoff is not None:
