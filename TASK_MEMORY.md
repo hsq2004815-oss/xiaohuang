@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-C1.1 Fix Database Brief Client Contract
+
+- Purpose: Align Agent Handoff database brief access with the real local database API contract.
+- Key files: `src/xiaohuang/agent_handoff/database_brief_client.py`, `tests/test_agent_handoff_database_brief_client.py`.
+- Last completed:
+  1. Replaced `GET /brief?query=&domain=` with `POST /brief` JSON body using `task` plus limit fields.
+  2. Added domain-to-limit mapping: UI opens `ui_limit`, workflow/project/database/voice opens `workflow_limit`, backend opens `backend_limit`, browser automation opens `automation_limit`, and `asset_limit` stays 0.
+  3. Kept localhost-only endpoint validation and safe unavailable/empty/forbidden fallback behavior.
+  4. Enhanced JSON response extraction to include `brief`, `guidance`, and short chunk summaries without dumping full JSON into prompts.
+- Verification: database brief client and service tests OK. Full verification should remain compileall + unittest + control_panel_web `--help` + voice_overlay `--help` + diff check.
+- Known traps: The database API expects POST JSON; do not restore GET query/domain format.
+
 ## Current Snapshot（2026-05-10）— V1.5-C1 Database-Aware Agent Handoff Draft
 
 - Purpose: Let XiaoHuang turn natural-language requests into copyable Agent Handoff prompt drafts for Claude Code / Codex / OpenClaw / opencode without launching agents or running shell commands.
