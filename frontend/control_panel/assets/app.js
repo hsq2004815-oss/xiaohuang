@@ -652,7 +652,70 @@
     };
   }
 
+  function getHealthStatusFromResult(result) {
+    var text = ((result && result.summary) || '') + '\n' + ((result && result.details) || '');
+    if (text.indexOf('有错误') >= 0) return 'error';
+    if (text.indexOf('有警告') >= 0) return 'warning';
+    if (text.indexOf('信息不足') >= 0) return 'unknown';
+    if (text.indexOf('正常') >= 0) return 'healthy';
+    return 'unknown';
+  }
+
+  function getHealthStatusLabel(status) {
+    var map = { healthy: '正常', warning: '有警告', error: '有错误', unknown: '信息不足' };
+    return map[status] || status;
+  }
+
+  function splitHealthReportSections(details) {
+    var lines = String(details || '').split(/\r?\n/);
+    var sections = [];
+    var current = null;
+    var headerRe = /^[一二三四五六七八九十]+、/;
+    for (var i = 0; i < lines.length; i += 1) {
+      var line = lines[i];
+      var trimmed = line.trim();
+      if (headerRe.test(trimmed)) {
+        if (current) sections.push(current);
+        current = { title: trimmed, body: '' };
+      } else if (current) {
+        current.body += (current.body ? '\n' : '') + line;
+      }
+    }
+    if (current) sections.push(current);
+    return sections;
+  }
+
+  function renderHealthReportResultCard(result) {
+    var healthStatus = getHealthStatusFromResult(result);
+    var healthLabel = getHealthStatusLabel(healthStatus);
+    var sections = splitHealthReportSections(result.details || '');
+
+    var sectionsHtml = sections.length
+      ? sections.map(function (sec) {
+          var lines = sec.body.split(/\r?\n/).filter(function (l) { return l.trim(); });
+          return '<div class="health-report-section">' +
+            '<div class="health-report-section-title">' + escapeHtml(sec.title) + '</div>' +
+            '<div class="health-report-section-body">' +
+              lines.map(function (l) { return '<div>' + escapeHtml(l) + '</div>'; }).join('') +
+            '</div>' +
+          '</div>';
+        }).join('')
+      : '<div class="health-report-section"><pre>' + escapeHtml(result.details || '') + '</pre></div>';
+
+    return '<section class="text-task-result-card health-report-card">' +
+      '<div class="health-report-head">' +
+        '<span class="health-report-title">' + escapeHtml(result.title || '小黄健康检查报告') + '</span>' +
+        '<span class="health-state-pill ' + healthStatus + '">' + escapeHtml(healthLabel) + '</span>' +
+      '</div>' +
+      '<div class="health-report-summary">' + escapeHtml(result.summary || '') + '</div>' +
+      '<div class="health-report-sections">' + sectionsHtml + '</div>' +
+      '</section>';
+  }
+
   function renderTextTaskExecutionResultCard(result) {
+    if (result.task_type === 'readonly_health_report') {
+      return renderHealthReportResultCard(result);
+    }
     var statusClass = getExecutionStatusClass(result.status, result.ok);
     var details = splitExecutionDetails(result.details).join('\n');
     var detailsHtml = details

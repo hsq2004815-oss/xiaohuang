@@ -1072,3 +1072,80 @@ body.chat-page #section-chat .text-chat-layout{
   margin-left:auto;
   flex-shrink:0;
 }
+
+/* ─── health report card ─── */
+.health-report-card{
+  max-width:100%;
+  max-height:500px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  padding:clamp(12px,1.8vh,20px);
+  gap:clamp(8px,1.2vh,14px);
+}
+.health-report-head{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:4px;
+}
+.health-report-title{
+  font-size:var(--font-size-md,15px);
+  font-weight:600;
+  color:var(--text-primary,#f0f6ff);
+}
+.health-state-pill{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 12px;
+  border-radius:99px;
+  font-size:var(--font-size-xs,11px);
+  font-weight:600;
+  border:1px solid transparent;
+}
+.health-state-pill.healthy{
+  color:#00d68f;
+  background:rgba(0,214,143,.12);
+  border-color:rgba(0,214,143,.25);
+}
+.health-state-pill.warning{
+  color:#ffb020;
+  background:rgba(255,176,32,.12);
+  border-color:rgba(255,176,32,.25);
+}
+.health-state-pill.error{
+  color:#ff4757;
+  background:rgba(255,71,87,.12);
+  border-color:rgba(255,71,87,.25);
+}
+.health-state-pill.unknown{
+  color:#a0aec0;
+  background:rgba(160,174,192,.12);
+  border-color:rgba(160,174,192,.25);
+}
+.health-report-summary{
+  font-size:var(--font-size-sm,13px);
+  color:var(--text-secondary,#cbd5e0);
+  line-height:1.55;
+  padding:6px 0 8px;
+}
+.health-report-sections{
+  display:flex;
+  flex-direction:column;
+  gap:clamp(6px,1vh,10px);
+}
+.health-report-section{
+  padding:clamp(6px,1vh,10px) 0;
+}
+.health-report-section-title{
+  font-size:var(--font-size-sm,13px);
+  font-weight:600;
+  color:var(--text-primary,#f0f6ff);
+  margin-bottom:4px;
+}
+.health-report-section-body{
+  font-size:var(--font-size-xs,11px);
+  color:var(--text-secondary,#cbd5e0);
+  line-height:1.6;
+  white-space:pre-wrap;
+  word-break:break-word;
+}

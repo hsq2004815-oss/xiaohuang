@@ -903,6 +903,30 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("escapeHtml(summary)", js,
                       "runtime event summary must be HTML-escaped")
 
+    def test_js_has_health_report_card_rendering(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        for text in ("renderHealthReportResultCard", "getHealthStatusFromResult",
+                     "splitHealthReportSections", "health-report-card",
+                     "readonly_health_report"):
+            self.assertIn(text, js, f"Missing health report card: {text}")
+
+    def test_js_health_report_uses_escape_html(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("escapeHtml(sec.title)", js,
+                      "Health report sections must escape title")
+        self.assertIn("escapeHtml(l)", js,
+                      "Health report lines must be escaped")
+
+    def test_css_has_health_report_styles(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        for text in (".health-report-card", ".health-report-head", ".health-state-pill",
+                     ".health-state-pill.healthy", ".health-state-pill.warning",
+                     ".health-state-pill.error", ".health-state-pill.unknown",
+                     ".health-report-summary", ".health-report-sections",
+                     ".health-report-section", ".health-report-section-title",
+                     ".health-report-section-body"):
+            self.assertIn(text, css, f"Missing health report CSS: {text}")
+
     def test_html_has_clear_runtime_events_button(self):
         html = self._read("frontend/control_panel/index.html")
         self.assertIn("data-action=\"clear-runtime-events\"", html)

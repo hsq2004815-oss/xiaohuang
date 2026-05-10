@@ -1,5 +1,20 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-A3 Health Report Chat UX Polish
+
+- Purpose: Optimize how the `readonly_health_report` result card renders in Chat — dedicated card with status badge, section parsing, clean typography.
+- Key files: `app.js` (+4 helpers + branch), `style.css` (+~75 lines), tests (+3 static tests).
+- Last completed:
+  1. `renderHealthReportResultCard` — dedicated card when `task_type === readonly_health_report`, with head (title + status pill), summary, and parsed sections.
+  2. `getHealthStatusFromResult` — parses "正常/有警告/有错误/信息不足" from summary+details.
+  3. `getHealthStatusLabel` — maps `healthy/warning/error/unknown` to Chinese labels.
+  4. `splitHealthReportSections` — splits details by `一、/二、/...` headers into `{title, body}` array.
+  5. All text is `escapeHtml`'d; section body lines rendered as individual `<div>`s.
+  6. CSS: `.health-report-card` (max-height 500px, scroll), `.health-state-pill` (4 color variants), `.health-report-section` layout.
+  7. Generic `renderTextTaskExecutionResultCard` untouched for non-health tasks.
+- Verification: compileall OK; unittest discover OK (942 tests, 1 symlink-permission skip, +3 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: No new actions on health card; section parser uses simple regex, falls back to `<pre>` if no sections found.
+
 ## Current Snapshot（2026-05-10）— V1.5-A2 Health Report Quality Polish
 
 - Purpose: Quality improvements over A1 health report — better overall status tracking, config gap detection, compact runtime event excerpts, representative log error extracts, natural summary, overall status at top.
