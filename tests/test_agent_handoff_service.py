@@ -35,6 +35,7 @@ class AgentHandoffServiceTests(unittest.TestCase):
             self.assertTrue(result.database_used)
             self.assertIn("继续优化小黄任务历史页面", result.title)
             self.assertIn("继续优化小黄任务历史页面", brief_calls[0][0])
+            self.assertIn("目标项目类型：xiaohuang", brief_calls[0][0])
             self.assertIn("用户原始需求", brief_calls[0][0])
             self.assertIn("## 实际工程任务", result.handoff_preview)
 
@@ -101,6 +102,46 @@ class AgentHandoffServiceTests(unittest.TestCase):
 
             self.assertFalse(result.ok)
             self.assertIn("disk full", result.error_message)
+
+    def test_external_project_handoff_stays_in_xiaohuang_runtime(self):
+        brief_calls = []
+
+        def fetcher(query, domains):
+            brief_calls.append((query, domains))
+            return DatabaseBriefResult(True, "used", "external ui brief")
+
+        text = (
+            "给 Claude Code 生成一个提示词，让它根据我的数据库，在 E:\\Projects\\wine-ui 里"
+            "做一个高级红酒品牌官网首页。这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
+            "要求 React + Tailwind。"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            result = create_agent_handoff(
+                AgentHandoffRequest(user_request=text, target_agent="claude_code"),
+                project_root=root,
+                brief_fetcher=fetcher,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertTrue(result.handoff_path)
+            self.assertTrue(result.handoff_path.startswith("runtime/agent_handoffs/"))
+            handoff_file = root / result.handoff_path
+            self.assertTrue(handoff_file.is_file())
+            content = handoff_file.read_text(encoding="utf-8")
+
+        self.assertIn("目标项目路径：E:\\Projects\\wine-ui", content)
+        self.assertIn("目标项目类型：external_new", content)
+        self.assertIn("与小黄项目关系：unrelated_to_xiaohuang", content)
+        self.assertIn("不要修改", content)
+        self.assertIn("E:\\Projects\\xiaohuang", content)
+        self.assertIn("高级红酒品牌官网首页", result.title)
+        self.assertNotIn("xiaohuang_project", result.domains)
+        self.assertIn("ui_design", result.domains)
+        self.assertIn("agent_workflow", result.domains)
+        self.assertIn("目标项目类型：external_new", brief_calls[0][0])
+        self.assertIn("目标项目路径：E:\\Projects\\wine-ui", brief_calls[0][0])
+        self.assertNotIn("xiaohuang_project", brief_calls[0][1])
 
 
 if __name__ == "__main__":

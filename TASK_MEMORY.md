@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-C3 Generic Project Agent Handoff
+
+- Purpose: Upgrade Agent Handoff from XiaoHuang-only prompts to generic project task packages with a distinct target project path.
+- Key files: `src/xiaohuang/agent_handoff/models.py`, `intent_parser.py`, `domain_router.py`, `prompt_builder.py`, `service.py`, `docs/agent-handoff-design.md`, tests.
+- Last completed:
+  1. Added `target_project_path`, `target_project_kind`, and `project_relation` to `AgentHandoffRequest`.
+  2. Parser now extracts Windows target paths, detects unrelated-to-XiaoHuang requests, and classifies `xiaohuang`, `external_new`, `external_existing`, and `external_unspecified`.
+  3. Domain routing now defaults to `agent_workflow` only and adds `xiaohuang_project` only for real XiaoHuang tasks; wine/UI/React/Tailwind/site tasks route to `ui_design`.
+  4. Prompt builder separates XiaoHuang project path from target project path and emits external-project safety boundaries plus external file suggestions.
+  5. Service still writes handoff files only under XiaoHuang `runtime/agent_handoffs/`; it never creates or modifies external projects.
+- Verification: run agent_handoff focused tests plus full compileall/unittest/help/diff check before reporting final completion.
+- Known traps: Do not reintroduce `xiaohuang_project` as a default domain for generic external handoffs.
+
 ## Current Snapshot（2026-05-10）— V1.5-C2 Agent Completion Report Review
 
 - Purpose: Let users paste Claude Code / Codex / OpenClaw / opencode completion reports back into Chat and receive a structured acceptance review without executing tools.

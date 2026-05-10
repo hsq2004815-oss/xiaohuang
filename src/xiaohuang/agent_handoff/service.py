@@ -12,7 +12,10 @@ from xiaohuang.agent_handoff.handoff_file_service import (
     write_handoff_file,
 )
 from xiaohuang.agent_handoff.intent_parser import detect_target_agent
+from xiaohuang.agent_handoff.intent_parser import detect_project_relation
+from xiaohuang.agent_handoff.intent_parser import detect_target_project_kind
 from xiaohuang.agent_handoff.intent_parser import extract_actual_task
+from xiaohuang.agent_handoff.intent_parser import extract_target_project_path
 from xiaohuang.agent_handoff.models import (
     AgentHandoffRequest,
     AgentHandoffResult,
@@ -52,12 +55,39 @@ def create_agent_handoff(
 
     target_agent = request.target_agent if request.target_agent and request.target_agent != "generic" else detect_target_agent(user_request)
     actual_task = str(request.actual_task or "").strip() or extract_actual_task(user_request, target_agent=target_agent) or user_request
-    route_text = f"{user_request} {actual_task}"
+    target_project_path = request.target_project_path or extract_target_project_path(user_request)
+    project_relation = (
+        request.project_relation
+        if request.project_relation and request.project_relation != "auto"
+        else detect_project_relation(user_request, actual_task=actual_task)
+    )
+    target_project_kind = (
+        request.target_project_kind
+        if request.target_project_kind and request.target_project_kind != "auto"
+        else detect_target_project_kind(
+            user_request,
+            actual_task,
+            target_project_path,
+            project_relation=project_relation,
+        )
+    )
+    if target_project_kind == "xiaohuang" and not target_project_path:
+        target_project_path = str(root)
+    route_text = f"{user_request} {actual_task} {target_project_kind} {project_relation}"
     domains = list(request.domain_hints or route_domains(route_text))
 
     if request.use_database:
         fetcher = brief_fetcher or _default_brief_fetcher
-        database = fetcher(f"{actual_task}\n\n用户原始需求：{user_request}", domains)
+        database = fetcher(
+            "\n\n".join([
+                actual_task,
+                f"目标项目类型：{target_project_kind}",
+                f"目标项目路径：{target_project_path or '未指定'}",
+                f"与小黄项目关系：{project_relation}",
+                f"用户原始需求：{user_request}",
+            ]),
+            domains,
+        )
     else:
         database = DatabaseBriefResult(database_used=False, database_status="not_requested")
 
@@ -66,6 +96,9 @@ def create_agent_handoff(
         target_agent=target_agent,
         actual_task=actual_task,
         project_hint=request.project_hint,
+        target_project_path=target_project_path,
+        target_project_kind=target_project_kind,
+        project_relation=project_relation,
         domain_hints=domains,
         source=request.source,
         use_database=request.use_database,

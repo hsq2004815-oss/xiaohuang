@@ -11,6 +11,9 @@ class AgentHandoffRequest:
     target_agent: str = "generic"
     actual_task: str | None = None
     project_hint: str | None = None
+    target_project_path: str | None = None
+    target_project_kind: str = "auto"
+    project_relation: str = "auto"
     domain_hints: list[str] = field(default_factory=list)
     source: str = "text"
     use_database: bool = True

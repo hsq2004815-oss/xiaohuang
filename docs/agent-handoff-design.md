@@ -50,6 +50,14 @@ C2 closes the handoff loop by recognizing an Agent completion report pasted back
 
 The review is intentionally text-only. It does not query GitHub, run `git show`, run shell commands, open terminals, launch agents, or read `E:\DataBase`. Risk rules classify the report as `keep`, `needs_review`, `reject`, or `insufficient`, then the result card shows a concise acceptance summary, risk points, and next steps. Task history stores only the generated review excerpt with `result_kind=agent_review`; it does not store the raw pasted report. The user remains the final reviewer.
 
+## Generic Project Handoff
+
+C3 upgrades Agent Handoff from a XiaoHuang-only prompt generator into a generic project task package generator. `AgentHandoffRequest` now separates the XiaoHuang project root from the target project path with `target_project_path`, `target_project_kind`, and `project_relation`. XiaoHuang still writes handoff files only under its own `runtime/agent_handoffs/`, but the generated prompt can tell Claude Code / Codex to work in an external project such as `E:\Projects\wine-ui`.
+
+Domain routing no longer defaults every handoff to `xiaohuang_project`. XiaoHuang-specific database context is included only when the request is actually about XiaoHuang, while UI/front-end/brand/site tasks route to `ui_design` plus `agent_workflow`. If the user says the task is unrelated to XiaoHuang or asks not to modify XiaoHuang, the prompt explicitly states that the target agent must not modify `E:\Projects\xiaohuang`.
+
+External project prompts use external file suggestions such as `package.json`, `src/App.*`, `src/main.*`, `src/index.css`, `vite.config.*`, and `tailwind.config.*` instead of XiaoHuang control-panel files. If the external target path is missing, the prompt instructs the target agent to ask the user to confirm the path before making changes.
+
 ## Why Not Auto-Launch Agents
 
 Auto-launching engineering agents crosses from low-risk prompt generation into local process execution. C1 keeps the workflow reviewable: the user can inspect and copy the prompt before any external agent acts.
@@ -58,8 +66,9 @@ Auto-launching engineering agents crosses from low-risk prompt generation into l
 
 - C1: Database-Aware Agent Handoff Draft
 - C2: Completion Report Review
-- C2.1: Agent Handoff Result UI Polish
-- C3: Open Project Terminal + Copy Prompt
-- C4: Whitelisted Agent Launcher
-- C5: Commit/GitHub Review Assist
-- C6: Multi-Agent Workflow Board
+- C3: Generic Project Agent Handoff
+- C3.1: Agent Handoff Result UI Polish
+- C4: Open Project Terminal + Copy Prompt
+- C5: Whitelisted Agent Launcher
+- C6: Commit/GitHub Review Assist
+- C7: Multi-Agent Workflow Board
