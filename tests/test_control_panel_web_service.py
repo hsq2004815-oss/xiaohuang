@@ -702,6 +702,24 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         ):
             self.assertIn(text, css, f"Missing compact chat polish rule: {text}")
 
+    def test_chat_focus_mode_removes_header_chrome(self):
+        html = self._read("frontend/control_panel/index.html")
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertIn('<header class="topbar glass-card" id="topbar">', html)
+        for text in (
+            "/* ─── Chat Focus Mode ─── */",
+            "body.chat-page .topbar",
+            "display:none!important",
+            "body.chat-page .app-shell",
+            "grid-template-rows:minmax(0,1fr)",
+            'grid-template-areas:"sidebar main"',
+            "body.chat-page.sidebar-collapsed .app-shell",
+            "grid-template-columns:var(--sidebar-collapsed-w) minmax(0,1fr)",
+            "body.chat-page #section-chat .text-chat-header",
+            "body.chat-page #section-chat .text-chat-layout",
+        ):
+            self.assertIn(text, css, f"Missing chat focus mode rule: {text}")
+
     def test_sidebar_has_collapsible_state(self):
         html = self._read("frontend/control_panel/index.html")
         js = self._read("frontend/control_panel/assets/app.js")

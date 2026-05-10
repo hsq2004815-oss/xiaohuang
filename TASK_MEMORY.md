@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-UI0.5 Chat Focus Mode Remove Redundant Header Chrome
+
+- Purpose: Put Chat into focus mode by removing the two remaining top chrome layers only on the Chat page.
+- Key files: `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed:
+  1. Added `body.chat-page .topbar{display:none!important}` so the global command bar is hidden only in Chat.
+  2. Added Chat-specific app-shell grid overrides so no topbar row/blank space remains, including sidebar-collapsed combinations.
+  3. Added `body.chat-page #section-chat .text-chat-header{display:none!important}` so the “对话 / 说明 / 本地文本入口” row is hidden in focus mode.
+  4. Kept Chat message surface, right session rail, composer, internal scroll, sidebar collapse, and non-home drawer hiding intact.
+- Verification: compileall OK; unittest discover OK (917 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; pywebview startup smoke stayed alive for 6s; diff check OK; targeted `V13UIFrontendStructureTests` OK (38 tests).
+- Known traps: Topbar must remain present in HTML and visible outside Chat; focus mode is CSS-scoped to `body.chat-page`.
+
 ## Current Snapshot（2026-05-10）— V1.5-UI0.4 Minimal Spacious Chat Surface Polish
 
 - Purpose: Reduce stacked chrome and make Chat feel quieter, lighter, and more spacious without changing behavior.

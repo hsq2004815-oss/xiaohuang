@@ -1018,3 +1018,33 @@ body.chat-page .main-workspace{padding-top:clamp(12px,1.8vh,18px)}
   .event-row{grid-template-columns:1fr;gap:4px}
   .event-val{white-space:normal;text-align:left}
 }
+
+/* ─── Chat Focus Mode ─── */
+body.chat-page .topbar{
+  display:none!important;
+}
+body.chat-page .app-shell,
+body.chat-page .app-shell.drawer-collapsed,
+body.chat-page.sidebar-collapsed .app-shell,
+body.chat-page.sidebar-collapsed .app-shell.drawer-collapsed{
+  grid-template-rows:minmax(0,1fr);
+  grid-template-areas:"sidebar main";
+}
+body.chat-page .app-shell,
+body.chat-page .app-shell.drawer-collapsed{
+  grid-template-columns:var(--sidebar-w) minmax(0,1fr);
+}
+body.chat-page.sidebar-collapsed .app-shell,
+body.chat-page.sidebar-collapsed .app-shell.drawer-collapsed{
+  grid-template-columns:var(--sidebar-collapsed-w) minmax(0,1fr);
+}
+body.chat-page #section-chat .text-chat-header{
+  display:none!important;
+}
+body.chat-page .main-workspace{
+  padding:clamp(12px,1.8vh,18px) var(--workspace-pad-x) clamp(14px,2vh,20px);
+}
+body.chat-page #section-chat .text-chat-layout{
+  min-height:0;
+  height:100%;
+}
