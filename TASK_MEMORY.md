@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-UI0.7.1 Runtime Events Clear Polish
+
+- Purpose: Three small fixes over UI0.7 — HTML-escape runtime event summary, don't record new event after clear, remove extra CSS `}`.
+- Key files: `app.js` (escapeHtml), `control_panel_web_service.py` (no `_record_cp_event`), `style.css` (removed extra `}`).
+- Last completed:
+  1. `renderRuntimeEventEntries` now calls `escapeHtml(summary)` before injecting into HTML.
+  2. `clear_runtime_events` no longer calls `_record_cp_event` — clearing leaves ring truly empty.
+  3. Removed extra `}` after `#btn-clear-events` CSS block.
+  4. Test `test_clear_runtime_events_removes_events` now asserts `get_recent_events(20) == []`; new frontend static test `test_js_runtime_event_summary_is_escape_htmled`.
+- Verification: compileall OK; unittest discover OK (927 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: None — clearing now truly empties the ring.
+
 ## Current Snapshot（2026-05-10）— V1.5-UI0.7 Runtime Events Display Hygiene and Clear Recent Events
 
 - Purpose: Fix runtime events display (too noisy with full tracebacks) and add one-click clear button.

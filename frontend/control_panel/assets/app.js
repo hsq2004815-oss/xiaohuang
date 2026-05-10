@@ -1060,7 +1060,7 @@
       return '<div class="drawer-entry ' + cls + '"><span class="ts">' +
         escapeHtml(evt.timestamp ? evt.timestamp.slice(-8) : '') + '</span>' +
         escapeHtml(evt.source + '/' + evt.event_type) +
-        ' — ' + summary + '</div>';
+        ' — ' + escapeHtml(summary) + '</div>';
     }).join('');
   }
 

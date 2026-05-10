@@ -338,7 +338,6 @@ class ControlPanelWebApi:
         try:
             from xiaohuang.capabilities.runtime_events.service import clear_recent_events
             removed = clear_recent_events()
-            _record_cp_event("clear_runtime_events", f"已清空 {removed} 条事件")
             return _ok(data={"removed": removed}, message="最近事件已清空")
         except Exception:
             return _fail("清空最近事件失败", "clear_runtime_events_error")

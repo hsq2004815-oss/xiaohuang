@@ -445,7 +445,10 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
 
     def test_clear_runtime_events_removes_events(self):
         from xiaohuang.capabilities.runtime_events import service as es
-        from xiaohuang.capabilities.runtime_events.service import record_event
+        from xiaohuang.capabilities.runtime_events.service import (
+            get_recent_events,
+            record_event,
+        )
         es._ring.clear()
 
         try:
@@ -459,6 +462,9 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             self.assertGreaterEqual(result["data"]["removed"], 1)
+            self.assertEqual(get_recent_events(20), [],
+                             "Ring should be empty after clear — no residual event")
+            json.dumps(result)
         finally:
             es._ring.clear()
 
@@ -870,6 +876,11 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for text in ("clear_runtime_events", "handleClearRuntimeEvents",
                      "clear-runtime-events", "refreshRuntimeEvents"):
             self.assertIn(text, js, f"Missing clear runtime events: {text}")
+
+    def test_js_runtime_event_summary_is_escape_htmled(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("escapeHtml(summary)", js,
+                      "runtime event summary must be HTML-escaped")
 
     def test_html_has_clear_runtime_events_button(self):
         html = self._read("frontend/control_panel/index.html")
