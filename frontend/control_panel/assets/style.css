@@ -356,10 +356,11 @@ select.glass-input{cursor:pointer}
   font-size:12px;font-weight:800;white-space:nowrap
 }
 .text-chat-layout{
-  display:grid;grid-template-columns:minmax(176px,220px) minmax(0,1fr) minmax(210px,260px);
+  display:grid;grid-template-columns:minmax(176px,220px) minmax(0,1fr);
   gap:16px;min-height:calc(100vh - 172px)
 }
 .text-chat-sessions,.text-chat-main,.text-chat-workspace{min-width:0}
+.text-chat-workspace{display:none}
 .text-chat-sessions{padding:16px!important;overflow:auto}
 .text-chat-new{
   width:100%;min-height:38px;border-radius:var(--radius-pill);cursor:pointer;border:1px solid rgba(79,110,246,0.34);
@@ -650,6 +651,15 @@ body{min-width:0}
 .app-shell.drawer-collapsed{
   grid-template-columns:var(--sidebar-w) minmax(0,1fr) var(--drawer-rail-w);
 }
+body.no-drawer-page .app-shell,
+body.no-drawer-page .app-shell.drawer-collapsed{
+  grid-template-columns:var(--sidebar-w) minmax(0,1fr);
+  grid-template-areas:"topbar topbar" "sidebar main";
+}
+body.no-drawer-page .diagnostic-drawer,
+body.no-drawer-page .drawer-rail{
+  display:none!important;
+}
 .topbar,.sidebar,.main-workspace,.diagnostic-drawer{min-width:0}
 .main-workspace{
   padding:var(--workspace-pad-y) var(--workspace-pad-x);
@@ -665,7 +675,6 @@ body{min-width:0}
 .topbar-center .glass-input{width:100%}
 .topbar-right{min-width:0;justify-content:flex-end;gap:8px}
 .status-badge,.wake-badge{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.drawer-toggle{min-width:74px;padding-left:16px;padding-right:16px}
 .text-chat-entry{
   background:rgba(139,92,246,0.14);
   border-color:rgba(139,92,246,0.34);
@@ -805,7 +814,6 @@ body{min-width:0}
     grid-template-areas:"topbar topbar" "sidebar main";
   }
   .diagnostic-drawer,.drawer-rail{display:none!important}
-  .drawer-toggle{display:none}
   .topbar-center{max-width:280px}
 }
 

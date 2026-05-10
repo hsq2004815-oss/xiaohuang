@@ -616,6 +616,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         html = self._read("frontend/control_panel/index.html")
         for action in ("data-action=\"start\"", "data-action=\"stop\"", "data-action=\"restart\"",
                        "data-action=\"refresh\"", "data-action=\"open-text-chat\"",
+                       "data-action=\"open-diagnostics\"",
                        "data-action=\"save-config\"", "data-action=\"save-restart\""):
             self.assertIn(action, html, f"Missing data-action: {action}")
 
@@ -631,6 +632,32 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         css = self._read("frontend/control_panel/assets/style.css")
         self.assertNotIn("text-chat-shell", css)
         self.assertNotIn("mode-text-chat", css)
+
+    def test_app_shell_scopes_context_panel_to_home(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertIn("function updateShellLayoutForSection", js)
+        self.assertIn("section === 'home'", js)
+        self.assertIn("document.body.classList.toggle('drawer-page'", js)
+        self.assertIn("document.body.classList.toggle('no-drawer-page'", js)
+        self.assertIn("updateShellLayoutForSection(currentSection)", js)
+        self.assertIn("body.no-drawer-page .diagnostic-drawer", css)
+        self.assertIn("body.no-drawer-page .drawer-rail", css)
+        self.assertIn("grid-template-areas:\"topbar topbar\" \"sidebar main\"", css)
+
+    def test_top_diagnostics_button_opens_diagnostics_page(self):
+        html = self._read("frontend/control_panel/index.html")
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn('id="btn-diagnostics-entry"', html)
+        self.assertIn('data-action="open-diagnostics"', html)
+        self.assertNotIn('id="btn-drawer-toggle"', html)
+        self.assertIn("if (action === 'open-diagnostics') { doOpenDiagnostics(); return; }", js)
+        self.assertIn("switchSection('diagnostics')", js)
+
+    def test_chat_layout_has_no_right_workspace_column(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertIn(".text-chat-workspace{display:none}", css)
+        self.assertIn("grid-template-columns:minmax(176px,220px) minmax(0,1fr)", css)
 
     def test_html_has_bridge_indicator(self):
         html = self._read("frontend/control_panel/index.html")

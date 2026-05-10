@@ -146,22 +146,17 @@
 
   function applyDrawerState(collapsed) {
     var shell = $('app-shell');
-    var topToggle = $('btn-drawer-toggle');
     var drawerToggle = $('btn-drawer-collapse');
     var rail = $('drawer-rail');
     var expanded = !collapsed;
 
     if (shell) shell.classList.toggle('drawer-collapsed', collapsed);
 
-    [topToggle, drawerToggle, rail].forEach(function (btn) {
+    [drawerToggle, rail].forEach(function (btn) {
       if (!btn) return;
       btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     });
 
-    if (topToggle) {
-      topToggle.textContent = collapsed ? '展开诊断' : '诊断';
-      topToggle.title = collapsed ? '展开诊断栏' : '收起诊断栏';
-    }
     if (drawerToggle) {
       drawerToggle.textContent = '收起';
       drawerToggle.title = '收起诊断栏';
@@ -183,7 +178,7 @@
   }
 
   function initDrawerControls() {
-    ['btn-drawer-toggle', 'btn-drawer-collapse', 'drawer-rail'].forEach(function (id) {
+    ['btn-drawer-collapse', 'drawer-rail'].forEach(function (id) {
       var el = $(id);
       if (!el || el.dataset.drawerBound === '1') return;
       el.dataset.drawerBound = '1';
@@ -408,6 +403,12 @@
   }
 
   /* ─── Sidebar ─── */
+  function updateShellLayoutForSection(section) {
+    var showDrawer = section === 'home';
+    document.body.classList.toggle('drawer-page', showDrawer);
+    document.body.classList.toggle('no-drawer-page', !showDrawer);
+  }
+
   function switchShell(shell) {
     var isText = shell === 'text-chat';
     currentShell = 'control';
@@ -438,6 +439,7 @@
       'text-chat': 'chat'
     };
     currentSection = aliases[sec] || sec || 'home';
+    updateShellLayoutForSection(currentSection);
     document.querySelectorAll('.sidebar-item').forEach(function (item) {
       item.classList.toggle('active', item.getAttribute('data-section') === currentSection);
     });
@@ -877,6 +879,7 @@
     if (action === 'stop') { doStop(btn); return; }
     if (action === 'restart') { doRestart(btn); return; }
     if (action === 'open-text-chat') { doOpenTextChat(); return; }
+    if (action === 'open-diagnostics') { doOpenDiagnostics(); return; }
     if (action === 'save-config') { doSaveConfig(btn); return; }
     if (action === 'save-restart') { doSaveAndRestart(btn); return; }
     if (action === 'export-diag') { doExportDiag(btn); return; }
@@ -889,6 +892,12 @@
     switchShell('text-chat');
     focusTextChatInput();
     toast('已切换到对话页', 'info');
+  }
+
+  function doOpenDiagnostics() {
+    switchShell('control');
+    switchSection('diagnostics');
+    toast('已切换到诊断页', 'info');
   }
 
   function doRefresh(btn) {

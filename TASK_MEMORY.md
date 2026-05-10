@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-UI0.1 Context Panel Scope and Chat Space Polish
+
+- Purpose: Fix the first App Shell layout issue where the right diagnostic context panel crowded every page, especially Chat.
+- Key files: `frontend/control_panel/index.html`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed:
+  1. Added `updateShellLayoutForSection()` so `home` gets `drawer-page`; all other primary pages get `no-drawer-page`.
+  2. CSS now removes the right diagnostic drawer/rail from non-home pages and expands the shell to sidebar + main workspace without leaving blank space.
+  3. Top “诊断” button is now a Diagnostics page entry (`open-diagnostics`) instead of a drawer collapse control; Home still keeps drawer collapse/rail controls.
+  4. Chat layout is two columns (`sessions + messages`) and the right `text-chat-workspace` column is hidden to give message/composer space back.
+- Verification: compileall OK; unittest discover OK after one unrelated flaky diagnostic-export filename collision was rerun cleanly (913 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; pywebview startup smoke stayed alive for 6s; diff check OK; targeted `V13UIFrontendStructureTests` OK (34 tests).
+- Known traps: Keep the drawer localStorage collapse behavior only for Home; do not re-add a global right drawer to Chat/Tasks/Tools/Diagnostics/Settings.
+
 ## Current Snapshot（2026-05-10）— V1.5-UI0 App Shell Layout Foundation
 
 - Purpose: Reframe the control panel frontend as a durable App Shell with Top Bar / fixed primary Sidebar / Main Workspace / right Context Panel.
