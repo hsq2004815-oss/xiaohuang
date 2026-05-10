@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-UI0.3 Chat Right Utility Rail and Collapsible Sidebar
+
+- Purpose: Move Chat's session helper rail to the right side and add persistent collapsible primary sidebar for more workspace room.
+- Key files: `frontend/control_panel/index.html`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed:
+  1. Chat DOM/layout now places `text-chat-main` before `text-chat-sessions`, with grid `messages + right session rail` (`minmax(0,1fr) minmax(250px,300px)`).
+  2. Added sidebar toggle button (`btn-sidebar-toggle`) and icon/text nav items with titles for collapsed hover context.
+  3. Added `SIDEBAR_STORAGE_KEY`, `initSidebarControls()`, and `sidebar-collapsed` body state persisted in localStorage.
+  4. CSS covers expanded/collapsed sidebar grids for Home, Home with collapsed drawer rail, and non-home pages; Chat internal scroll and non-home drawer hiding remain intact.
+- Verification: compileall OK; unittest discover OK (915 tests, 1 symlink-permission skip; one ResourceWarning printed but tests passed); control_panel_web `--help` OK; voice_overlay `--help` OK; pywebview startup smoke stayed alive for 6s; diff check OK; targeted `V13UIFrontendStructureTests` OK (36 tests).
+- Known traps: DOM order matters for right-side Chat sessions; collapsed sidebar grid rules must remain compatible with `non-home-page` and `drawer-collapsed`.
+
 ## Current Snapshot（2026-05-10）— V1.5-UI0.2 Chat Scroll Container and Non-Home Drawer Cleanup
 
 - Purpose: Fix follow-up App Shell acceptance issues — no non-home diagnostic rail residue, and Chat messages must scroll inside the chat card instead of growing the window.

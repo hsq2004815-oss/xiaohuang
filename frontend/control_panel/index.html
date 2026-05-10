@@ -32,14 +32,18 @@
 
     <!-- Left Sidebar -->
     <nav class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-brand">导航</span>
+        <button class="sidebar-collapse-btn" id="btn-sidebar-toggle" type="button" title="收起导航" aria-label="收起导航" aria-pressed="false">☰</button>
+      </div>
       <div class="sidebar-section">
         <div class="sidebar-label">导航</div>
-        <a class="sidebar-item active" data-section="home">首页</a>
-        <a class="sidebar-item" data-section="chat">对话</a>
-        <a class="sidebar-item" data-section="tasks">任务</a>
-        <a class="sidebar-item" data-section="tools">工具</a>
-        <a class="sidebar-item" data-section="diagnostics">诊断</a>
-        <a class="sidebar-item" data-section="settings">设置</a>
+        <a class="sidebar-item active" data-section="home" title="首页"><span class="sidebar-icon">首</span><span class="sidebar-text">首页</span></a>
+        <a class="sidebar-item" data-section="chat" title="对话"><span class="sidebar-icon">话</span><span class="sidebar-text">对话</span></a>
+        <a class="sidebar-item" data-section="tasks" title="任务"><span class="sidebar-icon">务</span><span class="sidebar-text">任务</span></a>
+        <a class="sidebar-item" data-section="tools" title="工具"><span class="sidebar-icon">具</span><span class="sidebar-text">工具</span></a>
+        <a class="sidebar-item" data-section="diagnostics" title="诊断"><span class="sidebar-icon">诊</span><span class="sidebar-text">诊断</span></a>
+        <a class="sidebar-item" data-section="settings" title="设置"><span class="sidebar-icon">设</span><span class="sidebar-text">设置</span></a>
       </div>
     </nav>
 
@@ -94,16 +98,6 @@
           <span class="text-chat-status" id="text-chat-status">本地文本入口</span>
         </div>
         <div class="text-chat-layout">
-          <aside class="text-chat-sessions glass-card">
-            <button class="text-chat-new" id="text-chat-new" type="button">+ 新对话</button>
-            <input class="glass-input text-chat-search" type="text" placeholder="搜索对话..." disabled>
-            <div class="text-chat-label">今天</div>
-            <button class="text-chat-session active" type="button">
-              <span>默认对话</span>
-              <small>当前窗口</small>
-            </button>
-          </aside>
-
           <main class="text-chat-main glass-card">
             <div class="text-chat-messages" id="text-chat-messages" aria-live="polite"></div>
             <div class="text-chat-composer">
@@ -124,6 +118,16 @@
               </div>
             </div>
           </main>
+
+          <aside class="text-chat-sessions glass-card">
+            <button class="text-chat-new" id="text-chat-new" type="button">+ 新对话</button>
+            <input class="glass-input text-chat-search" type="text" placeholder="搜索对话..." disabled>
+            <div class="text-chat-label">今天</div>
+            <button class="text-chat-session active" type="button">
+              <span>默认对话</span>
+              <small>当前窗口</small>
+            </button>
+          </aside>
 
           <aside class="text-chat-workspace glass-card">
             <div class="workspace-block">

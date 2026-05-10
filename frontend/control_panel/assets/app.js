@@ -14,6 +14,7 @@
   var lastStartupDiagnostic = null;
   var lastPreflightCheck = null;
   var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
+  var SIDEBAR_STORAGE_KEY = 'xiaohuang.controlPanel.sidebarCollapsed';
   var currentShell = 'control';
   var currentSection = 'home';
   var textChatSessionId = 'control_panel';
@@ -188,6 +189,41 @@
       });
     });
     applyDrawerState(isDrawerCollapsed());
+  }
+
+  function isSidebarCollapsed() {
+    return safeLocalStorageGet(SIDEBAR_STORAGE_KEY) === '1';
+  }
+
+  function applySidebarCollapsedState(collapsed) {
+    var btn = $('btn-sidebar-toggle');
+    document.body.classList.toggle('sidebar-collapsed', !!collapsed);
+    if (!btn) return;
+    btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+    btn.setAttribute('aria-label', collapsed ? '展开导航' : '收起导航');
+    btn.title = collapsed ? '展开导航' : '收起导航';
+    btn.textContent = collapsed ? '»' : '☰';
+  }
+
+  function setSidebarCollapsed(collapsed) {
+    safeLocalStorageSet(SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0');
+    applySidebarCollapsedState(collapsed);
+  }
+
+  function toggleSidebarCollapsed() {
+    setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+  }
+
+  function initSidebarControls() {
+    var btn = $('btn-sidebar-toggle');
+    if (btn && btn.dataset.sidebarBound !== '1') {
+      btn.dataset.sidebarBound = '1';
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        toggleSidebarCollapsed();
+      });
+    }
+    applySidebarCollapsedState(isSidebarCollapsed());
   }
 
 
@@ -1229,6 +1265,7 @@
     if (initDone) return;
     initDone = true;
     initNav();
+    initSidebarControls();
     initDrawerControls();
     initTextChat();
     switchShell(currentShell);
@@ -1244,6 +1281,7 @@
   });
 
   document.addEventListener('DOMContentLoaded', function () {
+    initSidebarControls();
     initDrawerControls();
     updateBridgeIndicator();
     setTimeout(function () { if (!initDone) doInit(); }, 800);

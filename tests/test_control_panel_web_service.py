@@ -517,6 +517,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for text in ("首页", "对话", "任务", "工具", "诊断", "设置"):
             self.assertIn(text, html, f"Missing localized text: {text}")
         self.assertIn("文本对话", html, "Top text chat entry should remain")
+        self.assertIn('id="btn-sidebar-toggle"', html)
         for section in ("home", "chat", "tasks", "tools", "diagnostics", "settings"):
             self.assertIn(f'data-section="{section}"', html, f"Missing app shell nav section: {section}")
         for old_section in ("overview", "runtime", "wake", "models", "automation", "database", "logs", "developer", "text-chat"):
@@ -660,10 +661,12 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("switchSection('diagnostics')", js)
 
     def test_chat_layout_has_no_right_workspace_column(self):
+        html = self._read("frontend/control_panel/index.html")
         css = self._read("frontend/control_panel/assets/style.css")
+        self.assertLess(html.index('class="text-chat-main'), html.index('class="text-chat-sessions'))
         self.assertIn(".text-chat-workspace{display:none}", css)
         self.assertIn("#section-chat .text-chat-workspace{display:none!important}", css)
-        self.assertIn("grid-template-columns:minmax(176px,220px) minmax(0,1fr)", css)
+        self.assertIn("grid-template-columns:minmax(0,1fr) minmax(250px,300px)", css)
 
     def test_chat_layout_has_internal_scroll_container(self):
         css = self._read("frontend/control_panel/assets/style.css")
@@ -680,6 +683,30 @@ class V13UIFrontendStructureTests(unittest.TestCase):
             self.assertIn(text, css, f"Missing chat scroll layout rule: {text}")
         self.assertIn("function scrollTextChatToBottom", js)
         self.assertIn("messages.scrollTop = messages.scrollHeight", js)
+
+    def test_sidebar_has_collapsible_state(self):
+        html = self._read("frontend/control_panel/index.html")
+        js = self._read("frontend/control_panel/assets/app.js")
+        css = self._read("frontend/control_panel/assets/style.css")
+        for text in (
+            "SIDEBAR_STORAGE_KEY",
+            "xiaohuang.controlPanel.sidebarCollapsed",
+            "function toggleSidebarCollapsed",
+            "function applySidebarCollapsedState",
+            "document.body.classList.toggle('sidebar-collapsed'",
+            "safeLocalStorageSet(SIDEBAR_STORAGE_KEY",
+            "initSidebarControls()",
+        ):
+            self.assertIn(text, js, f"Missing sidebar collapse logic: {text}")
+        for text in (
+            "--sidebar-collapsed-w",
+            "body.sidebar-collapsed .app-shell",
+            "body.sidebar-collapsed.non-home-page .app-shell",
+            "body.sidebar-collapsed .sidebar-text{display:none}",
+            ".sidebar-collapse-btn",
+        ):
+            self.assertIn(text, css, f"Missing sidebar collapse style: {text}")
+        self.assertIn('class="sidebar-collapse-btn"', html)
 
     def test_html_has_bridge_indicator(self):
         html = self._read("frontend/control_panel/index.html")
