@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-C1.2 Agent Handoff Prompt Quality Polish
+
+- Purpose: Upgrade generated Agent Handoff prompts from generic transfer notes into executable engineering task packages.
+- Key files: `src/xiaohuang/agent_handoff/models.py`, `intent_parser.py`, `prompt_builder.py`, `service.py`, `docs/agent-handoff-design.md`, tests.
+- Last completed:
+  1. Added `actual_task` to `AgentHandoffRequest` and rule-based extraction that strips wrapper phrases like “给 Claude Code 生成提示词，让它…”.
+  2. Service now uses `actual_task` for title, prompt body, file slug, database query, and combined domain routing.
+  3. Prompt builder now separates “用户原始需求” from “实际工程任务” and adds suggested files, database rule translation, concrete execution requirements, and acceptance criteria.
+  4. Tests cover actual-task extraction, title preference, prompt sections, suggested files, service brief query behavior, and combined domain routing.
+- Verification: targeted agent_handoff tests OK. Full verification should remain compileall + unittest + control_panel_web `--help` + voice_overlay `--help` + diff check.
+- Known traps: Handoff prompts must tell the target agent to perform the actual engineering task, not to generate another prompt.
+
 ## Current Snapshot（2026-05-10）— V1.5-C1.1 Fix Database Brief Client Contract
 
 - Purpose: Align Agent Handoff database brief access with the real local database API contract.

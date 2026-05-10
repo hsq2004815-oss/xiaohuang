@@ -36,6 +36,10 @@ The database client only accepts `http://127.0.0.1` or `http://localhost` endpoi
 
 Agent Handoff is a draft generator. It writes one `.txt` file in runtime output and does not execute commands, start agents, open terminals, delete files, move files, download data, or perform browser automation. Prompt text includes explicit warnings against dangerous commands and unrelated edits.
 
+## Prompt Quality
+
+C1.2 separates the user's wrapper request from the real engineering task. For example, "给 Claude Code 生成一个提示词，让它继续优化小黄任务历史页面" keeps the original request for traceability, but the generated prompt title and main task become "继续优化小黄任务历史页面". The prompt package includes suggested files, database rule translation, concrete execution requirements, and acceptance criteria so the target agent acts on the engineering task instead of generating another prompt.
+
 ## Why Not Auto-Launch Agents
 
 Auto-launching engineering agents crosses from low-risk prompt generation into local process execution. C1 keeps the workflow reviewable: the user can inspect and copy the prompt before any external agent acts.

@@ -12,6 +12,7 @@ from xiaohuang.agent_handoff.handoff_file_service import (
     write_handoff_file,
 )
 from xiaohuang.agent_handoff.intent_parser import detect_target_agent
+from xiaohuang.agent_handoff.intent_parser import extract_actual_task
 from xiaohuang.agent_handoff.models import (
     AgentHandoffRequest,
     AgentHandoffResult,
@@ -50,17 +51,20 @@ def create_agent_handoff(
         )
 
     target_agent = request.target_agent if request.target_agent and request.target_agent != "generic" else detect_target_agent(user_request)
-    domains = list(request.domain_hints or route_domains(user_request))
+    actual_task = str(request.actual_task or "").strip() or extract_actual_task(user_request, target_agent=target_agent) or user_request
+    route_text = f"{user_request} {actual_task}"
+    domains = list(request.domain_hints or route_domains(route_text))
 
     if request.use_database:
         fetcher = brief_fetcher or _default_brief_fetcher
-        database = fetcher(user_request, domains)
+        database = fetcher(f"{actual_task}\n\n用户原始需求：{user_request}", domains)
     else:
         database = DatabaseBriefResult(database_used=False, database_status="not_requested")
 
     normalized_request = AgentHandoffRequest(
         user_request=user_request,
         target_agent=target_agent,
+        actual_task=actual_task,
         project_hint=request.project_hint,
         domain_hints=domains,
         source=request.source,
@@ -77,7 +81,7 @@ def create_agent_handoff(
 
     try:
         writer = file_writer or _default_file_writer
-        path = writer(root, target_agent, user_request, prompt)
+        path = writer(root, target_agent, actual_task, prompt)
         rel_path = relative_handoff_path(path, root)
     except Exception as exc:
         return AgentHandoffResult(

@@ -10,6 +10,12 @@ from xiaohuang.agent_handoff.service import create_agent_handoff
 
 class AgentHandoffServiceTests(unittest.TestCase):
     def test_complete_success_generates_file(self):
+        brief_calls = []
+
+        def fetcher(query, domains):
+            brief_calls.append((query, domains))
+            return DatabaseBriefResult(True, "used", "任务历史上下文")
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             result = create_agent_handoff(
@@ -18,7 +24,7 @@ class AgentHandoffServiceTests(unittest.TestCase):
                     target_agent="claude_code",
                 ),
                 project_root=root,
-                brief_fetcher=lambda query, domains: DatabaseBriefResult(True, "used", "任务历史上下文"),
+                brief_fetcher=fetcher,
             )
 
             self.assertTrue(result.ok)
@@ -27,6 +33,10 @@ class AgentHandoffServiceTests(unittest.TestCase):
             self.assertIn("xiaohuang_project", result.domains)
             self.assertTrue((root / result.handoff_path).is_file())
             self.assertTrue(result.database_used)
+            self.assertIn("继续优化小黄任务历史页面", result.title)
+            self.assertIn("继续优化小黄任务历史页面", brief_calls[0][0])
+            self.assertIn("用户原始需求", brief_calls[0][0])
+            self.assertIn("## 实际工程任务", result.handoff_preview)
 
     def test_database_unavailable_still_succeeds(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -39,6 +49,22 @@ class AgentHandoffServiceTests(unittest.TestCase):
             self.assertTrue(result.ok)
             self.assertFalse(result.database_used)
             self.assertEqual(result.database_status, "unavailable")
+
+    def test_request_actual_task_is_used_for_title_and_prompt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = create_agent_handoff(
+                AgentHandoffRequest(
+                    user_request="帮我给 Codex 写一个任务，让它审查 d5a611f 这个提交有没有问题",
+                    target_agent="codex",
+                    actual_task="审查 d5a611f 这个提交有没有问题",
+                ),
+                project_root=Path(tmp),
+                brief_fetcher=lambda query, domains: DatabaseBriefResult(False, "unavailable"),
+            )
+
+            self.assertTrue(result.ok)
+            self.assertIn("审查 d5a611f 这个提交有没有问题", result.title)
+            self.assertIn("实际工程任务", result.handoff_preview)
 
     def test_empty_user_request_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 class AgentHandoffRequest:
     user_request: str
     target_agent: str = "generic"
+    actual_task: str | None = None
     project_hint: str | None = None
     domain_hints: list[str] = field(default_factory=list)
     source: str = "text"

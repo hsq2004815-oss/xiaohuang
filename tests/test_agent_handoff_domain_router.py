@@ -30,6 +30,12 @@ class AgentHandoffDomainRouterTests(unittest.TestCase):
     def test_default_domains(self):
         self.assertEqual(route_domains("整理一下需求"), ["agent_workflow", "xiaohuang_project"])
 
+    def test_combined_user_request_and_actual_task_routes_ui_agent_project(self):
+        domains = route_domains("给 Claude Code 生成提示词 继续优化小黄任务历史页面")
+        self.assertIn("agent_workflow", domains)
+        self.assertIn("xiaohuang_project", domains)
+        self.assertIn("ui_design", domains)
+
 
 if __name__ == "__main__":
     unittest.main()
