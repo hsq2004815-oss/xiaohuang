@@ -1,5 +1,20 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-B0 Task Result History Design Doc
+
+- Purpose: Design the task result history layer before any implementation. No code changes — design document only.
+- Key files: `docs/task-result-history-design.md` (new), `TASK_MEMORY.md` (updated).
+- Last completed:
+  1. Design doc answers 10 core questions: why history, what to save, what NOT to save, where to save, schema fields, sanitization rules, differentiation from pending task registry and runtime events, extensibility, B1 minimum scope, and module boundaries.
+  2. Recommended storage: local JSONL file (`data/task_history/task_results.jsonl`) + in-memory recent cache.
+  3. Schema: 14 fields with `history_id`, `task_id`, timestamps, `task_type`, `status`, `summary`, `safe_details_excerpt` (≤500 chars, sanitized), `tags`, `schema_version`.
+  4. Sanitization: unified redaction rules for api_key/token/password/secret/authorization/Bearer; Traceback → first line only; multi-line logs → statistics only; details → excerpt ≤500 chars.
+  5. Module boundary mandate: `task_result_history_service.py` handles save/sanitize/read; `control_panel_web_service.py` only calls it after confirm; `text_task_execution_service.py` does NOT persist history.
+  6. B1 scope: only completed/failed readonly task results; no chat messages, no pending/cancelled/blocked; no search/pagination/deletion; no database.
+  7. Differentiation: pending task registry = "can execute" (short-lived, memory); runtime events = "what happened" (clearable, diagnostic); task history = "what I asked XiaoHuang to do and what the result was" (persistent, user-facing).
+- Verification: git diff --check OK; git status clean (only docs/task-result-history-design.md + TASK_MEMORY.md changed).
+- Known traps: B0 is design only — no code implementation; next step is V1.5-B1 implementation following this design.
+
 ## Current Snapshot（2026-05-10）— V1.5-A3.1 Health Report Error Signal Polish
 
 - Purpose: Fix two issues — historical log errors should not be treated as current system broken, and technical PowerShell log lines should be summarized into human-readable diagnostics.
