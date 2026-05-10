@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-B2.3 Task History Independent Scroll Containers
+
+- Purpose: Fix Tasks page scroll behavior — left list and right detail must each scroll independently without pushing the page shell taller.
+- Key files: `frontend/control_panel/index.html` (added pane+scroll wrapper divs), `frontend/control_panel/assets/app.js` (updated render targets from tasks-history-list→tasks-history-list-scroll, detail→tasks-history-detail-scroll), `frontend/control_panel/assets/style.css` (height constraints + independent scroll rules), `tests/test_control_panel_web_service.py` (+2 new CSS/HTML tests).
+- Last completed:
+  1. HTML: Wrapped `tasks-history-list` in `tasks-history-list-pane → tasks-history-list-scroll`; wrapped `tasks-history-detail` in `tasks-history-detail-pane → tasks-history-detail-scroll`. Placeholder text moved into scroll container.
+  2. JS: `renderTaskHistory()` now targets `#tasks-history-list-scroll`; `renderTaskHistoryDetail()` targets `#tasks-history-detail-scroll`; `initTaskHistory()` click delegation on scroll container.
+  3. CSS: `.tasks-history-shell` has `height:100%` + `overflow:hidden`; `.tasks-history-grid` has `flex:1 1 auto` + `min-height:0` + `overflow:hidden`; pane classes enforce `min-height:0` + `overflow:hidden` + `display:flex; flex-direction:column`; scroll classes have `flex:1 1 auto` + `min-height:0` + `overflow-y:auto`.
+  4. Grid columns widened slightly: `minmax(320px,0.95fr) minmax(420px,1.15fr)`.
+  5. All B2/B2.1/B2.2 features preserved: card click, empty/error/loading states, health report structured display, muted raw summary, badge labels.
+- Verification: compileall OK; unittest discover OK (1020 tests, 1 symlink-permission skip, +2 new); control_panel_web --help OK; voice_overlay --help OK; diff check OK.
+- Known traps: Parent chain in content-section needs min-height:0 propagation; grid must have overflow:hidden to contain children; scroll containers need explicit flex:1 to fill available space.
+
 ## Current Snapshot（2026-05-10）— V1.5-B2.2 Task History Readability Polish
 
 - Purpose: Improve task history page readability — distinguish task status from report signal, structure health report details into sections, improve detail panel layout.

@@ -166,11 +166,18 @@
         </div>
         <div class="tasks-history-loading" id="tasks-history-loading">正在读取任务历史...</div>
         <div class="tasks-history-grid" id="tasks-history-grid">
-          <div class="tasks-history-list glass-card" id="tasks-history-list">
+          <div class="tasks-history-list-pane">
+            <div class="tasks-history-list glass-card" id="tasks-history-list">
+              <div class="tasks-history-list-scroll" id="tasks-history-list-scroll"></div>
+            </div>
           </div>
-          <aside class="tasks-history-detail glass-card" id="tasks-history-detail">
-            <p class="tasks-history-detail-placeholder">选择一条任务查看安全详情</p>
-          </aside>
+          <div class="tasks-history-detail-pane">
+            <aside class="tasks-history-detail glass-card" id="tasks-history-detail">
+              <div class="tasks-history-detail-scroll" id="tasks-history-detail-scroll">
+                <p class="tasks-history-detail-placeholder">选择一条任务查看安全详情</p>
+              </div>
+            </aside>
+          </div>
         </div>
       </section>
 

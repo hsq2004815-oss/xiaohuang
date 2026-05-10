@@ -1225,18 +1225,35 @@ body.chat-page #section-chat .text-chat-layout{
 
 .tasks-history-grid{
   display:grid;
-  grid-template-columns:minmax(320px,0.9fr) minmax(360px,1.1fr);
+  grid-template-columns:minmax(320px,0.95fr) minmax(420px,1.15fr);
   gap:16px;
-  flex:1;
+  flex:1 1 auto;
   min-height:0;
   overflow:hidden;
 }
 
+/* left list column */
+.tasks-history-list-pane{
+  min-height:0;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
 .tasks-history-list{
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  overflow:hidden;
+  padding:4px;
+}
+
+.tasks-history-list-scroll{
+  flex:1 1 auto;
+  min-height:0;
   overflow-y:auto;
   overscroll-behavior:contain;
-  padding:4px;
-  max-height:100%;
+  overflow-x:hidden;
 }
 
 .task-history-card{
@@ -1345,12 +1362,28 @@ body.chat-page #section-chat .text-chat-layout{
   color:var(--text-muted,#7b8ba0);
 }
 
-/* detail panel */
+/* right detail column */
+.tasks-history-detail-pane{
+  min-height:0;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
 .tasks-history-detail{
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  overflow:hidden;
+  padding:16px;
+}
+
+.tasks-history-detail-scroll{
+  flex:1 1 auto;
+  min-height:0;
   overflow-y:auto;
   overscroll-behavior:contain;
-  padding:16px;
-  max-height:100%;
+  overflow-x:hidden;
 }
 
 .tasks-history-detail-placeholder{

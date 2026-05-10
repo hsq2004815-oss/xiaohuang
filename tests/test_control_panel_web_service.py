@@ -1170,7 +1170,9 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
         self.assertIn("tasks-history-shell", html)
         self.assertIn("tasks-history-grid", html)
         self.assertIn("tasks-history-list", html)
+        self.assertIn("tasks-history-list-scroll", html)
         self.assertIn("tasks-history-detail", html)
+        self.assertIn("tasks-history-detail-scroll", html)
         self.assertIn("暂无任务历史", html)
 
     def test_html_tasks_has_refresh_button(self):
@@ -1228,6 +1230,22 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
             ".tasks-history-detail-muted",
         ):
             self.assertIn(cls_name, css, f"Missing B2.2 CSS class: {cls_name}")
+
+    def test_css_has_scroll_container_classes(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        for cls_name in (
+            ".tasks-history-list-pane",
+            ".tasks-history-list-scroll",
+            ".tasks-history-detail-pane",
+            ".tasks-history-detail-scroll",
+        ):
+            self.assertIn(cls_name, css, f"Missing B2.3 scroll container class: {cls_name}")
+
+    def test_html_has_scroll_container_elements(self):
+        html = self._read("frontend/control_panel/index.html")
+        for elem in ("tasks-history-list-pane", "tasks-history-list-scroll",
+                     "tasks-history-detail-pane", "tasks-history-detail-scroll"):
+            self.assertIn(elem, html, f"Missing B2.3 scroll element: {elem}")
 
     def test_js_read_files_count_is_escaped(self):
         js = self._read("frontend/control_panel/assets/app.js")

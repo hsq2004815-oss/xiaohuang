@@ -1272,7 +1272,7 @@
   }
 
   function renderTaskHistory() {
-    var list = $('tasks-history-list');
+    var list = $('tasks-history-list-scroll');
 
     if (!taskHistoryItems.length) {
       if (list) list.innerHTML = '';
@@ -1378,7 +1378,7 @@
   }
 
   function renderTaskHistoryDetail(item) {
-    var detail = $('tasks-history-detail');
+    var detail = $('tasks-history-detail-scroll');
     if (!detail) return;
 
     if (!item) {
@@ -1625,7 +1625,7 @@
 
   /* ─── Init ─── */
   function initTaskHistory() {
-    var list = $('tasks-history-list');
+    var list = $('tasks-history-list-scroll');
     if (list) {
       list.addEventListener('click', function (event) {
         var card = event.target.closest('.task-history-card');
