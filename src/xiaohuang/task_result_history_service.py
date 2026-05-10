@@ -36,7 +36,7 @@ _SENSITIVE_VALUE_PATTERNS = (
 
 _cache: list[dict] = []
 _cache_loaded: bool = False
-_history_path: Path | None = None
+_cache_project_root: Path | None = None
 
 
 def _redact_sensitive_text(text: str) -> str:
@@ -88,15 +88,17 @@ def get_task_history_path(project_root: Path | str) -> Path:
 
 def init_task_history(project_root: Path | str) -> None:
     """Load recent task history entries from JSONL into the in-memory cache."""
-    global _cache, _cache_loaded, _history_path
-    _history_path = get_task_history_path(project_root)
+    global _cache, _cache_loaded, _cache_project_root
+    root = Path(project_root).resolve()
+    _cache_project_root = root
     _cache = []
     _cache_loaded = True
 
+    file_path = get_task_history_path(root)
     try:
-        if not _history_path.is_file():
+        if not file_path.is_file():
             return
-        text = _history_path.read_text(encoding="utf-8")
+        text = file_path.read_text(encoding="utf-8")
     except Exception:
         return
 
@@ -170,6 +172,13 @@ def _should_save_result(result: TextTaskExecutionResult) -> bool:
     return task_type in ALLOWED_READONLY_TASK_TYPES
 
 
+def _ensure_cache_for_root(project_root: Path | str) -> None:
+    global _cache_project_root
+    root = Path(project_root).resolve()
+    if _cache_project_root != root:
+        init_task_history(root)
+
+
 def append_task_result(
     project_root: Path | str,
     result: TextTaskExecutionResult,
@@ -179,7 +188,7 @@ def append_task_result(
 
     Never raises — all write/encode failures are caught internally.
     """
-    global _cache, _history_path
+    global _cache
 
     if not _should_save_result(result):
         return None
@@ -187,9 +196,8 @@ def append_task_result(
     entry = sanitize_task_result_for_history(result, task=task)
 
     root = Path(project_root).resolve()
-    if _history_path is None or str(_history_path).startswith(str(root)) is False and _history_path is not None:
-        pass
-    file_path = _history_path if _history_path is not None else get_task_history_path(root)
+    _ensure_cache_for_root(root)
+    file_path = get_task_history_path(root)
 
     try:
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -211,10 +219,8 @@ def get_recent_task_results(
     limit: int = 20,
 ) -> list[dict]:
     """Return the most recent task history entries (newest first) from cache."""
-    global _cache_loaded
-
-    if not _cache_loaded:
-        init_task_history(project_root)
+    root = Path(project_root).resolve()
+    _ensure_cache_for_root(root)
 
     n = max(0, int(limit) if limit else 20)
     return list(reversed(_cache[-n:]))
@@ -222,7 +228,7 @@ def get_recent_task_results(
 
 def _reset_for_test() -> None:
     """Reset module-level state for test isolation. Test-only."""
-    global _cache, _cache_loaded, _history_path
+    global _cache, _cache_loaded, _cache_project_root
     _cache = []
     _cache_loaded = False
-    _history_path = None
+    _cache_project_root = None

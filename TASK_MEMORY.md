@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-B1.1 Task History Path Isolation, Read API, and Layout Plan
+
+- Purpose: Fix B1 path isolation bug (different project_root could write to wrong JSONL), add backend read API for task history, and document B2/B3 UI layout plan.
+- Key files: `src/xiaohuang/task_result_history_service.py` (refactored path isolation), `src/xiaohuang/control_panel_web_service.py` (+get_recent_task_history API), `docs/task-result-history-design.md` (+layout plan section), tests.
+- Last completed:
+  1. Path isolation: replaced `_history_path` with `_cache_project_root` tracking. Added `_ensure_cache_for_root()` that auto-switches cache when project_root changes. `append_task_result()` and `get_recent_task_results()` always use the passed-in project_root for file path calculation. Removed invalid `pass` branch.
+  2. Read API: `ControlPanelWebApi.get_recent_task_history(payload)` — default limit=20, min=1, max=50. Non-numeric/negative/oversized values clamped safely. File not exists returns `ok=True, items=[]`. Response does not leak file paths.
+  3. Layout plan documented: Tasks page is main history entry point (list + detail panel). Chat right rail only shows 5 recent entries as lightweight shortcut. Task card fields: title + status badge + summary (1-2 lines) + time + tags + read_files_count. Detail panel shows safe fields only. B2 = Tasks page list first, B3 = Chat rail + tags filtering + search.
+  4. 3 new path isolation tests (two roots, cross-contamination prevention). 6 new read API tests (items return, empty root, limit clamping, negative/string limit safety, no path leaks). 2 new module boundary tests (text_task_execution_service does not import task_result_history_service, frontend unchanged).
+- Verification: compileall OK; unittest discover OK (999 tests, 1 symlink-permission skip, +10 new); control_panel_web --help OK; voice_overlay --help OK; diff check OK.
+- Known traps: Single-cache approach (plan A) sufficient for single process model; `_ensure_cache_for_root` triggers on every call but init_task_history is fast with small files; no frontend changes in this step.
+
 ## Current Snapshot（2026-05-10）— V1.5-B1 Task Result History Service Foundation
 
 - Purpose: Implement the task result history backend service per B0 design — new module, JSONL persistence, sanitization, and minimal integration into confirm_text_task.

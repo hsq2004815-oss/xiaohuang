@@ -350,6 +350,22 @@ class ControlPanelWebApi:
         except Exception:
             return _fail("清空最近事件失败", "clear_runtime_events_error")
 
+    def get_recent_task_history(self, payload: dict | None = None) -> dict:
+        try:
+            raw_limit = _coerce_optional_int(
+                (payload or {}).get("limit") if isinstance(payload, dict) else None
+            )
+            if raw_limit is None:
+                limit = 20
+            else:
+                limit = max(1, min(raw_limit, 50))
+
+            from xiaohuang.task_result_history_service import get_recent_task_results
+            items = get_recent_task_results(self._project_root, limit=limit)
+            return _ok(data={"items": items}, message="任务历史读取完成")
+        except Exception:
+            return _ok(data={"items": []}, message="任务历史不可用")
+
 
 def _record_cp_event(event_type: str, message: str, level: str = "info") -> None:
     try:

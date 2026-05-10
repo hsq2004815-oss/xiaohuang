@@ -614,6 +614,100 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertNotIn("task_results.jsonl", text,
                          "text_task_execution_service.py must not reference task_results.jsonl")
 
+    def test_text_task_execution_service_does_not_import_task_result_history(self):
+        src = Path(__file__).resolve().parents[1] / "src" / "xiaohuang" / "text_task_execution_service.py"
+        text = src.read_text(encoding="utf-8")
+        self.assertNotIn("task_result_history_service", text,
+                         "text_task_execution_service.py must not import task_result_history_service")
+
+    # ------------------------------------------------------------------
+    # get_recent_task_history API (B1.1)
+    # ------------------------------------------------------------------
+
+    def test_get_recent_task_history_returns_items(self):
+        from xiaohuang.task_result_history_service import _reset_for_test
+        _reset_for_test()
+
+        logs = Path(self.tmp.name) / "logs"
+        logs.mkdir()
+        (logs / "app.log").write_text("ERROR one\n", encoding="utf-8")
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        api._text_task_registry.register(_pending_task(
+            "text-task-hist-api", task_type="readonly_health_report",
+        ))
+        api.confirm_text_task({"task_id": "text-task-hist-api"})
+
+        result = api.get_recent_task_history({"limit": 5})
+        self.assertTrue(result["ok"])
+        items = result["data"]["items"]
+        self.assertIsInstance(items, list)
+        self.assertGreaterEqual(len(items), 1)
+        first = items[0]
+        self.assertEqual(first["task_type"], "readonly_health_report")
+        self.assertIn("summary", first)
+        self.assertIn("safe_details_excerpt", first)
+        json.dumps(result)
+        _reset_for_test()
+
+    def test_get_recent_task_history_empty_on_new_root(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name) / "nonexistent"
+
+        result = api.get_recent_task_history({})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["items"], [])
+        json.dumps(result)
+
+    def test_get_recent_task_history_limit_clamped(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+
+        result = api.get_recent_task_history({"limit": 999})
+        self.assertTrue(result["ok"])
+        self.assertIsInstance(result["data"]["items"], list)
+        json.dumps(result)
+
+    def test_get_recent_task_history_negative_limit_safe(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+
+        result = api.get_recent_task_history({"limit": -1})
+        self.assertTrue(result["ok"])
+        self.assertIsInstance(result["data"]["items"], list)
+        json.dumps(result)
+
+    def test_get_recent_task_history_string_limit_safe(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+
+        result = api.get_recent_task_history({"limit": "abc"})
+        self.assertTrue(result["ok"])
+        self.assertIsInstance(result["data"]["items"], list)
+        json.dumps(result)
+
+    def test_get_recent_task_history_no_leak_path(self):
+        from xiaohuang.task_result_history_service import _reset_for_test
+        _reset_for_test()
+
+        logs = Path(self.tmp.name) / "logs"
+        logs.mkdir()
+        (logs / "app.log").write_text("ERROR one\n", encoding="utf-8")
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        api._text_task_registry.register(_pending_task(
+            "text-task-no-leak", task_type="readonly_health_report",
+        ))
+        api.confirm_text_task({"task_id": "text-task-no-leak"})
+
+        result = api.get_recent_task_history({"limit": 5})
+        result_json = json.dumps(result)
+        self.assertNotIn("task_results.jsonl", result_json,
+                         "API response must not leak internal file paths")
+        self.assertNotIn("data/task_history", result_json,
+                         "API response must not leak internal dir paths")
+        _reset_for_test()
+
 
 class V13UIFrontendStructureTests(unittest.TestCase):
     """Structural and content checks for redesigned frontend."""

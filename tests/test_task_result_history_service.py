@@ -394,3 +394,67 @@ class FileIOEdgeCaseTests(unittest.TestCase):
     def test_file_not_exists_returns_empty_list(self):
         results = get_recent_task_results(self.project_root, limit=10)
         self.assertEqual(results, [])
+
+
+class PathIsolationTests(unittest.TestCase):
+    """Verify that different project_root values are fully isolated."""
+
+    def setUp(self) -> None:
+        _reset_for_test()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root_a = Path(self.tmp.name) / "a"
+        self.root_b = Path(self.tmp.name) / "b"
+        self.root_a.mkdir(parents=True, exist_ok=True)
+        self.root_b.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self) -> None:
+        _reset_for_test()
+        self.tmp.cleanup()
+
+    def test_append_writes_to_correct_project_root(self):
+        append_task_result(self.root_a, _result(task_id="task-a"))
+        append_task_result(self.root_b, _result(task_id="task-b"))
+
+        path_a = get_task_history_path(self.root_a)
+        path_b = get_task_history_path(self.root_b)
+
+        self.assertTrue(path_a.is_file())
+        self.assertTrue(path_b.is_file())
+
+        text_a = path_a.read_text(encoding="utf-8")
+        text_b = path_b.read_text(encoding="utf-8")
+
+        self.assertIn("task-a", text_a)
+        self.assertNotIn("task-b", text_a)
+        self.assertIn("task-b", text_b)
+        self.assertNotIn("task-a", text_b)
+
+    def test_get_recent_isolated_by_project_root(self):
+        append_task_result(self.root_a, _result(task_id="task-a"))
+        append_task_result(self.root_b, _result(task_id="task-b"))
+
+        results_a = get_recent_task_results(self.root_a, limit=10)
+        results_b = get_recent_task_results(self.root_b, limit=10)
+
+        task_ids_a = [r["task_id"] for r in results_a]
+        task_ids_b = [r["task_id"] for r in results_b]
+
+        self.assertIn("task-a", task_ids_a)
+        self.assertNotIn("task-b", task_ids_a)
+        self.assertIn("task-b", task_ids_b)
+        self.assertNotIn("task-a", task_ids_b)
+
+    def test_root_switch_does_not_mix_data(self):
+        append_task_result(self.root_a, _result(task_id="task-a"))
+        results_a1 = get_recent_task_results(self.root_a, limit=10)
+        self.assertEqual(len(results_a1), 1)
+        self.assertEqual(results_a1[0]["task_id"], "task-a")
+
+        append_task_result(self.root_b, _result(task_id="task-b"))
+        results_b = get_recent_task_results(self.root_b, limit=10)
+        self.assertEqual(len(results_b), 1)
+        self.assertEqual(results_b[0]["task_id"], "task-b")
+
+        results_a2 = get_recent_task_results(self.root_a, limit=10)
+        self.assertEqual(len(results_a2), 1)
+        self.assertEqual(results_a2[0]["task_id"], "task-a")
