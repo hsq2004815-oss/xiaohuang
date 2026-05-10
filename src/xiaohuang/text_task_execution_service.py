@@ -450,6 +450,28 @@ def _compact_health_text(text: str, limit: int = 96) -> str:
     return s[:limit].rstrip() + "…" if len(s) > limit else s
 
 
+def _summarize_log_signal(line: str) -> str | None:
+    s = str(line or "").strip()
+    if not s:
+        return None
+    lower = s.lower()
+    if any(kw in lower for kw in ("parsererror", "categoryinfo",
+                                     "fullyqualifiederrorid", "ampersandnotallowed",
+                                     "parentcontainserrorrecordexception")):
+        if "tray_app.log" in lower:
+            return "tray_app.log 中发现 PowerShell 解析错误，建议检查托盘启动脚本或命令引用格式。"
+        return "日志中发现 PowerShell 解析错误，可能与命令引用或特殊字符有关，建议检查对应脚本。"
+    if "get_status" in lower or "获取状态失败" in s:
+        return "控制面板状态读取曾失败，建议观察控制面板状态刷新是否正常。"
+    if any(kw in lower for kw in ("start_xiaohuang", "restart_xiaohuang",
+                                     "启动失败", "重启失败")):
+        return "启动/重启流程曾出现失败记录，建议确认当前进程状态和日志。"
+    compacted = _compact_health_text(s, 100)
+    if compacted:
+        return "历史日志中发现错误记录：" + compacted
+    return None
+
+
 def _execute_readonly_health_report(
     task: dict[str, Any],
     project_root: Path,
@@ -534,16 +556,16 @@ def _execute_readonly_health_report(
             src = str(e.get("source") or "")
             sources[src] = sources.get(src, 0) + 1
         detail_parts.append(f"  - 最近事件: {total_events} 条")
-        detail_parts.append(f"  - error/warning: {error_count}/{warning_count}")
+        detail_parts.append(f"  - 当前 error/warning: {error_count}/{warning_count}")
         if sources:
             top_src = sorted(sources, key=sources.get, reverse=True)[:3]
             detail_parts.append(f"  - 活跃模块: {', '.join(top_src)}")
         if last_error_text:
-            detail_parts.append(f"  - 最近 error: {last_error_text}")
+            detail_parts.append(f"  - 当前 error 提示: {last_error_text}")
         if last_warning_text:
-            detail_parts.append(f"  - 最近 warning: {last_warning_text}")
+            detail_parts.append(f"  - 当前 warning 提示: {last_warning_text}")
         if error_count + warning_count == 0:
-            detail_parts.append("  - 未发现 error/warning 事件")
+            detail_parts.append("  - 当前未发现 error/warning 事件")
     except Exception:
         detail_parts.append("  - 运行事件读取失败")
         health_warnings.append("运行事件读取失败")
@@ -551,11 +573,12 @@ def _execute_readonly_health_report(
 
     # ── 4. Recent errors summary ──
     detail_parts.append("")
-    detail_parts.append("四、最近错误")
+    detail_parts.append("四、最近错误（历史日志）")
     log_error = 0
     log_warning = 0
     log_files = 0
-    log_extracts: list[str] = []
+    log_signals: list[str] = []
+    seen_signals: set[str] = set()
     try:
         analysis = _analyze_recent_logs(project_root)
         log_files = len(analysis["read_files"])
@@ -566,28 +589,33 @@ def _execute_readonly_health_report(
         log_error = int(err_m.group(1)) if err_m else 0
         log_warning = int(warn_m.group(1)) if warn_m else 0
         detail_parts.append(f"  - 读取日志文件: {log_files} 个")
-        detail_parts.append(f"  - ERROR/WARNING: {log_error}/{log_warning}")
+        detail_parts.append(f"  - 历史 ERROR/WARNING: {log_error}/{log_warning}")
         if analysis["details"] and "未发现关键错误" not in analysis["details"]:
             for line in analysis["details"].split("\n"):
                 stripped = line.strip()
                 if not stripped or stripped.startswith("未发现") or stripped.startswith("读取失败"):
                     continue
-                compacted = _compact_health_text(stripped, 100)
-                if compacted:
-                    log_extracts.append(compacted)
-            for extract in log_extracts[:3]:
-                detail_parts.append(f"  - {extract}")
+                signal = _summarize_log_signal(stripped)
+                if signal and signal not in seen_signals:
+                    seen_signals.add(signal)
+                    log_signals.append(signal)
+            for signal in log_signals[:2]:
+                detail_parts.append(f"  - 代表性问题：{signal}")
+        if log_error > 0:
+            detail_parts.append("  - 提醒：历史日志错误不一定代表功能正在失败，可结合当前运行事件判断。")
     except Exception:
         detail_parts.append("  - 日志分析不可用")
         health_unknowns.append("日志分析不可用")
 
     # ── 5. Overall status (built from health tracking) ──
-    if error_count > 0 or log_error > 0:
-        health_errors.append(f"发现 {error_count + log_error} 条错误")
+    if error_count > 0:
+        health_errors.append(f"当前运行事件发现 {error_count} 条 error")
     if not paths["ok"]:
         health_errors.append("关键路径缺失")
+    if log_error > 0:
+        health_warnings.append(f"历史日志中发现 {log_error} 条 ERROR 记录")
     if warning_count > 0 or log_warning > 0:
-        health_warnings.append(f"发现 {warning_count + log_warning} 条 warning")
+        health_warnings.append(f"发现 {warning_count + log_warning} 条 warning 记录")
 
     if health_errors:
         overall = "有错误"
@@ -607,7 +635,12 @@ def _execute_readonly_health_report(
     if health_errors:
         summary = f"总体状态：有错误。{'; '.join(health_errors[:2])}，请优先排查。"
     elif health_warnings:
-        summary = f"总体状态：有警告。{'; '.join(health_warnings[:2])}，建议观察。"
+        summary = "总体状态：有警告。"
+        if log_error > 0:
+            summary += f" 历史日志中发现 {log_error} 条 ERROR 记录，"
+        else:
+            summary += f" 发现 {warning_count + log_warning} 条 warning 记录，"
+        summary += "建议排查来源。"
     elif health_unknowns:
         summary = "总体状态：信息不足。部分模块无法读取，建议打开控制面板查看更多状态。"
     else:
@@ -619,12 +652,14 @@ def _execute_readonly_health_report(
     if health_errors:
         if not paths["ok"]:
             detail_parts.append("  - 核心路径缺失，请检查项目安装是否完整")
-        if error_count > 0 or log_error > 0:
-            detail_parts.append("  - 发现错误事件或日志，建议运行\"查看最近错误\"排查详情")
+        if error_count > 0:
+            detail_parts.append("  - 当前运行事件中存在 error，建议优先排查最近错误")
         detail_parts.append("  - 优先处理 control_panel / voice_overlay 相关错误")
     elif health_warnings:
         if cfg_warnings:
             detail_parts.append("  - 存在配置缺口，建议检查设置页面补全")
+        if log_error > 0:
+            detail_parts.append("  - 历史日志中存在错误记录，建议排查是否仍会复现")
         if warning_count > 0 or log_warning > 0:
             detail_parts.append("  - 存在 warning，暂时可继续使用，建议观察来源")
         detail_parts.append("  - 如语音无响应，检查唤醒/STT/TTS 配置")

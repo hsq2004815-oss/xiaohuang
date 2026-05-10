@@ -486,6 +486,13 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
         self.assertIn("有警告", result.summary)
 
     def test_health_report_runtime_event_excerpts_are_compacted(self):
+        (self.project_root / "logs").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "src" / "xiaohuang").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts" / "control_panel_web.py").write_text("", encoding="utf-8")
+        (self.project_root / "scripts" / "voice_overlay.py").write_text("", encoding="utf-8")
+        (self.project_root / "frontend" / "control_panel").mkdir(parents=True, exist_ok=True)
+
         from xiaohuang.capabilities.runtime_events import service as es
         from xiaohuang.capabilities.runtime_events.service import record_event
         es._ring.clear()
@@ -501,8 +508,8 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
             )
 
             self.assertTrue(result.ok)
-            self.assertIn("最近 warning:", result.details)
-            self.assertIn("最近 error:", result.details)
+            self.assertIn("当前 warning 提示:", result.details)
+            self.assertIn("当前 error 提示:", result.details)
             self.assertNotIn("Traceback", result.details)
             self.assertNotIn("line 42", result.details)
         finally:
@@ -528,6 +535,95 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
         finally:
             es._ring.clear()
 
+    def test_health_report_historical_log_error_shows_warning(self):
+        (self.project_root / "src" / "xiaohuang").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts" / "control_panel_web.py").write_text("", encoding="utf-8")
+        (self.project_root / "scripts" / "voice_overlay.py").write_text("", encoding="utf-8")
+        (self.project_root / "frontend" / "control_panel").mkdir(parents=True, exist_ok=True)
+        logs = self.project_root / "logs"
+        logs.mkdir()
+        (logs / "tray_app.log").write_text(
+            "ERROR + CategoryInfo : ParserError: (:), ParentContainsErrorRecordException\n"
+            "ERROR + FullyQualifiedErrorId : AmpersandNotAllowed\n",
+            encoding="utf-8",
+        )
+
+        from xiaohuang.capabilities.runtime_events import service as es
+        es._ring.clear()
+
+        try:
+            result = execute_confirmed_text_task(
+                _task("readonly_health_report"),
+                project_root=self.project_root,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertIn("有警告", result.summary,
+                          f"Historical log errors should not be '有错误', got: {result.summary}")
+            self.assertIn("历史日志", result.details)
+            self.assertIn("历史 ERROR/WARNING", result.details)
+            self.assertIn("提醒", result.details)
+        finally:
+            es._ring.clear()
+
+    def test_health_report_runtime_error_still_shows_error(self):
+        (self.project_root / "logs").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "src" / "xiaohuang").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts" / "control_panel_web.py").write_text("", encoding="utf-8")
+        (self.project_root / "scripts" / "voice_overlay.py").write_text("", encoding="utf-8")
+        (self.project_root / "frontend" / "control_panel").mkdir(parents=True, exist_ok=True)
+
+        from xiaohuang.capabilities.runtime_events import service as es
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        es._ring.clear()
+
+        try:
+            record_event("control_panel", "get_status", "获取状态失败", level="error")
+
+            result = execute_confirmed_text_task(
+                _task("readonly_health_report"),
+                project_root=self.project_root,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertIn("有错误", result.summary,
+                          f"Current runtime error should show '有错误', got: {result.summary}")
+        finally:
+            es._ring.clear()
+
+    def test_health_report_powershell_error_summarized_as_human_text(self):
+        (self.project_root / "src" / "xiaohuang").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts" / "control_panel_web.py").write_text("", encoding="utf-8")
+        (self.project_root / "scripts" / "voice_overlay.py").write_text("", encoding="utf-8")
+        (self.project_root / "frontend" / "control_panel").mkdir(parents=True, exist_ok=True)
+        logs = self.project_root / "logs"
+        logs.mkdir()
+        (logs / "tray_app.log").write_text(
+            "ERROR + CategoryInfo : ParserError: (:), ParentContainsErrorRecordException\n"
+            "ERROR + FullyQualifiedErrorId : AmpersandNotAllowed\n",
+            encoding="utf-8",
+        )
+
+        from xiaohuang.capabilities.runtime_events import service as es
+        es._ring.clear()
+
+        try:
+            result = execute_confirmed_text_task(
+                _task("readonly_health_report"),
+                project_root=self.project_root,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertIn("PowerShell 解析错误", result.details)
+            self.assertIn("tray_app.log", result.details)
+            self.assertNotIn("ParentContainsErrorRecordException", result.details)
+            self.assertNotIn("FullyQualifiedErrorId", result.details)
+        finally:
+            es._ring.clear()
+
     def test_health_report_module_failure_affects_status(self):
         logs = self.project_root / "logs"
         logs.mkdir()
@@ -540,7 +636,7 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertIn("有错误", result.summary,
-                      f"Should show error status, got: {result.summary}")
+                      f"Missing paths should show error status, got: {result.summary}")
 
 
 def _task(

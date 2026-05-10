@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-A3.1 Health Report Error Signal Polish
+
+- Purpose: Fix two issues — historical log errors should not be treated as current system broken, and technical PowerShell log lines should be summarized into human-readable diagnostics.
+- Key files: `text_task_execution_service.py` (+`_summarize_log_signal`, revised classification, updated labels).
+- Last completed:
+  1. `_summarize_log_signal()` — recognizes ParserError/CategoryInfo/FullyQualifiedErrorId/AmpersandNotAllowed → human text; get_status failures; start/restart failures; fallback compact+redact.
+  2. Classification: runtime events error → `health_errors`; path missing → `health_errors`; log error → `health_warnings` (was `health_errors`); log warning → `health_warnings`.
+  3. Labels: 运行事件 shows "当前 error/warning" and "当前 error 提示"/"当前 warning 提示"; 日志 shows "历史 ERROR/WARNING" and section title "最近错误（历史日志）".
+  4. Log extracts use `_summarize_log_signal` with dedup (`seen_signals`), max 2 representative signals, plus a "提醒" line.
+  5. Summary: with only historical errors → "总体状态：有警告。历史日志中发现 N 条 ERROR 记录，建议排查来源。"
+- Verification: compileall OK; unittest discover OK (945 tests, 1 symlink-permission skip, +3 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: Historical log errors alone never trigger "有错误"; ParserError/CategoryInfo never appear raw in report.
+
 ## Current Snapshot（2026-05-10）— V1.5-A3 Health Report Chat UX Polish
 
 - Purpose: Optimize how the `readonly_health_report` result card renders in Chat — dedicated card with status badge, section parsing, clean typography.
