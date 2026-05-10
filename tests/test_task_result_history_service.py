@@ -112,6 +112,25 @@ class TaskResultHistoryServiceTests(unittest.TestCase):
         )
         self.assertIsNone(entry)
 
+    def test_append_agent_handoff_task_writes_safe_summary(self):
+        entry = append_task_result(
+            self.project_root,
+            _result(
+                task_type="agent_handoff_draft",
+                title="生成 Agent 交接提示词",
+                summary="已生成 Claude Code 提示词草稿。",
+                details="文件：runtime/agent_handoffs/demo.txt\n预览：短预览",
+            ),
+            task={"original_text": "给 Claude Code 生成提示词"},
+        )
+
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["task_type"], "agent_handoff_draft")
+        self.assertEqual(entry["result_kind"], "agent_handoff")
+        self.assertIn("handoff", entry["tags"])
+        self.assertIn("claude_code", entry["tags"])
+        self.assertIn("runtime/agent_handoffs/demo.txt", entry["safe_details_excerpt"])
+
     def test_append_blocked_status_returns_none(self):
         entry = append_task_result(
             self.project_root,
@@ -357,6 +376,11 @@ class ShouldSaveTests(unittest.TestCase):
     def test_unknown_type_should_not_save(self):
         self.assertFalse(_should_save_result(
             _result(task_type="unknown_task_type")
+        ))
+
+    def test_agent_handoff_should_save(self):
+        self.assertTrue(_should_save_result(
+            _result(task_type="agent_handoff_draft")
         ))
 
 

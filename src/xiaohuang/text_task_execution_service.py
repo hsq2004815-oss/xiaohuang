@@ -19,6 +19,12 @@ ALLOWED_READONLY_TASK_TYPES = {
     "readonly_health_report",
 }
 
+ALLOWED_AGENT_HANDOFF_TASK_TYPES = {
+    "agent_handoff_draft",
+}
+
+ALLOWED_TEXT_TASK_TYPES = ALLOWED_READONLY_TASK_TYPES | ALLOWED_AGENT_HANDOFF_TASK_TYPES
+
 _LOG_EXTENSIONS = {".log", ".txt"}
 _MAX_LOG_FILES = 5
 _MAX_BYTES_PER_FILE = 100 * 1024
@@ -45,10 +51,12 @@ def execute_confirmed_text_task(
         return _blocked_result(task_id, task_type, title, "该任务已被标记为不允许执行。", risk_level=risk_level)
     if risk_level == "high":
         return _blocked_result(task_id, task_type, title, "高风险文本任务不允许执行。", risk_level=risk_level)
-    if task_type not in ALLOWED_READONLY_TASK_TYPES:
-        return _blocked_result(task_id, task_type, title, "文本任务执行器只允许白名单只读任务。", risk_level=risk_level)
+    if task_type not in ALLOWED_TEXT_TASK_TYPES:
+        return _blocked_result(task_id, task_type, title, "文本任务执行器只允许白名单受控任务。", risk_level=risk_level)
 
     try:
+        if task_type == "agent_handoff_draft":
+            return _execute_agent_handoff_draft(task, root)
         if task_type == "readonly_log_analysis":
             return _execute_readonly_log_analysis(task, root)
         if task_type == "readonly_status_check":
@@ -68,6 +76,45 @@ def execute_confirmed_text_task(
         return _failed_result(task_id, task_type, title, f"只读任务执行失败: {exc}", risk_level=risk_level)
 
     return _blocked_result(task_id, task_type, title, "未知只读任务类型。", risk_level=risk_level)
+
+
+def _execute_agent_handoff_draft(task: dict[str, Any], project_root: Path) -> TextTaskExecutionResult:
+    from xiaohuang.agent_handoff.models import AgentHandoffRequest
+    from xiaohuang.agent_handoff.service import create_agent_handoff
+
+    user_request = str(task.get("original_text") or task.get("summary") or "").strip()
+    result = create_agent_handoff(
+        AgentHandoffRequest(user_request=user_request, source="text"),
+        project_root=project_root,
+    )
+    status = "completed" if result.ok else "failed"
+    return TextTaskExecutionResult(
+        ok=result.ok,
+        task_id=str(task.get("task_id") or ""),
+        task_type="agent_handoff_draft",
+        status=status,
+        title=result.title or str(task.get("title") or "生成 Agent 交接提示词"),
+        summary=result.summary,
+        details=_format_agent_handoff_details(result),
+        risk_level=_safe_risk(task),
+        read_files=(),
+        error="" if result.ok else (result.error_message or "agent_handoff_failed"),
+    )
+
+
+def _format_agent_handoff_details(result: Any) -> str:
+    lines = [
+        f"目标 Agent：{result.target_agent}",
+        f"相关领域：{', '.join(result.domains) if result.domains else '未指定'}",
+        f"数据库：{result.database_status}",
+    ]
+    if result.handoff_path:
+        lines.append(f"文件：{result.handoff_path}")
+    if result.handoff_preview:
+        lines.extend(["", "预览：", result.handoff_preview])
+    if result.error_message and not result.ok:
+        lines.extend(["", f"错误：{result.error_message}"])
+    return "\n".join(lines)
 
 
 def _execute_readonly_log_analysis(task: dict[str, Any], project_root: Path) -> TextTaskExecutionResult:

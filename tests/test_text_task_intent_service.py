@@ -84,6 +84,23 @@ class TextTaskIntentServiceTests(unittest.TestCase):
                 self.assertTrue(result.allowed)
                 self.assertEqual(result.risk_level, "low")
 
+    def test_agent_handoff_draft_detected(self):
+        for text in ("给 Claude Code 生成提示词", "让 Codex 审查这个 commit",
+                     "给 OpenClaw 一个任务", "让 opencode 改这个项目",
+                     "帮我生成给 agent 的 handoff"):
+            with self.subTest(text=text):
+                result = detect_text_task_intent(text)
+                self.assertTrue(result.is_task)
+                self.assertEqual(result.task_type, "agent_handoff_draft")
+                self.assertTrue(result.allowed)
+                self.assertEqual(result.risk_level, "low")
+
+    def test_agent_handoff_with_dangerous_words_is_still_draft_only(self):
+        result = detect_text_task_intent("给 Codex 生成提示词，让它不要执行 powershell 删除文件")
+        self.assertTrue(result.is_task)
+        self.assertEqual(result.task_type, "agent_handoff_draft")
+        self.assertTrue(result.allowed)
+
 
 if __name__ == "__main__":
     unittest.main()

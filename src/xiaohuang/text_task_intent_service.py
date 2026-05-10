@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from xiaohuang.agent_handoff.intent_parser import parse_agent_handoff_intent
 from xiaohuang.text_task_models import TextTaskIntentResult
 
 _BLOCKED_TERMS = (
@@ -107,6 +108,18 @@ def detect_text_task_intent(text: str) -> TextTaskIntentResult:
         return TextTaskIntentResult(is_task=False)
 
     normalized = _normalize(original)
+
+    handoff = parse_agent_handoff_intent(original)
+    if handoff is not None:
+        return TextTaskIntentResult(
+            is_task=True,
+            task_type="agent_handoff_draft",
+            title="生成 Agent 交接提示词",
+            summary="将根据你的需求生成一份给 Claude Code / Codex / OpenClaw / opencode 使用的提示词草稿。",
+            risk_level="low",
+            allowed=True,
+            reason="只会在 runtime/agent_handoffs 下创建 .txt 文件，不会执行命令或修改项目代码。",
+        )
 
     if _contains_any(normalized, _BLOCKED_TERMS):
         return TextTaskIntentResult(

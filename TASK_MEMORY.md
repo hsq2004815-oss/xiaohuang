@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-C1 Database-Aware Agent Handoff Draft
+
+- Purpose: Let XiaoHuang turn natural-language requests into copyable Agent Handoff prompt drafts for Claude Code / Codex / OpenClaw / opencode without launching agents or running shell commands.
+- Key files: `src/xiaohuang/agent_handoff/`, `src/xiaohuang/text_task_intent_service.py`, `src/xiaohuang/text_task_execution_service.py`, `src/xiaohuang/task_result_history_service.py`, `docs/agent-handoff-design.md`, tests.
+- Last completed:
+  1. Added independent `agent_handoff` modules for intent parsing, domain routing, localhost-only database `/brief` access, prompt building, UTF-8 file output, and orchestration.
+  2. Added `agent_handoff_draft` as a low-risk confirmed text task that writes only `runtime/agent_handoffs/*.txt`.
+  3. Integrated safe result history entries with `result_kind=agent_handoff` and tags such as `agent`, `handoff`, and target agent.
+  4. Added tests for parser/router/client/prompt/file/service plus task system integration and control panel confirm flow.
+- Verification: compileall OK; unittest discover OK (1054 tests, 1 skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: Do not launch agents or terminals from C1; database context must stay through `http://127.0.0.1:8765/brief` or safely degrade.
+
 ## Current Snapshot（2026-05-10）— V1.5-C0 Natural Language Action Task Safety Design Doc
 
 - Purpose: Upgrade the task model from "text task" to "voice-or-text natural language task" and design the safety boundaries for action-type tasks. Design only — no code changes.

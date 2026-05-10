@@ -19,7 +19,10 @@ from pathlib import Path
 from typing import Any
 
 from xiaohuang.text_task_execution_models import TextTaskExecutionResult
-from xiaohuang.text_task_execution_service import ALLOWED_READONLY_TASK_TYPES
+from xiaohuang.text_task_execution_service import (
+    ALLOWED_AGENT_HANDOFF_TASK_TYPES,
+    ALLOWED_READONLY_TASK_TYPES,
+)
 
 _MAX_TITLE_CHARS = 100
 _MAX_SUMMARY_CHARS = 300
@@ -65,6 +68,8 @@ def _truncate_text(text: str, limit: int) -> str:
 
 def _tags_for_task_type(task_type: str) -> list[str]:
     tags: set[str] = {"readonly"}
+    if task_type == "agent_handoff_draft":
+        return ["agent", "handoff"]
     if task_type == "readonly_health_report":
         tags.add("health")
     elif task_type in ("readonly_recent_errors_review", "readonly_log_analysis"):
@@ -142,7 +147,10 @@ def sanitize_task_result_for_history(
 
     task_type = str(result.task_type or "")
     tags = _tags_for_task_type(task_type)
+    if task_type == "agent_handoff_draft":
+        tags = _agent_handoff_tags(task_dict)
     read_files_count = len(getattr(result, "read_files", ()) or ())
+    result_kind = "agent_handoff" if task_type == "agent_handoff_draft" else "readonly_report"
 
     return {
         "history_id": _make_history_id(),
@@ -158,7 +166,7 @@ def sanitize_task_result_for_history(
         "safe_details_excerpt": excerpt,
         "source": "chat",
         "read_files_count": read_files_count,
-        "result_kind": "readonly_report",
+        "result_kind": result_kind,
         "tags": tags,
         "schema_version": 1,
     }
@@ -169,7 +177,19 @@ def _should_save_result(result: TextTaskExecutionResult) -> bool:
     if status not in _SAVEABLE_STATUSES:
         return False
     task_type = str(result.task_type or "")
-    return task_type in ALLOWED_READONLY_TASK_TYPES
+    return task_type in (ALLOWED_READONLY_TASK_TYPES | ALLOWED_AGENT_HANDOFF_TASK_TYPES)
+
+
+def _agent_handoff_tags(task: dict[str, Any]) -> list[str]:
+    tags = {"agent", "handoff"}
+    try:
+        from xiaohuang.agent_handoff.intent_parser import detect_target_agent
+        target = detect_target_agent(str(task.get("original_text") or ""))
+    except Exception:
+        target = "generic"
+    if target:
+        tags.add(target)
+    return sorted(tags)
 
 
 def _ensure_cache_for_root(project_root: Path | str) -> None:

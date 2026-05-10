@@ -23,6 +23,7 @@ overlay_ui_context.txt
 
 # Runtime outputs
 logs/
+runtime/
 data/recordings/
 data/task_history/
 data/tts/

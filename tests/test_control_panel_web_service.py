@@ -493,6 +493,39 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertIn("safe_details_excerpt", entry)
         _reset_for_test()
 
+    def test_confirm_agent_handoff_task_generates_file_and_history(self):
+        from xiaohuang.task_result_history_service import (
+            _reset_for_test,
+            get_task_history_path,
+        )
+        _reset_for_test()
+
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        task = _pending_task("text-task-handoff", task_type="agent_handoff_draft")
+        task["title"] = "生成 Agent 交接提示词"
+        task["original_text"] = "给 Claude Code 生成提示词，让它继续优化小黄任务历史页面"
+        api._text_task_registry.register(task)
+
+        with patch(
+            "xiaohuang.agent_handoff.service.fetch_database_brief",
+            return_value=_brief_result(False, "unavailable"),
+        ):
+            result = api.confirm_text_task({"task_id": "text-task-handoff"})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["ok"])
+        self.assertEqual(result["data"]["task_type"], "agent_handoff_draft")
+        self.assertIn("runtime/agent_handoffs/", result["data"]["details"])
+        self.assertTrue((api._project_root / "runtime" / "agent_handoffs").is_dir())
+
+        jsonl_path = get_task_history_path(api._project_root)
+        entry = json.loads(jsonl_path.read_text(encoding="utf-8").strip())
+        self.assertEqual(entry["task_type"], "agent_handoff_draft")
+        self.assertEqual(entry["result_kind"], "agent_handoff")
+        self.assertIn("claude_code", entry["tags"])
+        _reset_for_test()
+
     def test_confirm_task_history_append_failure_does_not_affect_result(self):
         api = ControlPanelWebApi(config_path=self.config_path)
         api._project_root = Path(self.tmp.name)
@@ -1141,6 +1174,11 @@ def _fake_save_result(ok, error):
 def _fake_op_result(ok, message):
     from xiaohuang.status_control_service import ControlOperationResult
     return ControlOperationResult(ok=ok, title="", message=message, elapsed_seconds=1.0)
+
+
+def _brief_result(database_used, status):
+    from xiaohuang.agent_handoff.models import DatabaseBriefResult
+    return DatabaseBriefResult(database_used=database_used, database_status=status)
 
 
 def api_call_confirm_blocked(payload, reason):

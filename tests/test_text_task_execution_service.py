@@ -96,6 +96,33 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.status, "blocked")
 
+    def test_agent_handoff_draft_generates_runtime_file(self):
+        task = _task("agent_handoff_draft")
+        task["original_text"] = "给 Claude Code 生成提示词，让它继续优化小黄任务历史页面"
+        with patch(
+            "xiaohuang.agent_handoff.service.fetch_database_brief",
+            return_value=_brief_result(False, "unavailable"),
+        ):
+            result = execute_confirmed_text_task(task, project_root=self.project_root)
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.task_type, "agent_handoff_draft")
+        self.assertIn("文件：runtime/agent_handoffs/", result.details)
+        self.assertIn("目标 Agent：claude_code", result.details)
+        handoff_files = list((self.project_root / "runtime" / "agent_handoffs").glob("*.txt"))
+        self.assertEqual(len(handoff_files), 1)
+
+    def test_agent_handoff_empty_request_fails(self):
+        task = _task("agent_handoff_draft")
+        task["original_text"] = ""
+        task["summary"] = ""
+        result = execute_confirmed_text_task(task, project_root=self.project_root)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error, "empty_user_request")
+
     def test_read_files_are_relative_strings(self):
         logs = self.project_root / "logs"
         logs.mkdir()
@@ -655,3 +682,8 @@ def _task(
         "allowed": allowed,
         "original_text": "测试",
     }
+
+
+def _brief_result(database_used: bool, status: str):
+    from xiaohuang.agent_handoff.models import DatabaseBriefResult
+    return DatabaseBriefResult(database_used=database_used, database_status=status)
