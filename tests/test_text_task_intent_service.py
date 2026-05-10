@@ -58,6 +58,22 @@ class TextTaskIntentServiceTests(unittest.TestCase):
                 self.assertTrue(result.allowed)
                 self.assertEqual(result.risk_level, "low")
 
+    def test_health_report_detected(self):
+        for text in ("小黄，检查一下你自己", "小黄，做个健康检查",
+                     "小黄，现在状态怎么样", "你最近有没有问题",
+                     "小黄，全面检查一下", "小黄，运行健康报告"):
+            with self.subTest(text=text):
+                result = detect_text_task_intent(text)
+                self.assertTrue(result.is_task, f"text='{text}' should be task")
+                self.assertEqual(result.task_type, "readonly_health_report")
+                self.assertTrue(result.allowed)
+                self.assertEqual(result.risk_level, "low")
+
+    def test_health_report_not_false_positive(self):
+        for text in ("小黄你好", "帮我写一段话", "介绍一下你自己", "今天天气怎么样"):
+            result = detect_text_task_intent(text)
+            self.assertFalse(result.is_task, f"text='{text}' should not be health report")
+
     def test_config_summary_detected(self):
         for text in ("看看当前配置", "小黄配置摘要", "检查配置",
                      "现在小黄配置怎么样", "看看唤醒和 TTS 配置"):

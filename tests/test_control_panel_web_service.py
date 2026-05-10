@@ -443,6 +443,27 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertFalse(second["data"]["ok"])
         self.assertEqual(second["data"]["error"], "already_completed")
 
+    def test_health_report_full_flow(self):
+        (Path(self.tmp.name) / "src" / "xiaohuang").mkdir(parents=True, exist_ok=True)
+        (Path(self.tmp.name) / "scripts").mkdir(parents=True, exist_ok=True)
+        (Path(self.tmp.name) / "scripts" / "control_panel_web.py").write_text("", encoding="utf-8")
+        (Path(self.tmp.name) / "scripts" / "voice_overlay.py").write_text("", encoding="utf-8")
+        (Path(self.tmp.name) / "frontend" / "control_panel").mkdir(parents=True, exist_ok=True)
+
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        api._text_task_registry.register(_pending_task(
+            "text-task-health", task_type="readonly_health_report",
+        ))
+
+        result = api.confirm_text_task({"task_id": "text-task-health"})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["ok"])
+        self.assertEqual(result["data"]["task_type"], "readonly_health_report")
+        self.assertIn("总体状态", result["data"]["summary"])
+        json.dumps(result)
+
     def test_clear_runtime_events_removes_events(self):
         from xiaohuang.capabilities.runtime_events import service as es
         from xiaohuang.capabilities.runtime_events.service import (

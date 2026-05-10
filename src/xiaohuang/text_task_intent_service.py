@@ -80,6 +80,26 @@ _CONFIG_TERMS = (
     "配置信息",
 )
 
+_HEALTH_REPORT_TERMS = (
+    "健康检查",
+    "做个健康检查",
+    "检查一下你自己",
+    "检查小黄",
+    "小黄自检",
+    "自检一下",
+    "体检一下",
+    "你现在状态怎么样",
+    "现在状态怎么样",
+    "你最近有没有问题",
+    "小黄出问题了吗",
+    "为什么最近不太正常",
+    "全面检查",
+    "小黄健康",
+    "状况检查",
+    "运行健康报告",
+    "自我检查",
+)
+
 
 def detect_text_task_intent(text: str) -> TextTaskIntentResult:
     original = str(text or "").strip()
@@ -163,6 +183,17 @@ def detect_text_task_intent(text: str) -> TextTaskIntentResult:
             risk_level="low",
             allowed=True,
             reason="只读配置摘要任务，需要用户确认后才能执行。",
+        )
+
+    if _contains_any(normalized, _HEALTH_REPORT_TERMS):
+        return TextTaskIntentResult(
+            is_task=True,
+            task_type="readonly_health_report",
+            title="小黄健康检查",
+            summary="综合检查小黄的基础路径、配置、运行事件和最近错误，生成一份安全只读健康报告。",
+            risk_level="low",
+            allowed=True,
+            reason="只读健康检查任务，需要用户确认后才能执行。",
         )
 
     return TextTaskIntentResult(is_task=False)

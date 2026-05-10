@@ -16,6 +16,7 @@ ALLOWED_READONLY_TASK_TYPES = {
     "readonly_recent_errors_review",
     "readonly_runtime_events_review",
     "readonly_config_summary",
+    "readonly_health_report",
 }
 
 _LOG_EXTENSIONS = {".log", ".txt"}
@@ -58,6 +59,9 @@ def execute_confirmed_text_task(
             return _execute_readonly_errors_review(task, root)
         if task_type == "readonly_runtime_events_review":
             return _execute_readonly_events_review(task, root)
+        if task_type == "readonly_health_report":
+            return _execute_readonly_health_report(task, root, config_path=config_path)
+
         if task_type == "readonly_config_summary":
             return _execute_readonly_config_summary(task, root, config_path=config_path)
     except Exception as exc:  # Defensive boundary: UI should receive a structured failure.
@@ -412,6 +416,177 @@ def _execute_readonly_config_summary(
         title=str(task.get("title") or "查看当前配置摘要"),
         summary=f"当前配置摘要：LLM {'开启' if llm.enabled else '关闭'} / TTS {'开启' if tts.enabled else '关闭'} / 唤醒引擎 {awake.engine}",
         details="\n".join(detail_lines),
+        risk_level=_safe_risk(task),
+        read_files=(),
+    )
+
+
+def _check_basic_project_paths(project_root: Path) -> dict[str, Any]:
+    root = project_root.resolve()
+    paths = [
+        ("project_root", root),
+        ("logs", root / "logs"),
+        ("scripts/control_panel_web.py", root / "scripts" / "control_panel_web.py"),
+        ("scripts/voice_overlay.py", root / "scripts" / "voice_overlay.py"),
+        ("src/xiaohuang", root / "src" / "xiaohuang"),
+        ("frontend/control_panel", root / "frontend" / "control_panel"),
+    ]
+    checked: list[str] = []
+    missing: list[str] = []
+    for label, path in paths:
+        checked.append(label)
+        if not path.exists():
+            missing.append(label)
+    return {"ok": len(missing) == 0, "checked": checked, "missing": missing}
+
+
+def _execute_readonly_health_report(
+    task: dict[str, Any],
+    project_root: Path,
+    *,
+    config_path: Path | str | None = None,
+) -> TextTaskExecutionResult:
+    title = str(task.get("title") or "小黄健康检查报告")
+    detail_parts: list[str] = ["【小黄健康检查报告】", ""]
+
+    # ── 1. Path check ──
+    paths = _check_basic_project_paths(project_root)
+    detail_parts.append("一、基础状态")
+    for label in paths["checked"]:
+        present = "✓" if label not in paths["missing"] else "✗ 缺失"
+        detail_parts.append(f"  - {label}: {present}")
+    if paths["missing"]:
+        detail_parts.append(f"  缺失 {len(paths['missing'])} 个关键路径")
+    else:
+        detail_parts.append("  所有关键路径均存在")
+    path_ok = paths["ok"]
+
+    # ── 2. Config summary ──
+    detail_parts.append("")
+    detail_parts.append("二、配置状态")
+    config_ok = True
+    try:
+        from xiaohuang.app_config_service import load_config
+        cfg = load_config(config_path)
+        detail_parts.append(f"  - 助手名称: {cfg.assistant.display_name}")
+        detail_parts.append(f"  - 唤醒引擎: {cfg.wake.engine}")
+        detail_parts.append(f"  - LLM: {'已启用' if cfg.llm.enabled else '未启用'} ({cfg.llm.model})")
+        detail_parts.append(f"  - TTS: {'已启用' if cfg.tts.enabled else '未启用'} ({cfg.tts.voice})")
+        detail_parts.append(f"  - 配置已读取")
+    except Exception:
+        detail_parts.append("  - 配置读取失败")
+        config_ok = False
+
+    # ── 3. Runtime events summary ──
+    detail_parts.append("")
+    detail_parts.append("三、运行事件")
+    events_ok = True
+    error_count = 0
+    warning_count = 0
+    total_events = 0
+    try:
+        from xiaohuang.capabilities.runtime_events.service import get_recent_events
+        events = get_recent_events(50)
+        total_events = len(events)
+        sources: dict[str, int] = {}
+        for e in events:
+            lv = str(e.get("level") or "info")
+            if lv == "error":
+                error_count += 1
+            elif lv == "warning":
+                warning_count += 1
+            src = str(e.get("source") or "")
+            sources[src] = sources.get(src, 0) + 1
+        detail_parts.append(f"  - 最近事件: {total_events} 条")
+        detail_parts.append(f"  - error: {error_count} 条, warning: {warning_count} 条")
+        if sources:
+            top_src = sorted(sources, key=sources.get, reverse=True)[:3]
+            detail_parts.append(f"  - 活跃模块: {', '.join(top_src)}")
+    except Exception:
+        detail_parts.append("  - 运行事件读取失败")
+        events_ok = False
+
+    # ── 4. Recent errors summary ──
+    detail_parts.append("")
+    detail_parts.append("四、最近错误")
+    log_error = 0
+    log_warning = 0
+    log_files = 0
+    try:
+        analysis = _analyze_recent_logs(project_root)
+        log_files = len(analysis["read_files"])
+        summary = analysis.get("summary", "")
+        import re
+        err_m = re.search(r"error\s+(\d+)", summary.lower())
+        warn_m = re.search(r"warning\s+(\d+)", summary.lower())
+        log_error = int(err_m.group(1)) if err_m else 0
+        log_warning = int(warn_m.group(1)) if warn_m else 0
+        detail_parts.append(f"  - 读取日志文件: {log_files} 个")
+        detail_parts.append(f"  - ERROR: {log_error} 条, WARNING: {log_warning} 条")
+        if analysis["details"] and "未发现关键错误" not in analysis["details"]:
+            # Just note that details exist, don't include full log lines
+            detail_parts.append("  - 发现日志命中，详情可运行\"查看最近错误\"查看")
+    except Exception:
+        detail_parts.append("  - 日志分析不可用")
+
+    # ── 5. Overall status ──
+    detail_parts.append("")
+    detail_parts.append("五、总体状态")
+    if not path_ok:
+        overall = "有错误"
+        overall_en = "error"
+    elif error_count > 0 or log_error > 0:
+        overall = "有错误"
+        overall_en = "error"
+    elif warning_count > 0 or log_warning > 0:
+        overall = "有警告"
+        overall_en = "warning"
+    elif not config_ok or not events_ok:
+        overall = "有警告"
+        overall_en = "warning"
+    elif total_events == 0:
+        overall = "信息不足"
+        overall_en = "unknown"
+    else:
+        overall = "正常"
+        overall_en = "healthy"
+    detail_parts.append(f"  总体状态: {overall}")
+
+    # ── 6. Suggestions ──
+    detail_parts.append("")
+    detail_parts.append("六、建议")
+    if overall_en == "error":
+        if not path_ok:
+            detail_parts.append("  - 核心路径缺失，请检查项目安装是否完整")
+        if error_count > 0 or log_error > 0:
+            detail_parts.append("  - 发现错误事件或日志，建议运行\"查看最近错误\"排查")
+        detail_parts.append("  - 优先处理 control_panel / voice_overlay 相关错误")
+    elif overall_en == "warning":
+        if warning_count > 0:
+            detail_parts.append("  - 存在 warning 事件，暂时可继续使用，建议观察")
+        detail_parts.append("  - 如语音无响应，检查唤醒/STT/TTS 配置")
+    elif overall_en == "unknown":
+        detail_parts.append("  - 信息不足，建议打开控制面板 Diagnostics 查看更多状态")
+    else:
+        detail_parts.append("  - 当前没有发现严重问题")
+        detail_parts.append("  - 可以继续进行下一步工作")
+
+    summary = f"总体状态：{overall}。"
+    if error_count + log_error > 0:
+        summary += f" 发现 {error_count + log_error} 条错误。"
+    elif warning_count + log_warning > 0:
+        summary += f" 发现 {warning_count + log_warning} 条警告。"
+    else:
+        summary += " 未发现明显异常。"
+
+    return TextTaskExecutionResult(
+        ok=True,
+        task_id=str(task.get("task_id") or ""),
+        task_type="readonly_health_report",
+        status="completed",
+        title=title,
+        summary=summary,
+        details="\n".join(detail_parts),
         risk_level=_safe_risk(task),
         read_files=(),
     )

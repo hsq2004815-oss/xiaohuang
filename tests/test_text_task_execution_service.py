@@ -379,6 +379,74 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertIn("deepseek", result.details)
 
+    def test_readonly_health_report_returns_complete(self):
+        (self.project_root / "src" / "xiaohuang").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts" / "control_panel_web.py").write_text("", encoding="utf-8")
+        (self.project_root / "scripts" / "voice_overlay.py").write_text("", encoding="utf-8")
+        (self.project_root / "frontend" / "control_panel").mkdir(parents=True, exist_ok=True)
+
+        result = execute_confirmed_text_task(
+            _task("readonly_health_report"),
+            project_root=self.project_root,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.task_type, "readonly_health_report")
+        self.assertIn("总体状态", result.summary)
+        self.assertIn("基础状态", result.details)
+        self.assertIn("配置状态", result.details)
+        self.assertIn("运行事件", result.details)
+        self.assertIn("最近错误", result.details)
+        self.assertIn("建议", result.details)
+        self.assertEqual(result.risk_level, "low")
+
+    def test_readonly_health_report_with_missing_paths(self):
+        result = execute_confirmed_text_task(
+            _task("readonly_health_report"),
+            project_root=self.project_root,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIn("缺失", result.details)
+        self.assertIn("有错误", result.details)
+
+    def test_readonly_health_report_does_not_clear_events(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        es._ring.clear()
+
+        try:
+            record_event("test", "test", "test msg")
+            before = len(es._ring)
+
+            result = execute_confirmed_text_task(
+                _task("readonly_health_report"),
+                project_root=self.project_root,
+            )
+
+            after = len(es._ring)
+            self.assertTrue(result.ok)
+            self.assertEqual(after, before, "Health report must not clear runtime events")
+        finally:
+            es._ring.clear()
+
+    def test_readonly_health_report_no_sensitive_leak(self):
+        logs = self.project_root / "logs"
+        logs.mkdir()
+        (logs / "app.log").write_text(
+            "ERROR api_key=sk-leaked-key\nWARNING token=abc123\n", encoding="utf-8",
+        )
+
+        result = execute_confirmed_text_task(
+            _task("readonly_health_report"),
+            project_root=self.project_root,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertNotIn("sk-leaked-key", result.details)
+        self.assertNotIn("abc123", result.details)
+
 
 def _task(
     task_type: str,

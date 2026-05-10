@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-A1 Readonly Health Report Foundation
+
+- Purpose: First "big feature" — aggregates existing D5 readonly capabilities (config, events, errors, paths) into one comprehensive health report task.
+- Key files: `text_task_intent_service.py` (+18 keywords, detection after sub-tasks), `text_task_execution_service.py` (+`_check_basic_project_paths`, +`_execute_readonly_health_report`, whitelist), tests.
+- Last completed:
+  1. New `readonly_health_report` task type — low risk, requires confirmation, generates 6-section report.
+  2. `_check_basic_project_paths()` checks 6 key paths (project_root, logs, scripts/control_panel_web.py, scripts/voice_overlay.py, src/xiaohuang, frontend/control_panel) — read-only, no create/repair.
+  3. `_execute_readonly_health_report` aggregates: path check, config summary (with config_path), runtime events summary, recent errors summary (redacted), overall status (healthy/warning/error/unknown), and suggestions.
+  4. Detection order: blocked > recent_errors > log_analysis > status_check > diagnostic > events > config > health_report
+  5. Graceful degradation: sub-component failures show "X读取失败" but don't crash the whole report.
+- Verification: compileall OK; unittest discover OK (934 tests, 1 symlink-permission skip, +7 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: health_report is last in detection to avoid over-matching; uses `config_path` from control panel; does NOT clear runtime events; does NOT write files.
+
 ## Current Snapshot（2026-05-10）— V1.5-UI0.7.1 Runtime Events Clear Polish
 
 - Purpose: Three small fixes over UI0.7 — HTML-escape runtime event summary, don't record new event after clear, remove extra CSS `}`.
