@@ -514,10 +514,13 @@ class V13UIFrontendStructureTests(unittest.TestCase):
 
     def test_html_has_localized_nav(self):
         html = self._read("frontend/control_panel/index.html")
-        for text in ("总览", "运行状态", "唤醒与语音", "模型", "工具", "数据库", "核心", "能力", "系统", "开发者"):
+        for text in ("首页", "对话", "任务", "工具", "诊断", "设置"):
             self.assertIn(text, html, f"Missing localized text: {text}")
         self.assertIn("文本对话", html, "Top text chat entry should remain")
-        self.assertNotIn('data-section="text-chat"', html, "Text chat should not be a control sidebar section")
+        for section in ("home", "chat", "tasks", "tools", "diagnostics", "settings"):
+            self.assertIn(f'data-section="{section}"', html, f"Missing app shell nav section: {section}")
+        for old_section in ("overview", "runtime", "wake", "models", "automation", "database", "logs", "developer", "text-chat"):
+            self.assertNotIn(f'data-section="{old_section}"', html, f"Old sidebar section should be removed: {old_section}")
 
     def test_html_no_english_nav_labels(self):
         html = self._read("frontend/control_panel/index.html")
@@ -531,9 +534,10 @@ class V13UIFrontendStructureTests(unittest.TestCase):
 
     def test_html_has_localized_main_content(self):
         html = self._read("frontend/control_panel/index.html")
-        for text in ("小黄控制中心", "快速操作", "唤醒引擎设置", "最近事件", "诊断信息",
+        for text in ("小黄控制中心", "快速操作", "唤醒与语音设置", "最近事件", "诊断信息",
                      "配置文件", "日志目录", "最近错误", "最近操作", "操作历史",
-                     "兜底唤醒", "冷却时间", "灵敏度", "保存配置", "保存并重启"):
+                     "兜底唤醒", "冷却时间", "灵敏度", "保存配置", "保存并重启",
+                     "任务中心", "视频下载", "PDF 解析", "网页爬取", "安全设置"):
             self.assertIn(text, html, f"Missing localized content: {text}")
 
     def test_html_no_project_template_keywords(self):
@@ -560,13 +564,16 @@ class V13UIFrontendStructureTests(unittest.TestCase):
 
     def test_css_has_layout_classes(self):
         css = self._read("frontend/control_panel/assets/style.css")
-        for cls_name in (".app-shell", ".sidebar", ".topbar", ".main-workspace", ".diagnostic-drawer"):
+        for cls_name in (".app-shell", ".sidebar", ".topbar", ".main-workspace", ".diagnostic-drawer",
+                         ".page-heading", ".task-status-grid", ".tool-grid", ".settings-grid"):
             self.assertIn(cls_name, css, f"Missing layout class: {cls_name}")
 
     def test_css_has_glass_component_classes(self):
         css = self._read("frontend/control_panel/assets/style.css")
         for cls_name in (".glass-card", ".glass-pill", ".glass-input", ".glass-toggle", ".glass-toast", ".status-badge", ".sidebar-item"):
             self.assertIn(cls_name, css, f"Missing component class: {cls_name}")
+        for state in (".glass-pill:hover", ".glass-pill:active", ".glass-pill:focus-visible", ".glass-pill.is-loading"):
+            self.assertIn(state, css, f"Missing button feedback state: {state}")
 
     def test_css_has_text_task_confirmation_card_classes(self):
         css = self._read("frontend/control_panel/assets/style.css")
@@ -612,12 +619,18 @@ class V13UIFrontendStructureTests(unittest.TestCase):
                        "data-action=\"save-config\"", "data-action=\"save-restart\""):
             self.assertIn(action, html, f"Missing data-action: {action}")
 
-    def test_html_has_text_chat_shell(self):
+    def test_html_has_chat_page(self):
         html = self._read("frontend/control_panel/index.html")
-        for text in ("control-shell", "text-chat-shell", "text-chat-messages",
-                     "text-chat-input", "text-chat-send", "btn-back-control", "chat-workspace"):
-            self.assertIn(text, html, f"Missing text chat shell element: {text}")
+        for text in ("control-shell", "section-chat", "text-chat-messages",
+                     "text-chat-input", "text-chat-send", "text-chat-workspace"):
+            self.assertIn(text, html, f"Missing chat page element: {text}")
         self.assertNotIn('id="section-text-chat"', html)
+        self.assertNotIn('id="text-chat-shell"', html)
+
+    def test_css_has_no_legacy_text_chat_shell(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertNotIn("text-chat-shell", css)
+        self.assertNotIn("mode-text-chat", css)
 
     def test_html_has_bridge_indicator(self):
         html = self._read("frontend/control_panel/index.html")
@@ -633,8 +646,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         js = self._read("frontend/control_panel/assets/app.js")
         self.assertIn("data-action", js)
         self.assertIn("handleButtonClick", js)
-        self.assertIn("switchShell('text-chat')", js)
-        self.assertIn("switchShell('control')", js)
+        self.assertIn("switchSection('chat')", js)
         self.assertIn("send_text_message", js)
         self.assertIn("clear_text_session", js)
         self.assertNotIn("apiCall('open_text_chat_window'", js)

@@ -33,31 +33,27 @@
     <!-- Left Sidebar -->
     <nav class="sidebar" id="sidebar">
       <div class="sidebar-section">
-        <div class="sidebar-label">核心</div>
-        <a class="sidebar-item active" data-section="overview">总览</a>
-        <a class="sidebar-item" data-section="runtime">运行状态</a>
-        <a class="sidebar-item" data-section="wake">唤醒与语音</a>
-        <a class="sidebar-item" data-section="models">模型</a>
-      </div>
-      <div class="sidebar-section">
-        <div class="sidebar-label">能力</div>
+        <div class="sidebar-label">导航</div>
+        <a class="sidebar-item active" data-section="home">首页</a>
+        <a class="sidebar-item" data-section="chat">对话</a>
+        <a class="sidebar-item" data-section="tasks">任务</a>
         <a class="sidebar-item" data-section="tools">工具</a>
-        <a class="sidebar-item" data-section="automation">自动化</a>
-        <a class="sidebar-item" data-section="database">数据库</a>
-      </div>
-      <div class="sidebar-section">
-        <div class="sidebar-label">系统</div>
-        <a class="sidebar-item" data-section="logs">日志</a>
+        <a class="sidebar-item" data-section="diagnostics">诊断</a>
         <a class="sidebar-item" data-section="settings">设置</a>
-        <a class="sidebar-item" data-section="developer">开发者</a>
       </div>
     </nav>
 
     <!-- Main Workspace -->
     <main class="main-workspace" id="main-workspace">
-      <!-- 总览 -->
-      <section class="content-section active" id="section-overview">
-        <h2 class="section-title">总览</h2>
+      <!-- Home -->
+      <section class="content-section active" id="section-home">
+        <div class="page-heading">
+          <div>
+            <h2 class="section-title">首页</h2>
+            <p class="section-subtitle">运行状态、核心服务和最近事件摘要</p>
+          </div>
+          <button class="glass-pill" data-action="refresh">刷新状态</button>
+        </div>
         <div class="card-grid-4" id="status-cards">
           <div class="glass-card neon-card"><div class="card-label">STT 服务</div><div class="card-value" id="card-stt">--</div></div>
           <div class="glass-card neon-card"><div class="card-label">语音悬浮窗</div><div class="card-value" id="card-overlay">--</div></div>
@@ -73,36 +69,12 @@
               <button class="glass-pill glass-pill-danger" id="btn-stop" disabled data-action="stop">停止小黄</button>
               <button class="glass-pill" id="btn-restart" disabled data-action="restart">重启小黄</button>
               <button class="glass-pill" id="btn-refresh" data-action="refresh">刷新状态</button>
+              <button class="glass-pill" data-action="open-text-chat">打开对话</button>
             </div>
           </div>
-          <div class="glass-card" id="wake-settings">
-            <div class="card-header"><h3 class="card-title">唤醒引擎设置</h3></div>
-            <div class="form-grid">
-              <label class="form-field">引擎
-                <select id="wake-engine" class="glass-input">
-                  <option value="stt_text">stt_text</option>
-                  <option value="openwakeword">openwakeword</option>
-                </select>
-              </label>
-              <label class="form-field">设备
-                <input type="number" id="wake-device" class="glass-input" min="0" max="99" placeholder="0">
-              </label>
-              <label class="form-field">冷却时间 (秒)
-                <input type="number" id="wake-cooldown" class="glass-input" min="0" max="30" step="0.5" placeholder="2.5">
-              </label>
-              <label class="form-field">灵敏度
-                <input type="number" id="wake-sensitivity" class="glass-input" min="0" max="1" step="0.05" placeholder="0.5">
-              </label>
-              <label class="form-field toggle-field">
-                <span>兜底唤醒</span>
-                <input type="checkbox" id="wake-fallback" class="glass-toggle" checked>
-              </label>
-            </div>
-            <div class="action-row">
-              <button class="glass-pill" id="btn-save-config" data-action="save-config">保存配置</button>
-              <button class="glass-pill glass-pill-primary" id="btn-save-restart" data-action="save-restart">保存并重启</button>
-            </div>
-            <p class="hint" id="wake-hint"></p>
+          <div class="glass-card">
+            <div class="card-header"><h3 class="card-title">最近摘要</h3></div>
+            <div class="card-body" id="runtime-detail">加载中...</div>
           </div>
         </div>
 
@@ -112,46 +84,165 @@
         </div>
       </section>
 
-      <!-- 运行状态 -->
-      <section class="content-section" id="section-runtime">
-        <h2 class="section-title">运行状态</h2>
-        <div class="glass-card"><div class="card-body" id="runtime-detail">加载中...</div></div>
+      <!-- Chat -->
+      <section class="content-section" id="section-chat">
+        <div class="text-chat-header">
+          <div>
+            <h2 class="section-title">对话</h2>
+            <p>在主工作区直接和小黄对话，任务确认和只读结果卡片会在这里显示。</p>
+          </div>
+          <span class="text-chat-status" id="text-chat-status">本地文本入口</span>
+        </div>
+        <div class="text-chat-layout">
+          <aside class="text-chat-sessions glass-card">
+            <button class="text-chat-new" id="text-chat-new" type="button">+ 新对话</button>
+            <input class="glass-input text-chat-search" type="text" placeholder="搜索对话..." disabled>
+            <div class="text-chat-label">今天</div>
+            <button class="text-chat-session active" type="button">
+              <span>默认对话</span>
+              <small>当前窗口</small>
+            </button>
+          </aside>
+
+          <main class="text-chat-main glass-card">
+            <div class="text-chat-messages" id="text-chat-messages" aria-live="polite"></div>
+            <div class="text-chat-composer">
+              <div class="text-chat-prompts">
+                <button type="button" data-text-prompt="帮我做一次健康检查">健康检查</button>
+                <button type="button" data-text-prompt="帮我看看最近错误">最近错误</button>
+                <button type="button" data-text-prompt="总结最近运行事件">运行事件总结</button>
+                <button type="button" data-text-prompt="总结当前配置">配置摘要</button>
+              </div>
+              <div class="text-chat-input-row">
+                <span class="text-chat-model">DeepSeek V4 Flash</span>
+                <textarea id="text-chat-input" rows="2" placeholder="输入消息，例如：帮我看看最近错误"></textarea>
+                <button class="text-chat-send" id="text-chat-send" type="button">发送</button>
+              </div>
+              <div class="text-chat-footer">
+                <span>Enter 发送，Shift + Enter 换行；确认任务会进入后端 registry 校验</span>
+                <button id="text-chat-clear" type="button">清空会话</button>
+              </div>
+            </div>
+          </main>
+
+          <aside class="text-chat-workspace glass-card">
+            <div class="workspace-block">
+              <h3>会话状态</h3>
+              <dl>
+                <div><dt>入口</dt><dd>文本输入，复用安全任务确认链路</dd></div>
+                <div><dt>任务</dt><dd>pending / executing / completed / blocked / failed</dd></div>
+              </dl>
+            </div>
+            <div class="workspace-block">
+              <h3>快捷指令</h3>
+              <button type="button" data-text-prompt="帮我做一次健康检查">健康检查</button>
+              <button type="button" data-text-prompt="帮我看看最近错误">最近错误</button>
+              <button type="button" data-text-prompt="总结最近运行事件">运行事件总结</button>
+            </div>
+          </aside>
+        </div>
       </section>
 
-      <!-- 唤醒与语音 -->
-      <section class="content-section" id="section-wake">
-        <h2 class="section-title">唤醒与语音</h2>
-        <div class="glass-card" id="wake-voice-detail"><div class="card-body">加载中...</div></div>
+      <!-- Tasks -->
+      <section class="content-section" id="section-tasks">
+        <div class="page-heading">
+          <div>
+            <h2 class="section-title">任务</h2>
+            <p class="section-subtitle">本次会话中的待确认、执行中、已完成、已拦截和失败任务。</p>
+          </div>
+        </div>
+        <div class="task-status-grid">
+          <div class="glass-card task-status-card"><span>待确认</span><strong>pending</strong></div>
+          <div class="glass-card task-status-card"><span>执行中</span><strong>running</strong></div>
+          <div class="glass-card task-status-card"><span>已完成</span><strong>completed</strong></div>
+          <div class="glass-card task-status-card"><span>已拦截</span><strong>blocked</strong></div>
+          <div class="glass-card task-status-card"><span>失败</span><strong>failed</strong></div>
+        </div>
+        <div class="glass-card">
+          <div class="card-header"><h3 class="card-title">任务中心</h3></div>
+          <div class="card-body">当前版本主要在对话页展示本次会话任务。后续将接入下载、PDF、爬虫等长任务历史。</div>
+        </div>
       </section>
 
-      <!-- 占位 -->
-      <section class="content-section" id="section-models"><h2 class="section-title">模型</h2><div class="glass-card"><div class="card-body">即将推出 — 模型管理、下载状态、运行时选择</div></div></section>
-      <section class="content-section" id="section-tools"><h2 class="section-title">工具</h2><div class="glass-card"><div class="card-body">即将推出 — 工具配置、权限管理、执行日志</div></div></section>
-      <section class="content-section" id="section-automation"><h2 class="section-title">自动化</h2><div class="glass-card"><div class="card-body">即将推出 — 计划任务、触发器、宏</div></div></section>
-      <section class="content-section" id="section-database"><h2 class="section-title">数据库</h2><div class="glass-card"><div class="card-body">即将推出 — 知识库管理、记忆、搜索</div></div></section>
-      <section class="content-section" id="section-logs"><h2 class="section-title">日志</h2><div class="glass-card"><div class="card-body">即将推出 — 完整日志查看、搜索、导出</div></div></section>
+      <section class="content-section" id="section-tools">
+        <div class="page-heading">
+          <div>
+            <h2 class="section-title">工具</h2>
+            <p class="section-subtitle">未来功能承载区，当前仅展示安全占位。</p>
+          </div>
+        </div>
+        <div class="tool-grid">
+          <div class="glass-card tool-card"><h3>视频下载</h3><p>即将支持，需要安全确认。</p><span>coming soon</span></div>
+          <div class="glass-card tool-card"><h3>PDF 解析</h3><p>文档下载、解析和提取。</p><span>coming soon</span></div>
+          <div class="glass-card tool-card"><h3>网页爬取</h3><p>只读采集优先，后续接入。</p><span>coming soon</span></div>
+          <div class="glass-card tool-card"><h3>数据采集</h3><p>API 拉取、清洗和整理。</p><span>coming soon</span></div>
+          <div class="glass-card tool-card"><h3>浏览器自动化</h3><p>需要独立安全策略。</p><span>coming soon</span></div>
+          <div class="glass-card tool-card"><h3>本地文件工具</h3><p>默认只读，逐步开放。</p><span>coming soon</span></div>
+        </div>
+      </section>
+
+      <section class="content-section" id="section-diagnostics">
+        <div class="page-heading">
+          <div>
+            <h2 class="section-title">诊断</h2>
+            <p class="section-subtitle">运行事件、最近错误、日志目录和诊断导出入口。</p>
+          </div>
+          <div class="action-row compact">
+            <button class="glass-pill" data-action="refresh">刷新诊断</button>
+            <button class="glass-pill" data-action="export-diag">导出 TXT</button>
+          </div>
+        </div>
+        <div class="card-grid-2">
+          <div class="glass-card"><div class="card-header"><h3 class="card-title">诊断信息</h3></div><div class="card-body">右侧上下文面板持续显示桥接、配置、日志、错误和运行事件。</div></div>
+          <div class="glass-card"><div class="card-header"><h3 class="card-title">健康检查入口</h3></div><div class="card-body">可在对话页输入“帮我做一次健康检查”，或使用右侧启动前检查。</div></div>
+        </div>
+        <div class="glass-card"><div class="card-header"><h3 class="card-title">运行事件</h3></div><div id="diagnostics-events-hint" class="card-body">运行事件摘要会同步显示在首页和右侧上下文面板。</div></div>
+      </section>
+
       <section class="content-section" id="section-settings">
-        <h2 class="section-title">设置</h2>
-        <div class="settings-coming-soon glass-card">
-          <div class="card-header"><h3 class="card-title">即将推出</h3></div>
-          <div class="card-body">设置页将用于管理全局偏好、快捷键和主题。当前版本仅保留入口，不提供可点击的假功能。</div>
+        <div class="page-heading">
+          <div>
+            <h2 class="section-title">设置</h2>
+            <p class="section-subtitle">语音、模型、路径、安全和高级配置入口。</p>
+          </div>
         </div>
-        <div class="coming-soon-grid">
-          <div class="glass-card coming-soon-card">
-            <div class="card-label">全局偏好</div>
-            <div class="card-body">启动行为、常驻模式、默认页面等配置入口。</div>
+        <div class="glass-card" id="wake-settings">
+          <div class="card-header"><h3 class="card-title">唤醒与语音设置</h3></div>
+          <div class="form-grid">
+            <label class="form-field">引擎
+              <select id="wake-engine" class="glass-input">
+                <option value="stt_text">stt_text</option>
+                <option value="openwakeword">openwakeword</option>
+              </select>
+            </label>
+            <label class="form-field">设备
+              <input type="number" id="wake-device" class="glass-input" min="0" max="99" placeholder="0">
+            </label>
+            <label class="form-field">冷却时间 (秒)
+              <input type="number" id="wake-cooldown" class="glass-input" min="0" max="30" step="0.5" placeholder="2.5">
+            </label>
+            <label class="form-field">灵敏度
+              <input type="number" id="wake-sensitivity" class="glass-input" min="0" max="1" step="0.05" placeholder="0.5">
+            </label>
+            <label class="form-field toggle-field">
+              <span>兜底唤醒</span>
+              <input type="checkbox" id="wake-fallback" class="glass-toggle" checked>
+            </label>
           </div>
-          <div class="glass-card coming-soon-card">
-            <div class="card-label">快捷键</div>
-            <div class="card-body">唤醒、暂停、控制面板呼出等快捷键配置入口。</div>
+          <div class="action-row">
+            <button class="glass-pill" id="btn-save-config" data-action="save-config">保存配置</button>
+            <button class="glass-pill glass-pill-primary" id="btn-save-restart" data-action="save-restart">保存并重启</button>
           </div>
-          <div class="glass-card coming-soon-card">
-            <div class="card-label">主题</div>
-            <div class="card-body">主题色、玻璃强度、布局密度等视觉偏好入口。</div>
-          </div>
+          <p class="hint" id="wake-hint"></p>
+          <div class="card-body" id="wake-voice-detail">加载中...</div>
+        </div>
+        <div class="settings-grid">
+          <div class="glass-card coming-soon-card"><div class="card-label">模型设置</div><div class="card-body">模型提供商、超时和回复长度。</div></div>
+          <div class="glass-card coming-soon-card"><div class="card-label">路径设置</div><div class="card-body">配置、日志和资源目录。</div></div>
+          <div class="glass-card coming-soon-card"><div class="card-label">安全设置</div><div class="card-body">任务确认、只读优先和能力边界。</div></div>
+          <div class="glass-card coming-soon-card"><div class="card-label">高级设置</div><div class="card-body">调试、实验功能和开发者入口。</div></div>
         </div>
       </section>
-      <section class="content-section" id="section-developer"><h2 class="section-title">开发者</h2><div class="glass-card"><div class="card-body">即将推出 — API 测试、代码资源索引、调试工具</div></div></section>
     </main>
 
     <!-- Right Diagnostic Drawer -->
@@ -203,74 +294,6 @@
     <!-- Toast -->
     <div class="toast-container" id="toast-container"></div>
   </div>
-  </div>
-
-  <div id="text-chat-shell" class="text-chat-shell">
-    <header class="chat-topbar">
-      <div class="chat-brand">
-        <span class="chat-brand-mark">XH</span>
-        <div>
-          <h1>小黄文本对话</h1>
-          <p>不用语音，直接和小黄打字交流</p>
-        </div>
-      </div>
-      <div class="chat-top-actions">
-        <span class="chat-pill">当前会话：默认对话</span>
-        <span class="chat-pill model">DeepSeek V4 Flash</span>
-        <span class="chat-pill status" id="text-chat-status">本地文本入口</span>
-        <button class="chat-back-control" id="btn-back-control" type="button">返回控制中心</button>
-      </div>
-    </header>
-
-    <aside class="chat-sidebar">
-      <button class="text-chat-new" id="text-chat-new" type="button">+ 新对话</button>
-      <input class="glass-input text-chat-search" type="text" placeholder="搜索对话..." disabled>
-      <div class="text-chat-label">今天</div>
-      <button class="text-chat-session active" type="button">
-        <span>默认对话</span>
-        <small>当前窗口</small>
-      </button>
-    </aside>
-
-    <main class="chat-content">
-      <div class="text-chat-messages" id="text-chat-messages" aria-live="polite"></div>
-      <div class="text-chat-composer">
-        <div class="text-chat-prompts">
-          <button type="button" data-text-prompt="介绍一下你自己">介绍一下你自己</button>
-          <button type="button" data-text-prompt="我现在正在测试小黄项目">我现在正在测试小黄项目</button>
-          <button type="button" data-text-prompt="那它下一步最应该做什么">那它下一步最应该做什么</button>
-        </div>
-        <div class="text-chat-input-row">
-          <span class="text-chat-model">DeepSeek V4 Flash</span>
-          <textarea id="text-chat-input" rows="2" placeholder="输入消息，例如：我现在正在测试小黄项目"></textarea>
-          <button class="text-chat-send" id="text-chat-send" type="button">发送</button>
-        </div>
-        <div class="text-chat-footer">
-          <span>Enter 发送，Shift + Enter 换行</span>
-          <button id="text-chat-clear" type="button">清空会话</button>
-        </div>
-      </div>
-    </main>
-
-    <aside class="chat-workspace">
-      <div class="workspace-block">
-        <h3>工作空间</h3>
-        <dl>
-          <div><dt>项目信息</dt><dd>小黄桌面 AI 助手</dd></div>
-          <div><dt>上下文</dt><dd>当前窗口内短期记忆</dd></div>
-        </dl>
-      </div>
-      <div class="workspace-block">
-        <h3>常用入口</h3>
-        <button type="button" data-text-prompt="解释一下当前状态">解释当前状态</button>
-        <button type="button" data-text-prompt="规划一下小黄项目下一步">规划下一步</button>
-        <button type="button" data-text-prompt="总结本轮对话">总结本轮对话</button>
-      </div>
-      <div class="workspace-block">
-        <h3>未来扩展</h3>
-        <p>文件、任务执行、长期记录将在后续版本接入。</p>
-      </div>
-    </aside>
   </div>
 
   <script src="assets/app.js"></script>

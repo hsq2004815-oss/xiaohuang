@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-UI0 App Shell Layout Foundation
+
+- Purpose: Reframe the control panel frontend as a durable App Shell with Top Bar / fixed primary Sidebar / Main Workspace / right Context Panel.
+- Key files: `frontend/control_panel/index.html`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed:
+  1. Sidebar now exposes only six primary pages: 首页 / 对话 / 任务 / 工具 / 诊断 / 设置.
+  2. Chat is a normal primary workspace page (`section-chat`), not a separate full-window `text-chat-shell`; top “文本对话” remains as a shortcut into the same Chat page via `switchShell('text-chat')`.
+  3. Home keeps runtime cards and quick actions; Settings contains wake/voice controls and wake detail rows; Diagnostics keeps event/export affordances; Tasks/Tools are safe placeholders only.
+  4. Frontend feedback tightened with button active/focus/loading states and capped toast stacking.
+- Verification: compileall OK; unittest discover OK (910 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK; targeted `V13UIFrontendStructureTests` OK (31 tests).
+- Known traps: Do not reintroduce old sidebar categories as primary nav; `switchSection()` keeps aliases for old section ids so legacy JS calls land on the new pages; no backend/API/text interaction service changes were made.
+
 ## Current Snapshot（2026-05-09）— V1.4-D5.1 Readonly Review Safety Fixes
 
 - Purpose: Fix two D5 issues — real sensitive field redaction in log details, and config_path propagation from control panel to config summary.

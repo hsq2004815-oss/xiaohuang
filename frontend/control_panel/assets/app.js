@@ -15,7 +15,7 @@
   var lastPreflightCheck = null;
   var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
   var currentShell = 'control';
-  var currentSection = 'overview';
+  var currentSection = 'home';
   var textChatSessionId = 'control_panel';
   var textChatMessages = [];
   var textChatSending = false;
@@ -98,6 +98,9 @@
     el.className = 'glass-toast ' + (type || 'info');
     el.textContent = msg;
     container.appendChild(el);
+    while (container.children.length > 3) {
+      container.removeChild(container.firstElementChild);
+    }
     setTimeout(function () { el.remove(); }, 5000);
   }
 
@@ -407,25 +410,34 @@
   /* ─── Sidebar ─── */
   function switchShell(shell) {
     var isText = shell === 'text-chat';
-    currentShell = isText ? 'text-chat' : 'control';
-    document.body.classList.toggle('mode-text-chat', isText);
-    document.body.classList.toggle('mode-control', !isText);
+    currentShell = 'control';
+    document.body.classList.toggle('mode-control', true);
 
     var controlShell = $('control-shell');
-    var textShell = $('text-chat-shell');
-    if (controlShell) controlShell.classList.toggle('active', !isText);
-    if (textShell) textShell.classList.toggle('active', isText);
+    if (controlShell) controlShell.classList.add('active');
 
     if (isText) {
+      switchSection('chat');
       focusTextChatInput();
-      drawerLog('切换文本对话', true, '当前窗口全屏文本模式');
+      drawerLog('切换对话页', true, '当前工作区');
     } else {
       drawerLog('返回控制中心', true, '当前窗口');
     }
   }
 
   function switchSection(sec) {
-    currentSection = sec || 'overview';
+    var aliases = {
+      overview: 'home',
+      runtime: 'home',
+      wake: 'settings',
+      models: 'settings',
+      logs: 'diagnostics',
+      developer: 'settings',
+      automation: 'tools',
+      database: 'tools',
+      'text-chat': 'chat'
+    };
+    currentSection = aliases[sec] || sec || 'home';
     document.querySelectorAll('.sidebar-item').forEach(function (item) {
       item.classList.toggle('active', item.getAttribute('data-section') === currentSection);
     });
@@ -437,12 +449,9 @@
   function initNav() {
     document.querySelectorAll('.sidebar-item').forEach(function (item) {
       item.addEventListener('click', function () {
-        var sec = item.getAttribute('data-section') || 'overview';
-        if (sec === 'text-chat') {
-          switchShell('text-chat');
-          return;
-        }
+        var sec = item.getAttribute('data-section') || 'home';
         switchSection(sec);
+        if (sec === 'chat') focusTextChatInput();
       });
     });
   }
@@ -457,11 +466,9 @@
     var clear = $('text-chat-clear');
     var input = $('text-chat-input');
     var newChat = $('text-chat-new');
-    var backControl = $('btn-back-control');
     if (send) send.addEventListener('click', sendTextChatMessage);
     if (clear) clear.addEventListener('click', clearTextChatSession);
     if (newChat) newChat.addEventListener('click', clearTextChatSession);
-    if (backControl) backControl.addEventListener('click', function () { switchShell('control'); });
     var messages = $('text-chat-messages');
     if (messages) {
       messages.addEventListener('click', function (event) {
@@ -799,8 +806,9 @@
     if (send) {
       send.disabled = textChatSending;
       send.textContent = textChatSending ? '发送中...' : '发送';
+      send.classList.toggle('is-loading', textChatSending);
     }
-    if (status) status.textContent = textChatSending ? '正在回复...' : '本地文本入口';
+    if (status) status.textContent = textChatSending ? '小黄正在思考...' : '本地文本入口';
   }
 
   function sendTextChatMessage() {
@@ -879,7 +887,8 @@
 
   function doOpenTextChat() {
     switchShell('text-chat');
-    toast('已切换到文本对话', 'info');
+    focusTextChatInput();
+    toast('已切换到对话页', 'info');
   }
 
   function doRefresh(btn) {
