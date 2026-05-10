@@ -426,8 +426,8 @@ select.glass-input{cursor:pointer}
   box-shadow:0 8px 22px rgba(31,38,135,0.08)
 }
 .text-chat-message.user .text-chat-bubble{
-  color:#fff;border-color:rgba(79,110,246,0.18);
-  background:linear-gradient(135deg,var(--accent-blue),var(--accent-purple))
+  color:var(--text-primary);border-color:rgba(79,110,246,0.18);
+  background:rgba(255,255,255,0.78)
 }
 .text-chat-message-meta{margin-top:6px;color:var(--text-muted);font-size:11px}
 .text-task-card{

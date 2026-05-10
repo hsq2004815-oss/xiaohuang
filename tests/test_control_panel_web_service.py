@@ -702,6 +702,12 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         ):
             self.assertIn(text, css, f"Missing compact chat polish rule: {text}")
 
+    def test_user_chat_message_uses_dark_text(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertIn(".text-chat-message.user .text-chat-bubble", css)
+        self.assertIn("color:var(--text-primary)", css)
+        self.assertNotIn(".text-chat-message.user .text-chat-bubble{\n  color:#fff", css)
+
     def test_chat_focus_mode_removes_header_chrome(self):
         html = self._read("frontend/control_panel/index.html")
         css = self._read("frontend/control_panel/assets/style.css")
