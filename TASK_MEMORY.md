@@ -1,5 +1,24 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-C0 Natural Language Action Task Safety Design Doc
+
+- Purpose: Upgrade the task model from "text task" to "voice-or-text natural language task" and design the safety boundaries for action-type tasks. Design only — no code changes.
+- Key files: `docs/natural-language-action-task-safety-design.md` (new, 20 sections), `TASK_MEMORY.md` (updated).
+- Last completed:
+  1. Concept upgrade: text task → natural language task, unified flow for both voice and text input sources.
+  2. Safety rules for voice: wake word ≠ authorization, ASR transcript ≠ trusted command, all action tasks must go through pending registry + user confirmation.
+  3. Action categories: readonly / safe_action / controlled_action / dangerous_action.
+  4. Risk levels: low / medium / high / blocked, with voice-specific escalation (low-confidence voice → medium, vague dangerous intent → blocked).
+  5. ASR confidence design: high/medium/low thresholds, requires_reconfirm flag, transcript saved but audio never persisted.
+  6. Voice confirmation words: must bind to active task_id, cannot confirm expired/blocked tasks, multiple pending tasks require disambiguation.
+  7. Prohibited automation list: 17 items (delete files, shell commands, registry changes, messaging, payments, etc.) — all blocked in C phase.
+  8. C1 scope: 4 safe local open actions (open logs dir, config dir, project dir, task history dir) — all whitelist path-based, never user-specified paths. Voice or text trigger with mandatory confirmation.
+  9. Pending registry / task history / runtime events integration rules documented.
+  10. UI confirmation card field design with source-specific fields (transcript, asr_confidence for voice).
+  11. Bounded decisions: 12 rules locking down C-phase constraints. text_task_* naming retained short-term, no rename.
+- Verification: git diff --check OK; git status clean (only 2 doc files changed). No code was modified.
+- Known traps: C0 is design only — implementation begins at C1. All text_task_* files retain current names.
+
 ## Current Snapshot（2026-05-10）— V1.5-B2.4 Task History Section Isolation Fix
 
 - Purpose: Fix task history content leaking onto Home page — `tasks-history-shell` class on `<section>` element was overriding `content-section`'s `display:none` with `display:flex`.
