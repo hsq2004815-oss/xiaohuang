@@ -1,17 +1,5 @@
 # Task Memory
 
-## Current Snapshot（2026-05-10）— V1.5-UI0.6 Chat Focus Comfort Bar and Message Visibility Fix
-
-- Purpose: Keep Chat Focus Mode minimal while restoring a clear place for sidebar collapse and improving message visibility near the top of the chat surface.
-- Key files: `frontend/control_panel/index.html`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
-- Last completed:
-  1. Added `chat-focus-bar` inside `section-chat`; it appears only under `body.chat-page` and does not restore the full global topbar.
-  2. Added `btn-chat-sidebar-toggle` in the comfort bar and wired it through the same persisted sidebar collapse state as `btn-sidebar-toggle`.
-  3. Increased Chat message top padding to `36px` with matching `scroll-padding-top` so messages start below a clearer internal buffer.
-  4. Kept the hidden Chat header, internal message scroll, fixed composer row, right session rail, sidebar collapse, and non-home drawer hiding rules intact.
-- Verification: targeted `V13UIFrontendStructureTests` OK (38 tests); compileall OK; unittest discover OK (917 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; pywebview startup smoke stayed alive for 8s.
-- Known traps: Do not repopulate the hidden topbar in Chat; the comfort bar should stay lightweight and scoped to `body.chat-page #section-chat`.
-
 ## Current Snapshot（2026-05-10）— V1.5-UI0.5 Chat Focus Mode Remove Redundant Header Chrome
 
 - Purpose: Put Chat into focus mode by removing the two remaining top chrome layers only on the Chat page.

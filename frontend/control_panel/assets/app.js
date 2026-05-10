@@ -195,21 +195,14 @@
     return safeLocalStorageGet(SIDEBAR_STORAGE_KEY) === '1';
   }
 
-  function getSidebarToggleButtons() {
-    return ['btn-sidebar-toggle', 'btn-chat-sidebar-toggle'].map(function (id) {
-      return $(id);
-    }).filter(Boolean);
-  }
-
   function applySidebarCollapsedState(collapsed) {
-    var buttons = getSidebarToggleButtons();
+    var btn = $('btn-sidebar-toggle');
     document.body.classList.toggle('sidebar-collapsed', !!collapsed);
-    buttons.forEach(function (btn) {
-      btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
-      btn.setAttribute('aria-label', collapsed ? '展开导航' : '收起导航');
-      btn.title = collapsed ? '展开导航' : '收起导航';
-      btn.textContent = collapsed ? '»' : '☰';
-    });
+    if (!btn) return;
+    btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+    btn.setAttribute('aria-label', collapsed ? '展开导航' : '收起导航');
+    btn.title = collapsed ? '展开导航' : '收起导航';
+    btn.textContent = collapsed ? '»' : '☰';
   }
 
   function setSidebarCollapsed(collapsed) {
@@ -222,14 +215,14 @@
   }
 
   function initSidebarControls() {
-    getSidebarToggleButtons().forEach(function (btn) {
-      if (btn.dataset.sidebarBound === '1') return;
+    var btn = $('btn-sidebar-toggle');
+    if (btn && btn.dataset.sidebarBound !== '1') {
       btn.dataset.sidebarBound = '1';
       btn.addEventListener('click', function (e) {
         e.preventDefault();
         toggleSidebarCollapsed();
       });
-    });
+    }
     applySidebarCollapsedState(isSidebarCollapsed());
   }
 

@@ -624,8 +624,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
     def test_html_has_chat_page(self):
         html = self._read("frontend/control_panel/index.html")
         for text in ("control-shell", "section-chat", "text-chat-messages",
-                     "text-chat-input", "text-chat-send", "text-chat-workspace",
-                     "chat-focus-bar", "btn-chat-sidebar-toggle"):
+                     "text-chat-input", "text-chat-send", "text-chat-workspace"):
             self.assertIn(text, html, f"Missing chat page element: {text}")
         self.assertNotIn('id="section-text-chat"', html)
         self.assertNotIn('id="text-chat-shell"', html)
@@ -679,7 +678,6 @@ class V13UIFrontendStructureTests(unittest.TestCase):
             "#section-chat .text-chat-main",
             "#section-chat .text-chat-messages",
             "overscroll-behavior:contain",
-            "scroll-padding-top:36px",
             "grid-template-rows:minmax(0,1fr) auto",
         ):
             self.assertIn(text, css, f"Missing chat scroll layout rule: {text}")
@@ -718,11 +716,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
             "body.chat-page.sidebar-collapsed .app-shell",
             "grid-template-columns:var(--sidebar-collapsed-w) minmax(0,1fr)",
             "body.chat-page #section-chat .text-chat-header",
-            "body.chat-page #section-chat .chat-focus-bar",
-            "flex:0 0 56px",
-            "body.chat-page #section-chat .chat-focus-sidebar-toggle",
             "body.chat-page #section-chat .text-chat-layout",
-            "flex:1 1 auto",
         ):
             self.assertIn(text, css, f"Missing chat focus mode rule: {text}")
 
@@ -733,8 +727,6 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for text in (
             "SIDEBAR_STORAGE_KEY",
             "xiaohuang.controlPanel.sidebarCollapsed",
-            "function getSidebarToggleButtons",
-            "'btn-chat-sidebar-toggle'",
             "function toggleSidebarCollapsed",
             "function applySidebarCollapsedState",
             "document.body.classList.toggle('sidebar-collapsed'",
@@ -751,7 +743,6 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         ):
             self.assertIn(text, css, f"Missing sidebar collapse style: {text}")
         self.assertIn('class="sidebar-collapse-btn"', html)
-        self.assertIn('class="sidebar-collapse-btn chat-focus-sidebar-toggle"', html)
 
     def test_html_has_bridge_indicator(self):
         html = self._read("frontend/control_panel/index.html")
