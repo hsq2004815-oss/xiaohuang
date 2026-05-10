@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-UI0.2 Chat Scroll Container and Non-Home Drawer Cleanup
+
+- Purpose: Fix follow-up App Shell acceptance issues — no non-home diagnostic rail residue, and Chat messages must scroll inside the chat card instead of growing the window.
+- Key files: `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed:
+  1. `updateShellLayoutForSection()` now also toggles `home-page`, `non-home-page`, and `chat-page` while keeping previous `drawer-page` / `no-drawer-page` compatibility.
+  2. Non-home CSS hides diagnostic drawer, rail, and any drawer toggle, including the collapsed rail override path.
+  3. Chat page has fixed-height section rules (`height:100%`, `min-height:0`) and `body.chat-page .main-workspace{overflow:hidden}` so messages cannot stretch the whole page.
+  4. Chat message list has internal `overflow-y:auto`, `overscroll-behavior:contain`, and `scrollTextChatToBottom()` is used after rendering.
+- Verification: compileall OK; unittest discover OK (914 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; pywebview startup smoke stayed alive for 6s; diff check OK; targeted `V13UIFrontendStructureTests` OK (35 tests).
+- Known traps: The generic `.app-shell.drawer-collapsed .drawer-rail{display:flex}` rule must stay overridden for non-home pages; do not remove `min-height:0` from chat ancestors.
+
 ## Current Snapshot（2026-05-10）— V1.5-UI0.1 Context Panel Scope and Chat Space Polish
 
 - Purpose: Fix the first App Shell layout issue where the right diagnostic context panel crowded every page, especially Chat.

@@ -638,9 +638,14 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         css = self._read("frontend/control_panel/assets/style.css")
         self.assertIn("function updateShellLayoutForSection", js)
         self.assertIn("section === 'home'", js)
+        self.assertIn("document.body.classList.toggle('home-page'", js)
+        self.assertIn("document.body.classList.toggle('non-home-page'", js)
         self.assertIn("document.body.classList.toggle('drawer-page'", js)
         self.assertIn("document.body.classList.toggle('no-drawer-page'", js)
         self.assertIn("updateShellLayoutForSection(currentSection)", js)
+        self.assertIn("body.non-home-page .diagnostic-drawer", css)
+        self.assertIn("body.non-home-page .drawer-rail", css)
+        self.assertIn("body.non-home-page .drawer-toggle", css)
         self.assertIn("body.no-drawer-page .diagnostic-drawer", css)
         self.assertIn("body.no-drawer-page .drawer-rail", css)
         self.assertIn("grid-template-areas:\"topbar topbar\" \"sidebar main\"", css)
@@ -657,7 +662,24 @@ class V13UIFrontendStructureTests(unittest.TestCase):
     def test_chat_layout_has_no_right_workspace_column(self):
         css = self._read("frontend/control_panel/assets/style.css")
         self.assertIn(".text-chat-workspace{display:none}", css)
+        self.assertIn("#section-chat .text-chat-workspace{display:none!important}", css)
         self.assertIn("grid-template-columns:minmax(176px,220px) minmax(0,1fr)", css)
+
+    def test_chat_layout_has_internal_scroll_container(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        js = self._read("frontend/control_panel/assets/app.js")
+        for text in (
+            "#section-chat.content-section.active",
+            "body.chat-page .main-workspace{overflow:hidden}",
+            "#section-chat .text-chat-layout",
+            "#section-chat .text-chat-main",
+            "#section-chat .text-chat-messages",
+            "overscroll-behavior:contain",
+            "grid-template-rows:minmax(0,1fr) auto",
+        ):
+            self.assertIn(text, css, f"Missing chat scroll layout rule: {text}")
+        self.assertIn("function scrollTextChatToBottom", js)
+        self.assertIn("messages.scrollTop = messages.scrollHeight", js)
 
     def test_html_has_bridge_indicator(self):
         html = self._read("frontend/control_panel/index.html")

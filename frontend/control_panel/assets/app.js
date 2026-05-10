@@ -404,9 +404,13 @@
 
   /* ─── Sidebar ─── */
   function updateShellLayoutForSection(section) {
-    var showDrawer = section === 'home';
-    document.body.classList.toggle('drawer-page', showDrawer);
-    document.body.classList.toggle('no-drawer-page', !showDrawer);
+    var isHome = section === 'home';
+    var isChat = section === 'chat';
+    document.body.classList.toggle('home-page', isHome);
+    document.body.classList.toggle('drawer-page', isHome);
+    document.body.classList.toggle('non-home-page', !isHome);
+    document.body.classList.toggle('no-drawer-page', !isHome);
+    document.body.classList.toggle('chat-page', isChat);
   }
 
   function switchShell(shell) {
@@ -535,6 +539,12 @@
     renderTextChatMessages();
   }
 
+  function scrollTextChatToBottom() {
+    var messages = $('text-chat-messages');
+    if (!messages) return;
+    messages.scrollTop = messages.scrollHeight;
+  }
+
   function normalizePendingTask(task) {
     if (!task || typeof task !== 'object') return null;
     var risk = String(task.risk_level || task.risk || 'medium').toLowerCase();
@@ -578,7 +588,7 @@
         metaHtml +
         '</article>';
     }).join('');
-    el.scrollTop = el.scrollHeight;
+    scrollTextChatToBottom();
   }
 
   function normalizeTextTaskExecutionResult(data) {
