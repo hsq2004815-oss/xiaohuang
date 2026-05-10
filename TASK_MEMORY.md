@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-B2.4 Task History Section Isolation Fix
+
+- Purpose: Fix task history content leaking onto Home page — `tasks-history-shell` class on `<section>` element was overriding `content-section`'s `display:none` with `display:flex`.
+- Key files: `frontend/control_panel/index.html` (moved shell class to inner div wrapper), `tests/test_control_panel_web_service.py` (+2 isolation tests).
+- Last completed:
+  1. HTML: Changed `<section class="content-section tasks-history-shell" id="section-tasks">` → `<section class="content-section" id="section-tasks"><div class="tasks-history-shell">`. Shell is now an inner wrapper that only handles internal layout.
+  2. Root cause: `.tasks-history-shell { display:flex }` appeared after `.content-section { display:none }` in CSS, and both selectors have equal specificity, so shell's `display:flex` won and the Tasks section was always visible.
+  3. Fix: Section now only has `content-section` class — `display:none` hides it when not active. Inner `tasks-history-shell` div handles flex layout only when the section is active.
+  4. All B2 features preserved: card click, detail panel, health report structured display, independent scrolling, loading/error/empty states, refresh button.
+- Verification: compileall OK; unittest discover OK (1022 tests, 1 symlink-permission skip, +2 new); control_panel_web --help OK; voice_overlay --help OK; diff check OK.
+- Known traps: Never put layout classes (display:flex/grid) on `content-section` elements — they override the show/hide toggle. Always use an inner wrapper div.
+
 ## Current Snapshot（2026-05-10）— V1.5-B2.3 Task History Independent Scroll Containers
 
 - Purpose: Fix Tasks page scroll behavior — left list and right detail must each scroll independently without pushing the page shell taller.

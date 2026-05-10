@@ -1175,6 +1175,16 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
         self.assertIn("tasks-history-detail-scroll", html)
         self.assertIn("暂无任务历史", html)
 
+    def test_section_tasks_does_not_have_shell_as_class(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertNotIn('class="content-section tasks-history-shell"', html,
+                         "tasks-history-shell must be an inner wrapper, not a class on the section")
+
+    def test_tasks_history_shell_is_inner_wrapper(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn('<div class="tasks-history-shell">', html,
+                      "tasks-history-shell should be an inner div wrapper inside section-tasks")
+
     def test_html_tasks_has_refresh_button(self):
         html = self._read("frontend/control_panel/index.html")
         self.assertIn('id="btn-tasks-refresh"', html)
