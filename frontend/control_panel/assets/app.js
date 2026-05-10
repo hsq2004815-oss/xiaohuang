@@ -1283,7 +1283,7 @@
     taskHistoryItems.forEach(function (item) {
       var signal = getHistorySignal(item);
       var signalCls = getHistorySignalClass(signal);
-      var statusLabel = item.status === 'completed' ? '完成' : '失败';
+      var statusLabel = item.status === 'completed' ? '任务：完成' : '任务：失败';
       var statusCls = item.ok ? 'completed' : 'failed';
       var activeCls = taskHistorySelectedId === item.history_id ? ' active' : '';
       var timeDisplay = formatHistoryRelativeTime(item.completed_at) || formatHistoryTime(item.completed_at);
@@ -1293,17 +1293,81 @@
       html += '<div class="task-history-card' + activeCls + '" data-history-id="' + escapeHtml(item.history_id) + '">' +
         '<div class="task-history-title-row">' +
           '<span class="task-history-title">' + escapeHtml(item.title || '任务') + '</span>' +
-          '<span class="task-history-status ' + statusCls + '">' + statusLabel + '</span>' +
+        '</div>' +
+        '<div class="task-history-badge-row">' +
+          '<span class="task-history-status ' + statusCls + '">' + escapeHtml(statusLabel) + '</span>' +
+          '<span class="task-history-signal ' + signalCls + '">报告：' + escapeHtml(signal) + '</span>' +
         '</div>' +
         '<div class="task-history-summary">' + escapeHtml(item.summary || '') + '</div>' +
         '<div class="task-history-meta">' +
-          '<span class="task-history-signal ' + signalCls + '">' + escapeHtml(signal) + '</span>' +
           '<span class="task-history-meta-text">' + escapeHtml(metaParts.join(' · ')) + '</span>' +
         '</div>' +
       '</div>';
     });
 
     if (list) list.innerHTML = html;
+  }
+
+  function parseHealthReportSections(text) {
+    var clean = String(text || '').trim();
+    if (!clean) return [];
+    var markers = [
+      { key: '总体状态', pattern: /总体状态[:：]/ },
+      { key: '基础状态', pattern: /一、基础状态/ },
+      { key: '配置状态', pattern: /二、配置状态/ },
+      { key: '运行事件', pattern: /三、运行事件/ },
+      { key: '历史日志', pattern: /四、最近错误(?:（历史日志）)?/ },
+      { key: '代表性问题', pattern: /代表性问题[:：]/ },
+      { key: '提醒', pattern: /提醒[:：]/ },
+      { key: '建议', pattern: /六、建议/ }
+    ];
+    var positions = [];
+    markers.forEach(function (m) {
+      var match = clean.match(m.pattern);
+      if (match) {
+        positions.push({ key: m.key, index: match.index });
+      }
+    });
+    positions.sort(function (a, b) { return a.index - b.index; });
+    var sections = [];
+    for (var i = 0; i < positions.length; i += 1) {
+      var start = positions[i].index;
+      var end = i + 1 < positions.length ? positions[i + 1].index : clean.length;
+      var body = clean.slice(start, end).trim();
+      if (body.length > 240) {
+        body = body.slice(0, 240).trim() + '…';
+      }
+      sections.push({ title: positions[i].key, body: body });
+    }
+    if (!sections.length) {
+      var body = clean;
+      if (body.length > 240) body = body.slice(0, 240).trim() + '…';
+      sections.push({ title: '安全详情', body: body });
+    }
+    return sections;
+  }
+
+  function buildHistoryInsightSections(item) {
+    var text = item.safe_details_excerpt || item.summary || '';
+    if (item.task_type === 'readonly_health_report') {
+      return parseHealthReportSections(text);
+    }
+    return [
+      { title: '摘要', body: item.summary || '暂无摘要' },
+      { title: '安全详情', body: item.safe_details_excerpt || '暂无更多安全详情' }
+    ];
+  }
+
+  function renderHistoryInsightBlocks(sections) {
+    if (!sections || !sections.length) return '';
+    return sections.map(function (sec) {
+      var body = String(sec.body || '');
+      if (body.length > 400) body = body.slice(0, 400).trim() + '…';
+      return '<div class="tasks-history-detail-block">' +
+        '<div class="tasks-history-detail-block-title">' + escapeHtml(sec.title) + '</div>' +
+        '<div class="tasks-history-detail-block-body">' + escapeHtml(body) + '</div>' +
+      '</div>';
+    }).join('');
   }
 
   function selectTaskHistoryItem(historyId) {
@@ -1324,39 +1388,38 @@
 
     var signal = getHistorySignal(item);
     var signalCls = getHistorySignalClass(signal);
-    var statusLabel = item.status === 'completed' ? '完成' : '失败';
+    var statusLabel = item.status === 'completed' ? '任务：完成' : '任务：失败';
+    var statusCls = item.ok ? 'completed' : 'failed';
     var tags = (item.tags && item.tags.length) ? item.tags.map(function (t) {
       return '<span class="task-history-tag">' + escapeHtml(t) + '</span>';
     }).join('') : '';
 
-    var excerptHtml = '';
-    if (item.safe_details_excerpt) {
-      excerptHtml = '<div class="tasks-history-detail-section">' +
-        '<div class="tasks-history-detail-label">安全详情</div>' +
-        '<div class="tasks-history-detail-text">' + escapeHtml(item.safe_details_excerpt) + '</div>' +
-      '</div>';
-    }
+    var sections = buildHistoryInsightSections(item);
+    var insightHtml = renderHistoryInsightBlocks(sections);
 
     detail.innerHTML =
       '<div class="tasks-history-detail-section">' +
         '<div class="task-history-detail-head">' +
           '<span class="task-history-detail-title">' + escapeHtml(item.title || '任务') + '</span>' +
-          '<span class="task-history-signal ' + signalCls + '">' + escapeHtml(signal) + '</span>' +
+          '<div class="task-history-detail-badges">' +
+            '<span class="task-history-status ' + statusCls + '">' + escapeHtml(statusLabel) + '</span>' +
+            '<span class="task-history-signal ' + signalCls + '">报告：' + escapeHtml(signal) + '</span>' +
+          '</div>' +
         '</div>' +
       '</div>' +
-      '<div class="tasks-history-detail-section tasks-history-detail-meta">' +
-        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">状态</span><span>' + escapeHtml(statusLabel) + '</span></div>' +
-        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">类型</span><span>' + escapeHtml(item.task_type || '') + '</span></div>' +
-        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">风险</span><span>' + escapeHtml(item.risk_level || 'low') + '</span></div>' +
-        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">时间</span><span>' + escapeHtml(formatHistoryTime(item.completed_at)) + '</span></div>' +
+      '<div class="tasks-history-detail-section tasks-history-detail-overview">' +
+        '<div class="tasks-history-detail-block-title">状态概览</div>' +
+        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">任务类型</span><span>' + escapeHtml(item.task_type || '') + '</span></div>' +
+        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">风险等级</span><span>' + escapeHtml(item.risk_level || 'low') + '</span></div>' +
+        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">完成时间</span><span>' + escapeHtml(formatHistoryTime(item.completed_at)) + '</span></div>' +
         (item.read_files_count !== undefined && item.read_files_count !== null ? '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">读取文件</span><span>' + escapeHtml(getHistoryReadFilesCount(item)) + '</span></div>' : '') +
-          (tags ? '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">标签</span><div class="tasks-history-detail-tags">' + tags + '</div></div>' : '') +
+        (tags ? '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">标签</span><div class="tasks-history-detail-tags">' + tags + '</div></div>' : '') +
       '</div>' +
-      '<div class="tasks-history-detail-section">' +
-        '<div class="tasks-history-detail-label">摘要</div>' +
-        '<div class="tasks-history-detail-text">' + escapeHtml(item.summary || '') + '</div>' +
+      insightHtml +
+      '<div class="tasks-history-detail-section tasks-history-detail-raw">' +
+        '<div class="tasks-history-detail-block-title">原始安全摘要</div>' +
+        '<div class="tasks-history-detail-text tasks-history-detail-muted">' + escapeHtml(item.safe_details_excerpt || item.summary || '暂无') + '</div>' +
       '</div>' +
-      excerptHtml +
       '<div class="tasks-history-detail-section tasks-history-detail-id">' +
         '<span class="tasks-history-detail-label-id">ID: ' + escapeHtml(item.history_id || '') + '</span>' +
       '</div>';

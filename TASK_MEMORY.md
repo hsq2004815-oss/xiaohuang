@@ -1,5 +1,20 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-B2.2 Task History Readability Polish
+
+- Purpose: Improve task history page readability — distinguish task status from report signal, structure health report details into sections, improve detail panel layout.
+- Key files: `frontend/control_panel/assets/app.js` (badge rework, health report parser, detail restructure), `frontend/control_panel/assets/style.css` (+70 lines: badge-row, detail blocks, muted raw), `tests/test_control_panel_web_service.py` (+4 new tests).
+- Last completed:
+  1. Card badge row: task status now labeled "任务：完成/失败", report signal now "报告：正常/有警告/有错误/信息不足", separate badge row below title. No more confusion between "完成" and "有错误".
+  2. Detail header: shows both "任务：完成" and "报告：有错误" badges side-by-side, not just a single signal badge.
+  3. Health report parser: `parseHealthReportSections()` uses regex markers to split compacted excerpt into 7 sections (总体状态/基础状态/配置状态/运行事件/历史日志/代表性问题/建议), each capped at 240 chars. Falls back to single "安全详情" section if no markers found.
+  4. `buildHistoryInsightSections(item)` dispatches to `parseHealthReportSections` for health_report type, generic summary+safe_details fallback for others.
+  5. `renderHistoryInsightBlocks(sections)` renders each section as a titled block, body capped at 400 chars, all escapeHtml'd.
+  6. Detail layout: header badges → status overview (type/risk/time/files/tags) → insight blocks → raw safe summary (muted, 50% opacity, max 180px scroll) → history_id.
+  7. CSS: `.task-history-badge-row`, `.tasks-history-detail-block`, `.tasks-history-detail-block-title/body`, `.tasks-history-detail-overview`, `.tasks-history-detail-muted`.
+- Verification: compileall OK; unittest discover OK (1018 tests, 1 symlink-permission skip, +4 new); control_panel_web --help OK; voice_overlay --help OK; diff check OK.
+- Known traps: Health report parser works on already compacted (single-line) excerpt — uses regex position indexing, not line-based parsing. All backend files unchanged.
+
 ## Current Snapshot（2026-05-10）— V1.5-B2.1 Task History UI Error State and Escaping Polish
 
 - Purpose: Two small fixes over B2 — error/grid state mutual exclusion (was showing both on API failure), and read_files_count escaping (was raw number concatenation).

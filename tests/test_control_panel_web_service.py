@@ -1192,6 +1192,8 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
         self.assertIn("function formatHistoryTime", js)
         self.assertIn("function setTaskHistoryViewState", js)
         self.assertIn("function getHistoryReadFilesCount", js)
+        self.assertIn("function parseHealthReportSections", js)
+        self.assertIn("function buildHistoryInsightSections", js)
         self.assertIn("get_recent_task_history", js)
 
     def test_js_task_history_uses_escape_html(self):
@@ -1199,6 +1201,33 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
         self.assertIn("escapeHtml(item.title", js)
         self.assertIn("escapeHtml(item.summary", js)
         self.assertIn("escapeHtml(item.safe_details_excerpt", js)
+
+    def test_js_task_history_badge_labels(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("任务：完成", js, "task status badge must include 任务： prefix")
+        self.assertIn("任务：失败", js, "failed status badge must include 任务： prefix")
+        self.assertIn("报告：", js, "report signal badge must include 报告： prefix")
+
+    def test_js_health_report_sections_escape(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("escapeHtml(sec.title)", js, "section title must be escapeHtml'd")
+        self.assertIn("escapeHtml(body)", js, "section body must be escapeHtml'd")
+
+    def test_js_detail_has_original_safe_summary(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("原始安全摘要", js)
+
+    def test_css_has_detail_block_classes(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        for cls_name in (
+            ".task-history-badge-row",
+            ".tasks-history-detail-block",
+            ".tasks-history-detail-block-title",
+            ".tasks-history-detail-block-body",
+            ".tasks-history-detail-overview",
+            ".tasks-history-detail-muted",
+        ):
+            self.assertIn(cls_name, css, f"Missing B2.2 CSS class: {cls_name}")
 
     def test_js_read_files_count_is_escaped(self):
         js = self._read("frontend/control_panel/assets/app.js")
