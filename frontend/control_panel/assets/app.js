@@ -931,6 +931,7 @@
     if (action === 'export-diag') { doExportDiag(btn); return; }
     if (action === 'open-logs-folder') { doOpenLogsFolder(btn); return; }
     if (action === 'preflight-check') { doPreflightCheck(btn); return; }
+    if (action === 'clear-runtime-events') { handleClearRuntimeEvents(btn); return; }
     toast('未识别的操作: ' + action, 'err');
   }
 
@@ -1043,23 +1044,66 @@
     });
   }
 
+  function compactRuntimeEventText(text) {
+    var s = String(text || '').replace(/\s+/g, ' ').trim();
+    var idx = s.indexOf('Traceback');
+    if (idx >= 0) {
+      s = s.slice(0, idx).trim() || '出现异常';
+    }
+    return s.length > 110 ? s.slice(0, 110) + '…' : s;
+  }
+
+  function renderRuntimeEventEntries(events) {
+    return events.slice(-15).map(function (evt) {
+      var cls = evt.level === 'error' ? 'err' : evt.level === 'warning' ? 'warn' : '';
+      var summary = compactRuntimeEventText(evt.message || '');
+      return '<div class="drawer-entry ' + cls + '"><span class="ts">' +
+        escapeHtml(evt.timestamp ? evt.timestamp.slice(-8) : '') + '</span>' +
+        escapeHtml(evt.source + '/' + evt.event_type) +
+        ' — ' + summary + '</div>';
+    }).join('');
+  }
+
   function renderRuntimeEvents(response) {
     var data = (response && response.ok && response.data) ? response.data : null;
     var events = (data && data.events) ? data.events : [];
     lastRuntimeEvents = events;
-    var el = $('drawer-runtime-events');
-    if (!el) return;
-    if (!events.length) {
-      el.innerHTML = '暂无运行事件';
-      return;
+    var emptyHtml = '暂无运行事件';
+
+    var drawerEl = $('drawer-runtime-events');
+    if (drawerEl) {
+      drawerEl.innerHTML = events.length ? renderRuntimeEventEntries(events) : emptyHtml;
     }
-    el.innerHTML = events.slice(-15).map(function (evt) {
-      var cls = evt.level === 'error' ? 'err' : evt.level === 'warning' ? 'warn' : '';
-      return '<div class="drawer-entry ' + cls + '"><span class="ts">' +
-        escapeHtml(evt.timestamp ? evt.timestamp.slice(-8) : '') + '</span>' +
-        escapeHtml(evt.source + '/' + evt.event_type) +
-        ' — ' + escapeHtml(evt.message || '') + '</div>';
-    }).join('');
+
+    var diagEl = $('diagnostics-events-list');
+    if (diagEl) {
+      diagEl.innerHTML = events.length ? renderRuntimeEventEntries(events) : emptyHtml;
+    }
+  }
+
+  function handleClearRuntimeEvents(btn) {
+    if (!btn || btn.disabled) return;
+    var origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '清除中...';
+
+    apiCall('clear_runtime_events').then(function (resp) {
+      if (resp && resp.ok) {
+        toast(resp.message || '最近事件已清空', 'ok');
+        refreshRuntimeEvents();
+      } else {
+        toast((resp && resp.error) || '清空事件失败', 'err');
+      }
+    }).catch(function (e) {
+      toast('清空事件出错: ' + e, 'err');
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = origText;
+    });
+  }
+
+  function refreshRuntimeEvents() {
+    apiCall('get_runtime_events', 20).then(renderRuntimeEvents);
   }
 
   function collectDrawerText(id) {

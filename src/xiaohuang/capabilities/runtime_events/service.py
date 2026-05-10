@@ -59,6 +59,17 @@ def get_recent_events(limit: int = _DEFAULT_LIMIT) -> list[dict]:
     return list(_ring[-n:])
 
 
+def clear_recent_events() -> int:
+    """Clear in-memory runtime events and return the number of removed events.
+
+    This only clears the memory ring buffer. It does not delete any files,
+    logs, or diagnostic exports.
+    """
+    count = len(_ring)
+    _ring.clear()
+    return count
+
+
 def _append_to_ring(entry: dict) -> None:
     _ring.append(entry)
     while len(_ring) > _MAX_BUFFER:

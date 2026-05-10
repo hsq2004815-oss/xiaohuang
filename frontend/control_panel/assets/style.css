@@ -1048,3 +1048,28 @@ body.chat-page #section-chat .text-chat-layout{
   min-height:0;
   height:100%;
 }
+
+/* ─── runtime events compact display ─── */
+#drawer-runtime-events,
+#diagnostics-events-list{
+  max-height:280px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  font-size:var(--font-size-xs, 11px);
+  line-height:1.5;
+}
+#drawer-runtime-events .drawer-entry,
+#diagnostics-events-list .drawer-entry{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  padding:2px 0;
+}
+
+#btn-clear-events{
+  font-size:var(--font-size-xs,11px);
+  padding:2px 10px;
+  margin-left:auto;
+  flex-shrink:0;
+}
+}

@@ -443,6 +443,39 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertFalse(second["data"]["ok"])
         self.assertEqual(second["data"]["error"], "already_completed")
 
+    def test_clear_runtime_events_removes_events(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        es._ring.clear()
+
+        try:
+            record_event("control_panel", "test", "test message")
+            before = len(es._ring)
+            self.assertGreaterEqual(before, 1)
+
+            api = ControlPanelWebApi(config_path=self.config_path)
+            api._project_root = Path(self.tmp.name)
+            result = api.clear_runtime_events({})
+
+            self.assertTrue(result["ok"])
+            self.assertGreaterEqual(result["data"]["removed"], 1)
+        finally:
+            es._ring.clear()
+
+    def test_clear_runtime_events_returns_ok(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        es._ring.clear()
+
+        try:
+            api = ControlPanelWebApi(config_path=self.config_path)
+            api._project_root = Path(self.tmp.name)
+            result = api.clear_runtime_events({})
+            self.assertTrue(result["ok"])
+            self.assertIn("removed", result["data"])
+            json.dumps(result)
+        finally:
+            es._ring.clear()
+
     # ------------------------------------------------------------------
     # refresh / get_config_summary / log paths
     # ------------------------------------------------------------------
@@ -826,6 +859,22 @@ class V13UIFrontendStructureTests(unittest.TestCase):
     def test_js_expiry_no_longer_hardcodes_300_seconds(self):
         js = self._read("frontend/control_panel/assets/app.js")
         self.assertNotIn("300 秒内有效", js, "No longer hardcode 300 seconds expiry label")
+
+    def test_js_has_compact_runtime_event_text(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        for text in ("compactRuntimeEventText", "Traceback", "出现异常"):
+            self.assertIn(text, js, f"Missing compact runtime event text: {text}")
+
+    def test_js_has_clear_runtime_events_api(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        for text in ("clear_runtime_events", "handleClearRuntimeEvents",
+                     "clear-runtime-events", "refreshRuntimeEvents"):
+            self.assertIn(text, js, f"Missing clear runtime events: {text}")
+
+    def test_html_has_clear_runtime_events_button(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("data-action=\"clear-runtime-events\"", html)
+        self.assertIn("清空事件", html)
 
 
 def _fake_status():

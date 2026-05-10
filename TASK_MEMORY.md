@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-UI0.7 Runtime Events Display Hygiene and Clear Recent Events
+
+- Purpose: Fix runtime events display (too noisy with full tracebacks) and add one-click clear button.
+- Key files: `runtime_events/service.py` (+`clear_recent_events()`), `control_panel_web_service.py` (+`clear_runtime_events` API), `frontend/*` (compact text + clear button).
+- Last completed:
+  1. `clear_recent_events()` public function in runtime_events service — clears in-memory ring, returns count removed. Does NOT touch files.
+  2. `ControlPanelWebApi.clear_runtime_events()` API — calls `clear_recent_events()`, records a runtime event for the action, returns `{ok, data: {removed}}`.
+  3. Frontend `compactRuntimeEventText()` truncates at 110 chars and strips Traceback suffix; `renderRuntimeEvents` renders to both Diagnostics page and Home drawer with summary-only display.
+  4. "清空事件" button on Diagnostics page in the 运行事件 card, with loading state and success/failure toast.
+  5. CSS max-height (280px) and `overflow-y:auto` on events lists; single-line `text-overflow:ellipsis` on entries.
+- Verification: compileall OK; unittest discover OK (926 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: `clear_runtime_events` records its own event (one event remains after clear); constructor's `init_event_logger` may load from disk JSONL.
+
 ## Current Snapshot（2026-05-10）— V1.5-UI0.5 Chat Focus Mode Remove Redundant Header Chrome
 
 - Purpose: Put Chat into focus mode by removing the two remaining top chrome layers only on the Chat page.

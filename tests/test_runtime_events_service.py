@@ -394,5 +394,41 @@ class CapabilityEventRecordingTests(unittest.TestCase):
         self.assertGreaterEqual(len(capability_events), 1)
 
 
+class ClearRecentEventsTests(unittest.TestCase):
+    def setUp(self):
+        from xiaohuang.capabilities.runtime_events import service as svc
+        svc._ring.clear()
+
+    def test_clear_removes_all_events(self):
+        from xiaohuang.capabilities.runtime_events.service import (
+            clear_recent_events,
+            get_recent_events,
+            record_event,
+        )
+        record_event("s", "t1", "m1")
+        record_event("s", "t2", "m2")
+
+        removed = clear_recent_events()
+
+        self.assertEqual(removed, 2)
+        self.assertEqual(len(get_recent_events(50)), 0)
+
+    def test_clear_empty_events_returns_zero(self):
+        from xiaohuang.capabilities.runtime_events.service import (
+            clear_recent_events,
+        )
+        removed = clear_recent_events()
+        self.assertEqual(removed, 0)
+
+    def test_clear_returns_int(self):
+        from xiaohuang.capabilities.runtime_events.service import (
+            clear_recent_events,
+            record_event,
+        )
+        record_event("s", "t", "m")
+        removed = clear_recent_events()
+        self.assertIsInstance(removed, int)
+
+
 if __name__ == "__main__":
     unittest.main()
