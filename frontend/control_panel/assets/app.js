@@ -548,7 +548,7 @@
     renderTextChatMessages();
     appendTextChatMessage(
       'assistant',
-      '你好，我是小黄。这里是文本交互界面，不需要唤醒词，也不会播放语音。你可以直接打字和我交流。',
+      '你好，我是小黄。直接输入消息，我会在这里回复。',
       { source: 'welcome' }
     );
   }

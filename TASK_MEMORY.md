@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-UI0.4 Minimal Spacious Chat Surface Polish
+
+- Purpose: Reduce stacked chrome and make Chat feel quieter, lighter, and more spacious without changing behavior.
+- Key files: `frontend/control_panel/index.html`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed:
+  1. Chat header copy shortened and CSS compressed the header to a compact inline surface with a smaller status chip.
+  2. Topbar chrome was thinned: smaller logo, tighter chips/buttons, lighter shadow/border, calmer command-bar feel.
+  3. Welcome message shortened; first assistant bubble is styled as a soft system message instead of a heavy banner.
+  4. Composer and prompt chips were tightened; the model pill is hidden on Chat to reduce repeated metadata; right session rail is lighter and remains present.
+- Verification: compileall OK; unittest discover OK (916 tests, 1 symlink-permission skip); control_panel_web `--help` OK; voice_overlay `--help` OK; pywebview startup smoke stayed alive for 6s; diff check OK; targeted `V13UIFrontendStructureTests` OK (37 tests).
+- Known traps: Keep Chat internal scrolling, sidebar collapse, non-home drawer hiding, and right-side session rail intact; this is visual weight reduction only.
+
 ## Current Snapshot（2026-05-10）— V1.5-UI0.3 Chat Right Utility Rail and Collapsible Sidebar
 
 - Purpose: Move Chat's session helper rail to the right side and add persistent collapsible primary sidebar for more workspace room.

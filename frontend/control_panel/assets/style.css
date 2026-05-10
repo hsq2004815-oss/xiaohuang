@@ -133,6 +133,22 @@ body::after{
 .topbar-center{flex:1;max-width:360px}
 .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
 
+/* ─── Minimal Chat Polish ─── */
+.topbar{
+  min-height:var(--topbar-h);
+  background:rgba(255,255,255,0.56);
+  border-bottom:1px solid rgba(255,255,255,0.42);
+  box-shadow:0 6px 20px rgba(31,38,135,0.07),inset 0 1px 1px rgba(255,255,255,.66)
+}
+.topbar-logo{width:32px;height:32px;border-radius:11px;font-size:14px}
+.topbar-left{gap:10px}
+.topbar-title{font-size:14px}
+.topbar-sub{font-size:10px}
+.topbar-right{gap:7px}
+.topbar .glass-input{min-height:34px;padding-top:8px;padding-bottom:8px}
+.topbar .glass-pill{padding:7px 14px;min-height:34px;box-shadow:0 4px 14px rgba(31,38,135,0.09),inset 0 1px 1px rgba(255,255,255,0.68)}
+.topbar .status-badge,.topbar .wake-badge{padding:4px 10px;font-size:11px}
+
 /* ─── Status / Wake Badge ─── */
 .status-badge,.wake-badge{
   display:inline-flex;align-items:center;padding:4px 14px;border-radius:var(--radius-pill);
@@ -848,17 +864,83 @@ body.no-drawer-page .app-shell.drawer-collapsed .drawer-rail{display:none!import
   min-height:0;
   grid-template-columns:minmax(0,1fr) minmax(250px,300px);
 }
+#section-chat .text-chat-header{
+  align-items:center;
+  margin-bottom:10px;
+  min-height:44px;
+  padding:0 2px;
+}
+#section-chat .text-chat-header .section-title{
+  margin:0;
+  font-size:18px;
+  line-height:1.2;
+  font-weight:760;
+}
+#section-chat .text-chat-header p{
+  margin-top:3px;
+  font-size:12px;
+  line-height:1.35;
+  color:rgba(71,85,105,0.72);
+}
+#section-chat .text-chat-status{
+  min-height:26px;
+  padding:4px 10px;
+  font-size:11px;
+  background:rgba(34,197,94,0.08);
+}
 #section-chat .text-chat-main{
   height:100%;
   min-height:0;
+  border-color:rgba(255,255,255,0.58);
+  box-shadow:0 14px 40px rgba(31,38,135,0.08),inset 0 1px 1px rgba(255,255,255,.62);
 }
 #section-chat .text-chat-messages{
   min-height:0;
   overflow-y:auto;
   overscroll-behavior:contain;
+  padding:28px 32px;
 }
 #section-chat .text-chat-composer{flex:0 0 auto}
 #section-chat .text-chat-workspace{display:none!important}
+body.chat-page .main-workspace{padding-top:clamp(12px,1.8vh,18px)}
+#section-chat .text-chat-sessions{
+  padding:14px!important;
+  background:rgba(255,255,255,0.46);
+  border-color:rgba(255,255,255,0.54);
+  box-shadow:0 10px 28px rgba(31,38,135,0.06),inset 0 1px 1px rgba(255,255,255,.62);
+}
+#section-chat .text-chat-new{min-height:34px;box-shadow:0 8px 18px rgba(79,110,246,0.12)}
+#section-chat .text-chat-search{margin:12px 0 14px}
+#section-chat .text-chat-session{padding:10px;border-radius:15px;background:rgba(255,255,255,0.50)}
+#section-chat .text-chat-message{max-width:74%;margin-bottom:18px}
+#section-chat .text-chat-bubble{
+  padding:12px 15px;
+  border-color:rgba(255,255,255,0.60);
+  background:rgba(255,255,255,0.66);
+  box-shadow:0 8px 20px rgba(31,38,135,0.06)
+}
+#section-chat .text-chat-message.assistant:first-child .text-chat-bubble{
+  color:var(--text-secondary);
+  background:rgba(255,255,255,0.46);
+  border-color:rgba(255,255,255,0.48);
+  box-shadow:none;
+}
+#section-chat .text-chat-composer{
+  padding:12px 14px 14px;
+  background:rgba(255,255,255,0.34);
+}
+#section-chat .text-chat-prompts{gap:6px;margin-bottom:8px}
+#section-chat .text-chat-prompts button,#section-chat #text-chat-clear{
+  padding:6px 10px;
+  font-size:11px;
+  background:rgba(255,255,255,0.52);
+}
+#section-chat .text-chat-input-row{grid-template-columns:minmax(0,1fr) auto}
+#section-chat .text-chat-model{display:none}
+#section-chat .text-chat-footer{
+  margin-top:8px;
+  color:rgba(148,163,184,0.82);
+}
 
 .settings-coming-soon{max-width:min(920px,100%);margin-bottom:18px}
 .coming-soon-grid{

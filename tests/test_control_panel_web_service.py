@@ -684,6 +684,24 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("function scrollTextChatToBottom", js)
         self.assertIn("messages.scrollTop = messages.scrollHeight", js)
 
+    def test_chat_surface_has_compact_polish_rules(self):
+        html = self._read("frontend/control_panel/index.html")
+        js = self._read("frontend/control_panel/assets/app.js")
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertIn("直接和小黄对话，任务确认和结果会显示在这里。", html)
+        self.assertIn("你好，我是小黄。直接输入消息，我会在这里回复。", js)
+        for text in (
+            "/* ─── Minimal Chat Polish ─── */",
+            "#section-chat .text-chat-header",
+            "min-height:44px",
+            "#section-chat .text-chat-status",
+            "#section-chat .text-chat-message.assistant:first-child .text-chat-bubble",
+            "#section-chat .text-chat-input-row{grid-template-columns:minmax(0,1fr) auto}",
+            "#section-chat .text-chat-model{display:none}",
+            "body.chat-page .main-workspace{padding-top:clamp(12px,1.8vh,18px)}",
+        ):
+            self.assertIn(text, css, f"Missing compact chat polish rule: {text}")
+
     def test_sidebar_has_collapsible_state(self):
         html = self._read("frontend/control_panel/index.html")
         js = self._read("frontend/control_panel/assets/app.js")
