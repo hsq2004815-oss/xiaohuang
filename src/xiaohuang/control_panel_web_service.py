@@ -366,6 +366,22 @@ class ControlPanelWebApi:
         except Exception:
             return _ok(data={"items": []}, message="任务历史不可用")
 
+    def read_agent_handoff_file(self, payload: dict | None = None) -> dict:
+        try:
+            raw_path = ""
+            if isinstance(payload, dict):
+                raw_path = str(payload.get("path") or "")
+            from xiaohuang.agent_handoff.handoff_file_service import read_handoff_file
+            return read_handoff_file(self._project_root, raw_path)
+        except Exception:
+            return {
+                "ok": False,
+                "path": "",
+                "content": "",
+                "size": 0,
+                "error": "handoff file read failed",
+            }
+
 
 def _record_cp_event(event_type: str, message: str, level: str = "info") -> None:
     try:

@@ -526,6 +526,54 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertIn("claude_code", entry["tags"])
         _reset_for_test()
 
+    def test_read_agent_handoff_file_returns_content(self):
+        from xiaohuang.agent_handoff.handoff_file_service import (
+            relative_handoff_path,
+            write_handoff_file,
+        )
+
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        path = write_handoff_file(
+            project_root=api._project_root,
+            target_agent="codex",
+            user_request="copy",
+            content="完整 handoff 内容",
+        )
+
+        result = api.read_agent_handoff_file({"path": relative_handoff_path(path, api._project_root)})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["content"], "完整 handoff 内容")
+        self.assertIn("runtime/agent_handoffs/", result["path"])
+
+    def test_read_agent_handoff_file_rejects_missing_path(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+
+        result = api.read_agent_handoff_file({"path": ""})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "missing handoff path")
+
+    def test_read_agent_handoff_file_rejects_escape_path(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+
+        result = api.read_agent_handoff_file({"path": "runtime/agent_handoffs/../secret.txt"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "handoff path is not allowed")
+
+    def test_read_agent_handoff_file_missing_file(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+
+        result = api.read_agent_handoff_file({"path": "runtime/agent_handoffs/missing.txt"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "handoff file not found")
+
     def test_confirm_task_history_append_failure_does_not_affect_result(self):
         api = ControlPanelWebApi(config_path=self.config_path)
         api._project_root = Path(self.tmp.name)
@@ -1044,6 +1092,28 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("appendTextChatMessage('assistant', '',", js)
         self.assertNotIn("execute_text_task", js)
         self.assertNotIn("local_commands", js)
+
+    def test_agent_handoff_copy_ux_static_assets(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        css = self._read("frontend/control_panel/assets/style.css")
+        for text in (
+            "copyTextToClipboard",
+            "renderAgentHandoffResultCard",
+            "data-handoff-copy=\"full\"",
+            "复制完整提示词",
+            "复制文件路径",
+            "复制预览",
+            "read_agent_handoff_file",
+            "parseAgentHandoffDetails",
+        ):
+            self.assertIn(text, js, f"Missing Agent Handoff copy UX JS: {text}")
+        for text in (
+            ".agent-handoff-actions",
+            ".agent-handoff-preview",
+            ".agent-handoff-detail",
+            "user-select:text",
+        ):
+            self.assertIn(text, css, f"Missing Agent Handoff copy UX CSS: {text}")
 
     def test_js_has_immediate_feedback(self):
         js = self._read("frontend/control_panel/assets/app.js")

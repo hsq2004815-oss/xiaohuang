@@ -108,6 +108,31 @@
     setTimeout(function () { el.remove(); }, 5000);
   }
 
+  function copyTextToClipboard(text) {
+    var value = String(text || '');
+    if (!value.trim()) return Promise.reject(new Error('empty clipboard text'));
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(value);
+    }
+    return new Promise(function (resolve, reject) {
+      var area = document.createElement('textarea');
+      area.value = value;
+      area.setAttribute('readonly', 'readonly');
+      area.style.position = 'fixed';
+      area.style.left = '-9999px';
+      document.body.appendChild(area);
+      area.select();
+      try {
+        if (document.execCommand('copy')) resolve();
+        else reject(new Error('copy command failed'));
+      } catch (err) {
+        reject(err);
+      } finally {
+        document.body.removeChild(area);
+      }
+    });
+  }
+
   /* ─── Diagnostic drawer ─── */
   function drawerLog(op, ok, detail) {
     var now = new Date().toLocaleTimeString();
@@ -520,6 +545,12 @@
     var messages = $('text-chat-messages');
     if (messages) {
       messages.addEventListener('click', function (event) {
+        var copyButton = event.target.closest('[data-handoff-copy]');
+        if (copyButton) {
+          event.preventDefault();
+          handleAgentHandoffCopy(copyButton);
+          return;
+        }
         var target = event.target.closest('[data-task-action]');
         if (!target) return;
         var taskId = target.getAttribute('data-task-id') || '';
@@ -722,6 +753,9 @@
     if (result.task_type === 'readonly_health_report') {
       return renderHealthReportResultCard(result);
     }
+    if (result.task_type === 'agent_handoff_draft') {
+      return renderAgentHandoffResultCard(result);
+    }
     var statusClass = getExecutionStatusClass(result.status, result.ok);
     var details = splitExecutionDetails(result.details).join('\n');
     var detailsHtml = details
@@ -754,6 +788,84 @@
       filesHtml +
       errorHtml +
       '</section>';
+  }
+
+  function renderAgentHandoffResultCard(result) {
+    var statusClass = getExecutionStatusClass(result.status, result.ok);
+    var handoff = parseAgentHandoffDetails(result.details || '');
+    var details = splitExecutionDetails(result.details).join('\n');
+    var actionsHtml = result.ok ? '<div class="agent-handoff-actions">' +
+      '<button type="button" data-handoff-copy="full" data-handoff-path="' + escapeHtml(handoff.path) + '">复制完整提示词</button>' +
+      '<button type="button" data-handoff-copy="path" data-handoff-path="' + escapeHtml(handoff.path) + '">复制文件路径</button>' +
+      '<button type="button" data-handoff-copy="preview" data-handoff-preview="' + escapeHtml(handoff.preview) + '">复制预览</button>' +
+      '<span class="agent-handoff-copy-status" aria-live="polite"></span>' +
+      '</div>' : '';
+    var pathHtml = handoff.path
+      ? '<div class="agent-handoff-path"><span>文件</span><code>' + escapeHtml(handoff.path) + '</code></div>'
+      : '';
+    var previewHtml = handoff.preview
+      ? '<div class="agent-handoff-preview"><div class="text-task-result-section-label">预览</div><pre>' + escapeHtml(handoff.preview) + '</pre></div>'
+      : '';
+    return '<section class="text-task-result-card agent-handoff-result-card ' + statusClass + '">' +
+      '<div class="text-task-result-header">' +
+        '<div>' +
+          '<div class="text-task-result-title">' + escapeHtml(result.title || 'Agent Handoff 已生成') + '</div>' +
+          '<div class="text-task-result-meta">' +
+            '<span>' + escapeHtml(result.task_type || 'agent_handoff_draft') + '</span>' +
+            '<span>' + escapeHtml(result.status) + '</span>' +
+            '<span>风险：' + escapeHtml(result.risk_level) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<span class="text-task-result-status ' + statusClass + '">' + escapeHtml(getExecutionStatusLabel(result.status, result.ok)) + '</span>' +
+      '</div>' +
+      '<div class="text-task-result-summary">' + escapeHtml(result.summary || 'Agent Handoff 已生成。') + '</div>' +
+      actionsHtml +
+      pathHtml +
+      previewHtml +
+      '<div class="text-task-result-details agent-handoff-detail"><div class="text-task-result-section-label">详情</div><pre>' + escapeHtml(details) + '</pre></div>' +
+      (result.error && !result.ok ? '<div class="text-task-result-error"><span>错误码</span><code>' + escapeHtml(result.error) + '</code></div>' : '') +
+      '</section>';
+  }
+
+  function parseAgentHandoffDetails(details) {
+    var text = String(details || '');
+    var pathMatch = text.match(/(?:^|\n)文件：([^\n\r]+)/);
+    var marker = '\n预览：\n';
+    var idx = text.indexOf(marker);
+    return {
+      path: pathMatch ? pathMatch[1].trim() : '',
+      preview: idx >= 0 ? text.slice(idx + marker.length).trim() : ''
+    };
+  }
+
+  function handleAgentHandoffCopy(btn) {
+    var mode = btn.getAttribute('data-handoff-copy') || '';
+    var status = btn.parentElement ? btn.parentElement.querySelector('.agent-handoff-copy-status') : null;
+    var path = btn.getAttribute('data-handoff-path') || '';
+    var preview = btn.getAttribute('data-handoff-preview') || '';
+    var promise;
+    if (mode === 'full') {
+      promise = path ? apiCall('read_agent_handoff_file', { path: path }).then(function (resp) {
+        if (!resp || !resp.ok || !resp.content) {
+          throw new Error((resp && resp.error) || 'handoff file read failed');
+        }
+        return copyTextToClipboard(resp.content);
+      }) : Promise.reject(new Error('missing handoff path'));
+    } else if (mode === 'path') {
+      promise = copyTextToClipboard(path);
+    } else {
+      promise = copyTextToClipboard(preview);
+    }
+    btn.disabled = true;
+    return promise.then(function () {
+      if (status) status.textContent = '已复制';
+      toast(mode === 'full' ? '已复制完整提示词' : mode === 'path' ? '已复制文件路径' : '已复制预览', 'ok');
+    }).catch(function () {
+      if (status) status.textContent = '复制失败';
+      toast('复制失败，请手动打开 handoff 文件', 'err');
+    }).finally(function () {
+      btn.disabled = false;
+    });
   }
 
   function getExecutionStatusLabel(status, ok) {

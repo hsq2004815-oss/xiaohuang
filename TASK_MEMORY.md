@@ -1,5 +1,17 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-C1.3 Agent Handoff Copy UX
+
+- Purpose: Let users copy generated Agent Handoff content directly from the Chat result card without opening terminals, launching agents, or manually browsing runtime files.
+- Key files: `src/xiaohuang/agent_handoff/handoff_file_service.py`, `src/xiaohuang/control_panel_web_service.py`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, tests.
+- Last completed:
+  1. Added safe readonly `read_handoff_file()` helper restricted to `runtime/agent_handoffs/*.txt`, rejecting absolute paths, `..` escapes, non-txt, missing, and oversized files.
+  2. Added `ControlPanelWebApi.read_agent_handoff_file()` for pywebview frontend access.
+  3. Added Agent Handoff result-card actions: copy full prompt, copy relative file path, and copy preview, with clipboard fallback and toast feedback.
+  4. Made Agent Handoff details/path/preview selectable with `user-select:text`.
+- Verification: targeted handoff file service + control panel API/frontend structure tests OK. Full verification should remain compileall + unittest + control_panel_web `--help` + voice_overlay `--help` + diff check.
+- Known traps: This is copy UX only; do not add agent launching, terminal opening, auto-paste, or arbitrary path reads.
+
 ## Current Snapshot（2026-05-10）— V1.5-C1.2 Agent Handoff Prompt Quality Polish
 
 - Purpose: Upgrade generated Agent Handoff prompts from generic transfer notes into executable engineering task packages.

@@ -40,6 +40,10 @@ Agent Handoff is a draft generator. It writes one `.txt` file in runtime output 
 
 C1.2 separates the user's wrapper request from the real engineering task. For example, "给 Claude Code 生成一个提示词，让它继续优化小黄任务历史页面" keeps the original request for traceability, but the generated prompt title and main task become "继续优化小黄任务历史页面". The prompt package includes suggested files, database rule translation, concrete execution requirements, and acceptance criteria so the target agent acts on the engineering task instead of generating another prompt.
 
+## Copy UX
+
+C1.3 keeps Agent Handoff as a draft-only workflow but makes the generated prompt easier to copy from Chat. The control panel exposes a readonly `read_agent_handoff_file` API that only reads UTF-8 `.txt` files under `runtime/agent_handoffs/` and rejects absolute paths, `..` escapes, non-text files, missing files, and oversized files. The Chat result card can copy the full prompt, the relative handoff path, or the visible preview without opening terminals or launching agents.
+
 ## Why Not Auto-Launch Agents
 
 Auto-launching engineering agents crosses from low-risk prompt generation into local process execution. C1 keeps the workflow reviewable: the user can inspect and copy the prompt before any external agent acts.

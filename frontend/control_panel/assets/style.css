@@ -491,11 +491,31 @@ select.glass-input{cursor:pointer}
 .text-task-result-section-label{margin-bottom:6px;color:var(--text-muted);font-size:11px;font-weight:900}
 .text-task-result-details{
   margin-top:10px;padding:10px;border-radius:12px;border:1px solid rgba(79,110,246,0.12);
-  background:rgba(255,255,255,0.52)
+  background:rgba(255,255,255,0.52);user-select:text
 }
 .text-task-result-details pre{
   max-height:180px;overflow:auto;margin:0;color:var(--text-secondary);font-size:12px;line-height:1.5;
-  white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace
+  white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;user-select:text
+}
+.agent-handoff-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.agent-handoff-actions button{
+  border-radius:var(--radius-pill);border:1px solid rgba(79,110,246,0.22);background:rgba(255,255,255,0.72);
+  color:var(--text-secondary);font-size:12px;font-weight:900;cursor:pointer;padding:7px 11px
+}
+.agent-handoff-actions button:hover{background:rgba(255,255,255,0.88);color:var(--accent-blue)}
+.agent-handoff-actions button:disabled{opacity:.6;cursor:default}
+.agent-handoff-copy-status{color:var(--text-muted);font-size:12px;font-weight:800}
+.agent-handoff-path,.agent-handoff-preview{
+  margin-top:10px;padding:10px;border-radius:12px;border:1px solid rgba(79,110,246,0.12);
+  background:rgba(255,255,255,0.52);user-select:text
+}
+.agent-handoff-detail{user-select:text}
+.agent-handoff-path{display:flex;gap:8px;align-items:flex-start;color:var(--text-secondary);font-size:12px}
+.agent-handoff-path span{font-weight:900;color:var(--text-muted)}
+.agent-handoff-path code{word-break:break-all;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;user-select:text}
+.agent-handoff-preview pre{
+  max-height:180px;overflow:auto;margin:0;color:var(--text-secondary);font-size:12px;line-height:1.5;
+  white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;user-select:text
 }
 .text-task-result-files{
   margin-top:10px;padding:10px;border-radius:12px;background:rgba(79,110,246,0.07);
