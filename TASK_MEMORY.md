@@ -1,5 +1,19 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-A2 Health Report Quality Polish
+
+- Purpose: Quality improvements over A1 health report — better overall status tracking, config gap detection, compact runtime event excerpts, representative log error extracts, natural summary, overall status at top.
+- Key files: `text_task_execution_service.py` (rewritten `_execute_readonly_health_report`, +`_compact_health_text`), tests.
+- Last completed:
+  1. Internal health tracking: `health_errors`, `health_warnings`, `health_unknowns` lists collected from all sub-modules; overall status derived from these.
+  2. Config gaps: detects LLM/TTS disabled, empty voice/wake engine/display_name, reports as warnings with specific prompts.
+  3. Runtime events: shows error/warning counts as `error/warning: 0/1` ratio; includes compacted last error and last warning excerpts (<=96 chars, Traceback stripped, redacted).
+  4. Recent errors: extracts up to 3 representative log lines (compacted + redacted) instead of just a generic "found matches" note.
+  5. Overall status at top of report (line 2), summary is natural Chinese sentence.
+  6. `_compact_health_text()` helper: single-line, Traceback truncation, `_redact_sensitive_text` integration.
+- Verification: compileall OK; unittest discover OK (939 tests, 1 symlink-permission skip, +5 new); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
+- Known traps: config gap test needs all 6 paths present to avoid path-missing error overriding config warnings.
+
 ## Current Snapshot（2026-05-10）— V1.5-A1 Readonly Health Report Foundation
 
 - Purpose: First "big feature" — aggregates existing D5 readonly capabilities (config, events, errors, paths) into one comprehensive health report task.

@@ -447,6 +447,101 @@ class TextTaskExecutionServiceTests(unittest.TestCase):
         self.assertNotIn("sk-leaked-key", result.details)
         self.assertNotIn("abc123", result.details)
 
+    def test_health_report_overall_status_at_top(self):
+        (self.project_root / "src" / "xiaohuang").mkdir(parents=True, exist_ok=True)
+        result = execute_confirmed_text_task(
+            _task("readonly_health_report"),
+            project_root=self.project_root,
+        )
+        self.assertTrue(result.ok)
+        self.assertIn("总体状态", result.summary)
+        lines = result.details.split("\n")
+        self.assertIn("总体状态:", lines[1],
+                      f"Overall status should be in line 2, got: {lines[1]}")
+
+    def test_health_report_config_gaps_generate_warning(self):
+        (self.project_root / "logs").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "src" / "xiaohuang").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts").mkdir(parents=True, exist_ok=True)
+        (self.project_root / "scripts" / "control_panel_web.py").write_text("", encoding="utf-8")
+        (self.project_root / "scripts" / "voice_overlay.py").write_text("", encoding="utf-8")
+        (self.project_root / "frontend" / "control_panel").mkdir(parents=True, exist_ok=True)
+
+        import json as _json
+        cfg = self.project_root / "disable_cfg.json"
+        cfg.write_text(_json.dumps({
+            "llm": {"enabled": False}, "tts": {"enabled": False},
+            "wake": {"phrases": ["小黄"]},
+        }, ensure_ascii=False), encoding="utf-8")
+
+        result = execute_confirmed_text_task(
+            _task("readonly_health_report"),
+            project_root=self.project_root,
+            config_path=cfg,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIn("LLM 未启用", result.details)
+        self.assertIn("TTS 未启用", result.details)
+        self.assertIn("有警告", result.summary)
+
+    def test_health_report_runtime_event_excerpts_are_compacted(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        es._ring.clear()
+
+        try:
+            record_event("test", "warning", "disk space low", level="warning")
+            record_event("test", "error",
+                        "Traceback: something broke at line 42", level="error")
+
+            result = execute_confirmed_text_task(
+                _task("readonly_health_report"),
+                project_root=self.project_root,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertIn("最近 warning:", result.details)
+            self.assertIn("最近 error:", result.details)
+            self.assertNotIn("Traceback", result.details)
+            self.assertNotIn("line 42", result.details)
+        finally:
+            es._ring.clear()
+
+    def test_health_report_runtime_event_redacts_token(self):
+        from xiaohuang.capabilities.runtime_events import service as es
+        from xiaohuang.capabilities.runtime_events.service import record_event
+        es._ring.clear()
+
+        try:
+            record_event("test", "warning",
+                        "api_key=sk-runtime-leak token=abc123", level="warning")
+
+            result = execute_confirmed_text_task(
+                _task("readonly_health_report"),
+                project_root=self.project_root,
+            )
+
+            self.assertTrue(result.ok)
+            self.assertNotIn("sk-runtime-leak", result.details)
+            self.assertNotIn("abc123", result.details)
+        finally:
+            es._ring.clear()
+
+    def test_health_report_module_failure_affects_status(self):
+        logs = self.project_root / "logs"
+        logs.mkdir()
+        (logs / "app.log").write_text("ERROR critical failure\n", encoding="utf-8")
+
+        result = execute_confirmed_text_task(
+            _task("readonly_health_report"),
+            project_root=self.project_root,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertIn("有错误", result.summary,
+                      f"Should show error status, got: {result.summary}")
+
 
 def _task(
     task_type: str,

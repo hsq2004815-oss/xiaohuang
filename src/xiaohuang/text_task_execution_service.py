@@ -440,6 +440,16 @@ def _check_basic_project_paths(project_root: Path) -> dict[str, Any]:
     return {"ok": len(missing) == 0, "checked": checked, "missing": missing}
 
 
+def _compact_health_text(text: str, limit: int = 96) -> str:
+    s = str(text or "").replace("\n", " ").replace("\r", " ").strip()
+    s = " ".join(s.split())
+    idx = s.find("Traceback")
+    if idx >= 0:
+        s = s[:idx].strip() or "出现异常"
+    s = _redact_sensitive_text(s)
+    return s[:limit].rstrip() + "…" if len(s) > limit else s
+
+
 def _execute_readonly_health_report(
     task: dict[str, Any],
     project_root: Path,
@@ -447,24 +457,29 @@ def _execute_readonly_health_report(
     config_path: Path | str | None = None,
 ) -> TextTaskExecutionResult:
     title = str(task.get("title") or "小黄健康检查报告")
+    health_errors: list[str] = []
+    health_warnings: list[str] = []
+    health_unknowns: list[str] = []
     detail_parts: list[str] = ["【小黄健康检查报告】", ""]
 
     # ── 1. Path check ──
     paths = _check_basic_project_paths(project_root)
-    detail_parts.append("一、基础状态")
-    for label in paths["checked"]:
-        present = "✓" if label not in paths["missing"] else "✗ 缺失"
-        detail_parts.append(f"  - {label}: {present}")
+    ok_count = len(paths["checked"]) - len(paths["missing"])
+    total_count = len(paths["checked"])
     if paths["missing"]:
-        detail_parts.append(f"  缺失 {len(paths['missing'])} 个关键路径")
+        health_errors.append(f"缺失 {len(paths['missing'])} 个关键路径")
+        detail_parts.append(f"一、基础状态 — {ok_count}/{total_count} 正常")
+        for label in paths["checked"]:
+            present = "✓" if label not in paths["missing"] else "✗ 缺失"
+            detail_parts.append(f"  - {label}: {present}")
     else:
-        detail_parts.append("  所有关键路径均存在")
-    path_ok = paths["ok"]
+        detail_parts.append(f"一、基础状态 — {ok_count}/{total_count} 正常")
 
     # ── 2. Config summary ──
     detail_parts.append("")
     detail_parts.append("二、配置状态")
     config_ok = True
+    cfg_warnings: list[str] = []
     try:
         from xiaohuang.app_config_service import load_config
         cfg = load_config(config_path)
@@ -472,9 +487,24 @@ def _execute_readonly_health_report(
         detail_parts.append(f"  - 唤醒引擎: {cfg.wake.engine}")
         detail_parts.append(f"  - LLM: {'已启用' if cfg.llm.enabled else '未启用'} ({cfg.llm.model})")
         detail_parts.append(f"  - TTS: {'已启用' if cfg.tts.enabled else '未启用'} ({cfg.tts.voice})")
-        detail_parts.append(f"  - 配置已读取")
+        if not cfg.llm.enabled:
+            cfg_warnings.append("LLM 未启用")
+        if not cfg.tts.enabled:
+            cfg_warnings.append("TTS 未启用")
+        if not cfg.wake.engine:
+            cfg_warnings.append("唤醒引擎未设置")
+        if not cfg.tts.voice:
+            cfg_warnings.append("TTS voice 为空")
+        if not cfg.assistant.display_name.strip():
+            cfg_warnings.append("助手名称为空")
+        if cfg_warnings:
+            detail_parts.append(f"  - 配置提示: {'; '.join(cfg_warnings)}")
+            health_warnings.extend(cfg_warnings)
+        else:
+            detail_parts.append("  - 配置提示: 未发现明显配置缺口")
     except Exception:
         detail_parts.append("  - 配置读取失败")
+        health_warnings.append("配置读取失败")
         config_ok = False
 
     # ── 3. Runtime events summary ──
@@ -484,6 +514,8 @@ def _execute_readonly_health_report(
     error_count = 0
     warning_count = 0
     total_events = 0
+    last_error_text = ""
+    last_warning_text = ""
     try:
         from xiaohuang.capabilities.runtime_events.service import get_recent_events
         events = get_recent_events(50)
@@ -493,17 +525,28 @@ def _execute_readonly_health_report(
             lv = str(e.get("level") or "info")
             if lv == "error":
                 error_count += 1
+                if not last_error_text:
+                    last_error_text = _compact_health_text(str(e.get("message") or ""))
             elif lv == "warning":
                 warning_count += 1
+                if not last_warning_text:
+                    last_warning_text = _compact_health_text(str(e.get("message") or ""))
             src = str(e.get("source") or "")
             sources[src] = sources.get(src, 0) + 1
         detail_parts.append(f"  - 最近事件: {total_events} 条")
-        detail_parts.append(f"  - error: {error_count} 条, warning: {warning_count} 条")
+        detail_parts.append(f"  - error/warning: {error_count}/{warning_count}")
         if sources:
             top_src = sorted(sources, key=sources.get, reverse=True)[:3]
             detail_parts.append(f"  - 活跃模块: {', '.join(top_src)}")
+        if last_error_text:
+            detail_parts.append(f"  - 最近 error: {last_error_text}")
+        if last_warning_text:
+            detail_parts.append(f"  - 最近 warning: {last_warning_text}")
+        if error_count + warning_count == 0:
+            detail_parts.append("  - 未发现 error/warning 事件")
     except Exception:
         detail_parts.append("  - 运行事件读取失败")
+        health_warnings.append("运行事件读取失败")
         events_ok = False
 
     # ── 4. Recent errors summary ──
@@ -512,72 +555,85 @@ def _execute_readonly_health_report(
     log_error = 0
     log_warning = 0
     log_files = 0
+    log_extracts: list[str] = []
     try:
         analysis = _analyze_recent_logs(project_root)
         log_files = len(analysis["read_files"])
-        summary = analysis.get("summary", "")
         import re
-        err_m = re.search(r"error\s+(\d+)", summary.lower())
-        warn_m = re.search(r"warning\s+(\d+)", summary.lower())
+        analysis_summary = analysis.get("summary", "")
+        err_m = re.search(r"error\s+(\d+)", analysis_summary.lower())
+        warn_m = re.search(r"warning\s+(\d+)", analysis_summary.lower())
         log_error = int(err_m.group(1)) if err_m else 0
         log_warning = int(warn_m.group(1)) if warn_m else 0
         detail_parts.append(f"  - 读取日志文件: {log_files} 个")
-        detail_parts.append(f"  - ERROR: {log_error} 条, WARNING: {log_warning} 条")
+        detail_parts.append(f"  - ERROR/WARNING: {log_error}/{log_warning}")
         if analysis["details"] and "未发现关键错误" not in analysis["details"]:
-            # Just note that details exist, don't include full log lines
-            detail_parts.append("  - 发现日志命中，详情可运行\"查看最近错误\"查看")
+            for line in analysis["details"].split("\n"):
+                stripped = line.strip()
+                if not stripped or stripped.startswith("未发现") or stripped.startswith("读取失败"):
+                    continue
+                compacted = _compact_health_text(stripped, 100)
+                if compacted:
+                    log_extracts.append(compacted)
+            for extract in log_extracts[:3]:
+                detail_parts.append(f"  - {extract}")
     except Exception:
         detail_parts.append("  - 日志分析不可用")
+        health_unknowns.append("日志分析不可用")
 
-    # ── 5. Overall status ──
-    detail_parts.append("")
-    detail_parts.append("五、总体状态")
-    if not path_ok:
+    # ── 5. Overall status (built from health tracking) ──
+    if error_count > 0 or log_error > 0:
+        health_errors.append(f"发现 {error_count + log_error} 条错误")
+    if not paths["ok"]:
+        health_errors.append("关键路径缺失")
+    if warning_count > 0 or log_warning > 0:
+        health_warnings.append(f"发现 {warning_count + log_warning} 条 warning")
+
+    if health_errors:
         overall = "有错误"
-        overall_en = "error"
-    elif error_count > 0 or log_error > 0:
-        overall = "有错误"
-        overall_en = "error"
-    elif warning_count > 0 or log_warning > 0:
+    elif health_warnings:
         overall = "有警告"
-        overall_en = "warning"
-    elif not config_ok or not events_ok:
-        overall = "有警告"
-        overall_en = "warning"
-    elif total_events == 0:
+    elif health_unknowns:
         overall = "信息不足"
-        overall_en = "unknown"
+    elif total_events == 0 and log_files == 0:
+        overall = "信息不足"
     else:
         overall = "正常"
-        overall_en = "healthy"
-    detail_parts.append(f"  总体状态: {overall}")
+
+    # ── Overall status and summary at top ──
+    detail_parts.insert(1, f"总体状态: {overall}")
+    detail_parts.insert(2, "")
+
+    if health_errors:
+        summary = f"总体状态：有错误。{'; '.join(health_errors[:2])}，请优先排查。"
+    elif health_warnings:
+        summary = f"总体状态：有警告。{'; '.join(health_warnings[:2])}，建议观察。"
+    elif health_unknowns:
+        summary = "总体状态：信息不足。部分模块无法读取，建议打开控制面板查看更多状态。"
+    else:
+        summary = "总体状态：正常。基础路径、配置、运行事件和最近错误均未发现明显异常。"
 
     # ── 6. Suggestions ──
     detail_parts.append("")
     detail_parts.append("六、建议")
-    if overall_en == "error":
-        if not path_ok:
+    if health_errors:
+        if not paths["ok"]:
             detail_parts.append("  - 核心路径缺失，请检查项目安装是否完整")
         if error_count > 0 or log_error > 0:
-            detail_parts.append("  - 发现错误事件或日志，建议运行\"查看最近错误\"排查")
+            detail_parts.append("  - 发现错误事件或日志，建议运行\"查看最近错误\"排查详情")
         detail_parts.append("  - 优先处理 control_panel / voice_overlay 相关错误")
-    elif overall_en == "warning":
-        if warning_count > 0:
-            detail_parts.append("  - 存在 warning 事件，暂时可继续使用，建议观察")
+    elif health_warnings:
+        if cfg_warnings:
+            detail_parts.append("  - 存在配置缺口，建议检查设置页面补全")
+        if warning_count > 0 or log_warning > 0:
+            detail_parts.append("  - 存在 warning，暂时可继续使用，建议观察来源")
         detail_parts.append("  - 如语音无响应，检查唤醒/STT/TTS 配置")
-    elif overall_en == "unknown":
-        detail_parts.append("  - 信息不足，建议打开控制面板 Diagnostics 查看更多状态")
+    elif health_unknowns:
+        detail_parts.append("  - 当前信息不足以判断完整状态")
+        detail_parts.append("  - 建议打开控制面板 Diagnostics 查看更多详情")
     else:
         detail_parts.append("  - 当前没有发现严重问题")
         detail_parts.append("  - 可以继续进行下一步工作")
-
-    summary = f"总体状态：{overall}。"
-    if error_count + log_error > 0:
-        summary += f" 发现 {error_count + log_error} 条错误。"
-    elif warning_count + log_warning > 0:
-        summary += f" 发现 {warning_count + log_warning} 条警告。"
-    else:
-        summary += " 未发现明显异常。"
 
     return TextTaskExecutionResult(
         ok=True,
