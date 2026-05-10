@@ -378,6 +378,7 @@ select.glass-input{cursor:pointer}
 }
 
 /* ─── Text Chat View ─── */
+.chat-focus-bar{display:none}
 .text-chat-header{
   display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px
 }
@@ -898,7 +899,8 @@ body.no-drawer-page .app-shell.drawer-collapsed .drawer-rail{display:none!import
   min-height:0;
   overflow-y:auto;
   overscroll-behavior:contain;
-  padding:28px 32px;
+  padding:36px 32px 28px;
+  scroll-padding-top:36px;
 }
 #section-chat .text-chat-composer{flex:0 0 auto}
 #section-chat .text-chat-workspace{display:none!important}
@@ -1044,7 +1046,27 @@ body.chat-page #section-chat .text-chat-header{
 body.chat-page .main-workspace{
   padding:clamp(12px,1.8vh,18px) var(--workspace-pad-x) clamp(14px,2vh,20px);
 }
+body.chat-page #section-chat .chat-focus-bar{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  flex:0 0 56px;
+  min-height:56px;
+  padding:8px 4px 10px;
+}
+body.chat-page #section-chat .chat-focus-sidebar-toggle{
+  width:42px;
+  height:40px;
+  border-color:rgba(255,255,255,0.72);
+  background:rgba(255,255,255,0.64);
+  box-shadow:0 10px 24px rgba(31,38,135,0.08),inset 0 1px 1px rgba(255,255,255,.66);
+}
+body.chat-page #section-chat .chat-focus-sidebar-toggle:hover{
+  background:rgba(255,255,255,0.84);
+  box-shadow:0 12px 28px rgba(31,38,135,0.12),inset 0 1px 1px rgba(255,255,255,.72);
+}
 body.chat-page #section-chat .text-chat-layout{
   min-height:0;
-  height:100%;
+  height:auto;
+  flex:1 1 auto;
 }
