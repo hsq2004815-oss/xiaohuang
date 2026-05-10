@@ -1,5 +1,20 @@
 # Task Memory
 
+## Current Snapshot（2026-05-10）— V1.5-B2 Task History Tasks Page UI
+
+- Purpose: Implement the Tasks page as the main task history entry point — list + detail panel. No search, no pagination, no Chat rail changes.
+- Key files: `frontend/control_panel/index.html` (Tasks section replaced), `frontend/control_panel/assets/app.js` (+~160 lines: load/render/select/detail/signal/time helpers), `frontend/control_panel/assets/style.css` (+~200 lines: tasks-history-* classes), `tests/test_control_panel_web_service.py` (+11 new B2 UI tests, +1 old test updated).
+- Last completed:
+  1. HTML: Replaced Tasks placeholder with `tasks-history-shell` layout — header (title + refresh button), `tasks-history-grid` (list + detail panel), loading/empty/error states all inline.
+  2. JS: `loadTaskHistory()` calls `get_recent_task_history({limit:20})` API; `renderTaskHistory()` renders cards with title + status badge + summary (2-line clamp) + meta (signal, time, tags, file count); `selectTaskHistoryItem()` + `renderTaskHistoryDetail()` show safe detail panel on click. Auto-loads on `switchSection('tasks')`. Refresh button wired.
+  3. Signal parsing: `getHistorySignal(item)` extracts "正常/有警告/有错误/信息不足/失败/完成" from summary + excerpt text; displayed as color-coded badge (signal-ok/warn/err/unknown).
+  4. Time: `formatHistoryTime()` (absolute) + `formatHistoryRelativeTime()` ("2分钟前") — zero dependencies.
+  5. Safety: All fields escapeHtml'd; no `dangerouslySetInnerHTML`; no `task_results.jsonl` reference in frontend; no raw details/log/traceback; no local paths leaked.
+  6. CSS: Dark glass theme consistent with UI0; grid layout `minmax(320px,0.9fr) minmax(360px,1.1fr)`; active card border highlight; detail panel with sections; signal badges in 4 colors.
+  7. Chat: Completely untouched — no `chat-recent-tasks` class or any Chat rail modification.
+- Verification: compileall OK; unittest discover OK (1010 tests, 1 symlink-permission skip, +11 new); control_panel_web --help OK; voice_overlay --help OK; diff check OK.
+- Known traps: `task-status-grid` and `task-status-card` old CSS classes remain in style.css for backwards compatibility but are no longer referenced in HTML; 任务中心 → 任务历史 label change updated in existing test.
+
 ## Current Snapshot（2026-05-10）— V1.5-B1.1 Task History Path Isolation, Read API, and Layout Plan
 
 - Purpose: Fix B1 path isolation bug (different project_root could write to wrong JSONL), add backend read API for task history, and document B2/B3 UI layout plan.

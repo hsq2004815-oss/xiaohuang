@@ -148,23 +148,29 @@
       </section>
 
       <!-- Tasks -->
-      <section class="content-section" id="section-tasks">
-        <div class="page-heading">
+      <section class="content-section tasks-history-shell" id="section-tasks">
+        <header class="tasks-history-header">
           <div>
-            <h2 class="section-title">任务</h2>
-            <p class="section-subtitle">本次会话中的待确认、执行中、已完成、已拦截和失败任务。</p>
+            <h2 class="section-title">任务历史</h2>
+            <p class="section-subtitle">查看小黄最近完成的任务结果。</p>
           </div>
+          <button class="glass-pill" id="btn-tasks-refresh" type="button">刷新</button>
+        </header>
+        <div class="tasks-history-empty" id="tasks-history-empty">
+          <p class="tasks-history-empty-title">暂无任务历史</p>
+          <p class="tasks-history-empty-hint">完成一次健康检查或只读任务后，这里会显示安全摘要。</p>
         </div>
-        <div class="task-status-grid">
-          <div class="glass-card task-status-card"><span>待确认</span><strong>pending</strong></div>
-          <div class="glass-card task-status-card"><span>执行中</span><strong>running</strong></div>
-          <div class="glass-card task-status-card"><span>已完成</span><strong>completed</strong></div>
-          <div class="glass-card task-status-card"><span>已拦截</span><strong>blocked</strong></div>
-          <div class="glass-card task-status-card"><span>失败</span><strong>failed</strong></div>
+        <div class="tasks-history-error" id="tasks-history-error" style="display:none">
+          <p>任务历史暂时不可用</p>
+          <p class="tasks-history-error-hint">稍后刷新或查看诊断信息。</p>
         </div>
-        <div class="glass-card">
-          <div class="card-header"><h3 class="card-title">任务中心</h3></div>
-          <div class="card-body">当前版本主要在对话页展示本次会话任务。后续将接入下载、PDF、爬虫等长任务历史。</div>
+        <div class="tasks-history-loading" id="tasks-history-loading">正在读取任务历史...</div>
+        <div class="tasks-history-grid" id="tasks-history-grid">
+          <div class="tasks-history-list glass-card" id="tasks-history-list">
+          </div>
+          <aside class="tasks-history-detail glass-card" id="tasks-history-detail">
+            <p class="tasks-history-detail-placeholder">选择一条任务查看安全详情</p>
+          </aside>
         </div>
       </section>
 

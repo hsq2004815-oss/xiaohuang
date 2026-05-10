@@ -756,7 +756,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for text in ("小黄控制中心", "快速操作", "唤醒与语音设置", "最近事件", "诊断信息",
                      "配置文件", "日志目录", "最近错误", "最近操作", "操作历史",
                      "兜底唤醒", "冷却时间", "灵敏度", "保存配置", "保存并重启",
-                     "任务中心", "视频下载", "PDF 解析", "网页爬取", "安全设置"):
+                     "任务历史", "视频下载", "PDF 解析", "网页爬取", "安全设置"):
             self.assertIn(text, html, f"Missing localized content: {text}")
 
     def test_html_no_project_template_keywords(self):
@@ -1153,3 +1153,88 @@ def api_call_confirm_blocked(payload, reason):
         ),
         "message": "文本任务已拦截",
     }
+
+
+class V15B2TaskHistoryUITests(unittest.TestCase):
+    """V1.5-B2 Task History UI static/structure tests."""
+
+    def setUp(self):
+        self.root = Path(__file__).resolve().parents[1]
+
+    def _read(self, rel):
+        return (self.root / rel).read_text(encoding="utf-8")
+
+    def test_html_has_tasks_history_section(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("任务历史", html)
+        self.assertIn("tasks-history-shell", html)
+        self.assertIn("tasks-history-grid", html)
+        self.assertIn("tasks-history-list", html)
+        self.assertIn("tasks-history-detail", html)
+        self.assertIn("暂无任务历史", html)
+
+    def test_html_tasks_has_refresh_button(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn('id="btn-tasks-refresh"', html)
+
+    def test_html_tasks_has_loading_and_error_states(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("正在读取任务历史...", html)
+        self.assertIn("任务历史暂时不可用", html)
+
+    def test_js_has_task_history_functions(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("function loadTaskHistory", js)
+        self.assertIn("function renderTaskHistory", js)
+        self.assertIn("function renderTaskHistoryDetail", js)
+        self.assertIn("function selectTaskHistoryItem", js)
+        self.assertIn("function getHistorySignal", js)
+        self.assertIn("function formatHistoryTime", js)
+        self.assertIn("get_recent_task_history", js)
+
+    def test_js_task_history_uses_escape_html(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("escapeHtml(item.title", js)
+        self.assertIn("escapeHtml(item.summary", js)
+        self.assertIn("escapeHtml(item.safe_details_excerpt", js)
+
+    def test_js_no_dangerously_set_inner_html(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertNotIn("dangerouslySetInnerHTML", js)
+
+    def test_js_no_task_results_jsonl_direct_access(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertNotIn("task_results.jsonl", js)
+
+    def test_js_auto_loads_on_tasks_section(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("currentSection === 'tasks'", js)
+        self.assertIn("loadTaskHistory()", js)
+
+    def test_css_has_task_history_classes(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        for cls_name in (
+            ".tasks-history-shell", ".tasks-history-grid",
+            ".tasks-history-list", ".task-history-card",
+            ".tasks-history-detail", ".task-history-signal",
+            ".tasks-history-empty",
+        ):
+            self.assertIn(cls_name, css, f"Missing task history CSS class: {cls_name}")
+
+    def test_css_has_signal_classes(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        for cls_name in (
+            ".task-history-signal.signal-ok",
+            ".task-history-signal.signal-warn",
+            ".task-history-signal.signal-err",
+            ".task-history-signal.signal-unknown",
+        ):
+            self.assertIn(cls_name, css, f"Missing signal class: {cls_name}")
+
+    def test_no_chat_tasks_rail_invasion(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        css = self._read("frontend/control_panel/assets/style.css")
+        html = self._read("frontend/control_panel/index.html")
+        self.assertNotIn("chat-recent-tasks", js)
+        self.assertNotIn("chat-recent-tasks", css)
+        self.assertNotIn("chat-recent-tasks", html)

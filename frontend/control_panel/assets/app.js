@@ -22,6 +22,9 @@
   var textChatSending = false;
   var textChatInitialized = false;
   var textTaskCardCounter = 0;
+  var taskHistoryItems = [];
+  var taskHistoryLoading = false;
+  var taskHistorySelectedId = null;
 
   /* ─── API ─── */
   function getApi() {
@@ -486,6 +489,9 @@
     document.querySelectorAll('.content-section').forEach(function (section) {
       section.classList.toggle('active', section.id === 'section-' + currentSection);
     });
+    if (currentSection === 'tasks') {
+      loadTaskHistory();
+    }
   }
 
   function initNav() {
@@ -1169,6 +1175,201 @@
     apiCall('get_runtime_events', 20).then(renderRuntimeEvents);
   }
 
+  /* ─── Task history ─── */
+  function getHistorySignal(item) {
+    var text = (item.summary || '') + ' ' + (item.safe_details_excerpt || '');
+    if (text.indexOf('有错误') >= 0) return '有错误';
+    if (text.indexOf('有警告') >= 0) return '有警告';
+    if (text.indexOf('信息不足') >= 0) return '信息不足';
+    if (text.indexOf('正常') >= 0) return '正常';
+    if (item.status === 'failed' || item.ok === false) return '失败';
+    return '完成';
+  }
+
+  function getHistorySignalClass(signal) {
+    var map = {
+      '正常': 'signal-ok',
+      '完成': 'signal-ok',
+      '有警告': 'signal-warn',
+      '有错误': 'signal-err',
+      '信息不足': 'signal-unknown',
+      '失败': 'signal-err'
+    };
+    return map[signal] || '';
+  }
+
+  function formatHistoryTime(completedAt) {
+    if (!completedAt) return '';
+    var s = String(completedAt);
+    if (s.length >= 16) s = s.slice(0, 16).replace('T', ' ');
+    return s;
+  }
+
+  function formatHistoryRelativeTime(completedAt) {
+    if (!completedAt) return '';
+    try {
+      var date = new Date(completedAt);
+      var now = new Date();
+      var diffMs = now - date;
+      if (isNaN(diffMs) || diffMs < 0) return '';
+      var diffMin = Math.floor(diffMs / 60000);
+      if (diffMin < 1) return '刚刚';
+      if (diffMin < 60) return diffMin + '分钟前';
+      var diffHour = Math.floor(diffMin / 60);
+      if (diffHour < 24) return diffHour + '小时前';
+      var diffDay = Math.floor(diffHour / 24);
+      return diffDay + '天前';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function loadTaskHistory() {
+    if (taskHistoryLoading) return;
+    taskHistoryLoading = true;
+    taskHistorySelectedId = null;
+    showTaskHistoryLoading(true);
+
+    apiCall('get_recent_task_history', { limit: 20 }).then(function (resp) {
+      if (resp && resp.ok && resp.data && Array.isArray(resp.data.items)) {
+        taskHistoryItems = resp.data.items;
+        renderTaskHistory();
+        if (taskHistoryItems.length > 0) {
+          selectTaskHistoryItem(taskHistoryItems[0].history_id);
+        } else {
+          renderTaskHistoryDetail(null);
+        }
+      } else {
+        showTaskHistoryError(true);
+      }
+    }).catch(function () {
+      showTaskHistoryError(true);
+    }).finally(function () {
+      taskHistoryLoading = false;
+      showTaskHistoryLoading(false);
+    });
+  }
+
+  function showTaskHistoryLoading(on) {
+    var el = $('tasks-history-loading');
+    var grid = $('tasks-history-grid');
+    var empty = $('tasks-history-empty');
+    var error = $('tasks-history-error');
+    if (el) el.style.display = on ? '' : 'none';
+    if (grid) grid.style.display = on ? 'none' : '';
+    if (on) {
+      if (empty) empty.style.display = 'none';
+      if (error) error.style.display = 'none';
+    }
+  }
+
+  function showTaskHistoryError(on) {
+    var el = $('tasks-history-error');
+    var grid = $('tasks-history-grid');
+    var empty = $('tasks-history-empty');
+    if (el) el.style.display = on ? '' : 'none';
+    if (grid) grid.style.display = on ? 'none' : '';
+    if (on && empty) empty.style.display = 'none';
+  }
+
+  function renderTaskHistory() {
+    var list = $('tasks-history-list');
+    var empty = $('tasks-history-empty');
+    var error = $('tasks-history-error');
+
+    if (error) error.style.display = 'none';
+
+    if (!taskHistoryItems.length) {
+      if (empty) empty.style.display = '';
+      if (list) list.innerHTML = '';
+      return;
+    }
+
+    if (empty) empty.style.display = 'none';
+
+    var html = '';
+    taskHistoryItems.forEach(function (item) {
+      var signal = getHistorySignal(item);
+      var signalCls = getHistorySignalClass(signal);
+      var statusLabel = item.status === 'completed' ? '完成' : '失败';
+      var statusCls = item.ok ? 'completed' : 'failed';
+      var activeCls = taskHistorySelectedId === item.history_id ? ' active' : '';
+      var timeDisplay = formatHistoryRelativeTime(item.completed_at) || formatHistoryTime(item.completed_at);
+      var tags = (item.tags && item.tags.length) ? item.tags.map(escapeHtml).join(', ') : '';
+      var metaParts = [timeDisplay, tags, (item.read_files_count || 0) + ' files'].filter(function (p) { return p; });
+
+      html += '<div class="task-history-card' + activeCls + '" data-history-id="' + escapeHtml(item.history_id) + '">' +
+        '<div class="task-history-title-row">' +
+          '<span class="task-history-title">' + escapeHtml(item.title || '任务') + '</span>' +
+          '<span class="task-history-status ' + statusCls + '">' + statusLabel + '</span>' +
+        '</div>' +
+        '<div class="task-history-summary">' + escapeHtml(item.summary || '') + '</div>' +
+        '<div class="task-history-meta">' +
+          '<span class="task-history-signal ' + signalCls + '">' + escapeHtml(signal) + '</span>' +
+          '<span class="task-history-meta-text">' + escapeHtml(metaParts.join(' · ')) + '</span>' +
+        '</div>' +
+      '</div>';
+    });
+
+    if (list) list.innerHTML = html;
+  }
+
+  function selectTaskHistoryItem(historyId) {
+    taskHistorySelectedId = historyId;
+    renderTaskHistory();
+    var item = taskHistoryItems.filter(function (it) { return it.history_id === historyId; })[0];
+    renderTaskHistoryDetail(item || null);
+  }
+
+  function renderTaskHistoryDetail(item) {
+    var detail = $('tasks-history-detail');
+    if (!detail) return;
+
+    if (!item) {
+      detail.innerHTML = '<p class="tasks-history-detail-placeholder">选择一条任务查看安全详情</p>';
+      return;
+    }
+
+    var signal = getHistorySignal(item);
+    var signalCls = getHistorySignalClass(signal);
+    var statusLabel = item.status === 'completed' ? '完成' : '失败';
+    var tags = (item.tags && item.tags.length) ? item.tags.map(function (t) {
+      return '<span class="task-history-tag">' + escapeHtml(t) + '</span>';
+    }).join('') : '';
+
+    var excerptHtml = '';
+    if (item.safe_details_excerpt) {
+      excerptHtml = '<div class="tasks-history-detail-section">' +
+        '<div class="tasks-history-detail-label">安全详情</div>' +
+        '<div class="tasks-history-detail-text">' + escapeHtml(item.safe_details_excerpt) + '</div>' +
+      '</div>';
+    }
+
+    detail.innerHTML =
+      '<div class="tasks-history-detail-section">' +
+        '<div class="task-history-detail-head">' +
+          '<span class="task-history-detail-title">' + escapeHtml(item.title || '任务') + '</span>' +
+          '<span class="task-history-signal ' + signalCls + '">' + escapeHtml(signal) + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="tasks-history-detail-section tasks-history-detail-meta">' +
+        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">状态</span><span>' + escapeHtml(statusLabel) + '</span></div>' +
+        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">类型</span><span>' + escapeHtml(item.task_type || '') + '</span></div>' +
+        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">风险</span><span>' + escapeHtml(item.risk_level || 'low') + '</span></div>' +
+        '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">时间</span><span>' + escapeHtml(formatHistoryTime(item.completed_at)) + '</span></div>' +
+        (item.read_files_count !== undefined ? '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">读取文件</span><span>' + item.read_files_count + '</span></div>' : '') +
+          (tags ? '<div class="tasks-history-detail-row"><span class="tasks-history-detail-label">标签</span><div class="tasks-history-detail-tags">' + tags + '</div></div>' : '') +
+      '</div>' +
+      '<div class="tasks-history-detail-section">' +
+        '<div class="tasks-history-detail-label">摘要</div>' +
+        '<div class="tasks-history-detail-text">' + escapeHtml(item.summary || '') + '</div>' +
+      '</div>' +
+      excerptHtml +
+      '<div class="tasks-history-detail-section tasks-history-detail-id">' +
+        '<span class="tasks-history-detail-label-id">ID: ' + escapeHtml(item.history_id || '') + '</span>' +
+      '</div>';
+  }
+
   function collectDrawerText(id) {
     var el = $(id);
     return el ? (el.textContent || '').trim() : '';
@@ -1368,6 +1569,25 @@
   });
 
   /* ─── Init ─── */
+  function initTaskHistory() {
+    var list = $('tasks-history-list');
+    if (list) {
+      list.addEventListener('click', function (event) {
+        var card = event.target.closest('.task-history-card');
+        if (!card) return;
+        var historyId = card.getAttribute('data-history-id');
+        if (historyId) selectTaskHistoryItem(historyId);
+      });
+    }
+    var refreshBtn = $('btn-tasks-refresh');
+    if (refreshBtn && refreshBtn.dataset.tasksBound !== '1') {
+      refreshBtn.dataset.tasksBound = '1';
+      refreshBtn.addEventListener('click', function () {
+        loadTaskHistory();
+      });
+    }
+  }
+
   function doInit() {
     if (initDone) return;
     initDone = true;
@@ -1375,6 +1595,7 @@
     initSidebarControls();
     initDrawerControls();
     initTextChat();
+    initTaskHistory();
     switchShell(currentShell);
     switchSection(currentSection);
     updateBridgeIndicator();
