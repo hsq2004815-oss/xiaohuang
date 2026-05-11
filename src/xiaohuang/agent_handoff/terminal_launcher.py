@@ -6,7 +6,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
-from typing import Callable, Sequence
+from typing import Any, Callable, Sequence
 
 
 @dataclass(frozen=True)
@@ -17,7 +17,7 @@ class TerminalOpenResult:
     error_code: str = ""
 
 
-PopenFunc = Callable[[Sequence[str]], object]
+PopenFunc = Callable[..., object]
 
 
 def quote_powershell_single(value: str) -> str:
@@ -42,8 +42,9 @@ def open_target_project_terminal(
         "Set-Location -LiteralPath " + quote_powershell_single(raw_path),
     ]
     launcher = popen_func or subprocess.Popen
+    popen_kwargs = _visible_console_popen_kwargs()
     try:
-        launcher(command)
+        launcher(command, **popen_kwargs)
     except FileNotFoundError:
         return TerminalOpenResult(
             ok=False,
@@ -61,9 +62,16 @@ def open_target_project_terminal(
 
     return TerminalOpenResult(
         ok=True,
-        message="已打开目标项目终端。",
+        message="已向系统请求打开目标项目终端，如未看到窗口请检查任务栏或 Alt+Tab。",
         target_project_path=raw_path,
     )
+
+
+def _visible_console_popen_kwargs() -> dict[str, Any]:
+    create_new_console = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    if create_new_console:
+        return {"creationflags": create_new_console}
+    return {}
 
 
 def _validate_target_project_path(raw_path: str, *, os_name: str | None = None) -> TerminalOpenResult:

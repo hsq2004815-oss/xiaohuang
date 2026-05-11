@@ -615,11 +615,12 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
 
         with patch(
             "xiaohuang.agent_handoff.terminal_launcher.open_target_project_terminal",
-            return_value=TerminalOpenResult(True, "已打开目标项目终端。", target_path),
+            return_value=TerminalOpenResult(True, "已向系统请求打开目标项目终端。", target_path),
         ) as launcher:
             result = api.open_agent_handoff_terminal({"target_project_path": target_path})
 
         self.assertTrue(result["ok"])
+        self.assertIn("已向系统请求打开", result["message"])
         self.assertEqual(result["data"]["target_project_path"], target_path)
         launcher.assert_called_once_with(target_path)
 

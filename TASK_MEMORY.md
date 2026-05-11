@@ -1090,6 +1090,7 @@
 - Key files: `src/xiaohuang/agent_handoff/service.py`, `src/xiaohuang/agent_handoff/terminal_launcher.py`, `src/xiaohuang/control_panel_web_service.py`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`.
 - Boundary: 只打开 PowerShell 并 `Set-Location` 到目标路径；不启动 Claude/Codex/opencode/OpenClaw，不粘贴 prompt，不运行 npm/git/python。
 - External project rule: 目标路径缺失或不存在时禁止回退到 `E:\Projects\xiaohuang`，前端显示不可打开状态。
+- C4.1: Windows 启动 PowerShell 时使用 `CREATE_NEW_CONSOLE` 请求可见新控制台，成功文案改为“已向系统请求打开”，不绝对承诺窗口已显示。
 - Tests: `tests/test_agent_handoff_terminal_launcher.py`, `tests/test_agent_handoff_service.py`, `tests/test_control_panel_web_service.py`.
 
 <details>

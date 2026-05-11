@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from xiaohuang.agent_handoff.terminal_launcher import (
+    _visible_console_popen_kwargs,
     open_target_project_terminal,
     quote_powershell_single,
 )
@@ -17,23 +18,23 @@ class AgentHandoffTerminalLauncherTests(unittest.TestCase):
     def test_open_terminal_uses_powershell_set_location_only(self):
         calls = []
 
-        def fake_popen(args):
-            calls.append(list(args))
+        def fake_popen(args, **kwargs):
+            calls.append((list(args), dict(kwargs)))
             return object()
 
         with tempfile.TemporaryDirectory() as tmp:
             result = open_target_project_terminal(tmp, popen_func=fake_popen, os_name="nt")
 
         self.assertTrue(result.ok)
+        self.assertIn("已向系统请求打开", result.message)
         self.assertEqual(len(calls), 1)
-        command = calls[0]
+        command, kwargs = calls[0]
         self.assertEqual(command[:3], ["powershell.exe", "-NoExit", "-Command"])
         self.assertIn("Set-Location -LiteralPath", command[3])
-        self.assertNotIn("claude", " ".join(command).lower())
-        self.assertNotIn("codex", " ".join(command).lower())
-        self.assertNotIn("npm", " ".join(command).lower())
-        self.assertNotIn("git", " ".join(command).lower())
-        self.assertNotIn("python", " ".join(command).lower())
+        self.assertEqual(kwargs.get("creationflags"), _visible_console_popen_kwargs().get("creationflags"))
+        executable_parts = " ".join(command[:3] + [command[3].split(" -LiteralPath ", 1)[0]]).lower()
+        for forbidden in ("claude", "codex", "opencode", "openclaw", "npm", "git", "python"):
+            self.assertNotIn(forbidden, executable_parts)
 
     def test_missing_path_is_rejected(self):
         result = open_target_project_terminal("", os_name="nt")
@@ -83,7 +84,7 @@ class AgentHandoffTerminalLauncherTests(unittest.TestCase):
         self.assertEqual(result.error_code, "unsupported_platform")
 
     def test_powershell_missing_is_reported(self):
-        def fake_popen(args):
+        def fake_popen(args, **kwargs):
             raise FileNotFoundError()
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -91,6 +92,17 @@ class AgentHandoffTerminalLauncherTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertEqual(result.error_code, "powershell_not_found")
+
+    def test_launch_failure_is_reported(self):
+        def fake_popen(args, **kwargs):
+            raise OSError("blocked")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = open_target_project_terminal(tmp, popen_func=fake_popen, os_name="nt")
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "terminal_launch_failed")
+        self.assertIn("blocked", result.message)
 
 
 if __name__ == "__main__":

@@ -905,8 +905,8 @@
       if (!resp || !resp.ok) {
         throw new Error((resp && (resp.error || resp.message || resp.code)) || 'open terminal failed');
       }
-      if (status) status.textContent = '已打开终端';
-      toast(resp.message || '已打开目标项目终端', 'ok');
+      if (status) status.textContent = '已请求打开';
+      toast(resp.message || '已向系统请求打开目标项目终端', 'ok');
     }).catch(function (err) {
       if (status) status.textContent = '打开失败';
       toast((err && err.message) || '打开目标项目终端失败', 'err');
