@@ -70,6 +70,8 @@ C5B changes the immediate launch direction. Because the user's machine already h
 
 The recommended boundary is: XiaoHuang owns task understanding, target project identification, prompt drafting, safety review, and Chinese acceptance summaries; Multica owns Agent runtime, issue assignment, execution runs, and run messages. Details are recorded in `docs/multica-integration-research.md`.
 
+Any Multica integration must be modular. `agent_handoff` may produce task packages and issue draft inputs, but it must not call Multica directly. CLI execution belongs under `src/xiaohuang/multica_integration/`, with command execution centralized in `cli_client.py` and safety policy centralized in `safety.py`.
+
 ## Roadmap
 
 - C1: Database-Aware Agent Handoff Draft

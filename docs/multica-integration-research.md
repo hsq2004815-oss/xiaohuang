@@ -111,18 +111,39 @@ Multica 负责：
 -> 小黄写入 task history
 ```
 
-建议新增一个窄适配层，而不是把 Multica subprocess 调用散落到 control panel 或 handoff service：
+必须新增一个模块化窄适配层，而不是把 Multica subprocess 调用散落到 `control_panel_web_service.py`、`text_task_execution_service.py`、`agent_handoff/service.py` 或 `agent_review/service.py`：
 
 ```text
 src/xiaohuang/multica_integration/
+  __init__.py
   models.py
   cli_client.py
   status_service.py
   issue_draft_service.py
+  issue_create_service.py
   run_reader_service.py
+  safety.py
 ```
 
-其中 `cli_client.py` 应只接受参数列表并使用 `subprocess.run(..., shell=False, timeout=...)`。所有可变更状态的命令必须由上层显式传入 `confirmed=True` 或经过现有 pending task registry。
+模块职责：
+
+- `cli_client.py`：只负责安全调用 Multica CLI，统一处理 `subprocess.run`、timeout、encoding、JSON 解析、错误码和结构化返回；禁止 `shell=True`；禁止执行未登记命令。
+- `models.py`：定义 `MulticaStatus`、`MulticaIssueDraft`、`MulticaIssueCreateResult`、`MulticaRunSummary`、`MulticaMessage` 等数据模型。
+- `status_service.py`：只读查询 Multica 状态，不创建 issue，不 assign，不启动 Agent。
+- `issue_draft_service.py`：只把小黄 `agent_handoff` 结果转换成 Multica issue draft；不创建 issue，不启动 Agent，不修改任何项目。
+- `issue_create_service.py`：后续阶段再做；必须用户二次确认后才允许执行 `multica issue create`；C5B 不实现真实创建。
+- `run_reader_service.py`：后续阶段再做；只读 `multica issue runs` / `run-messages`，用于小黄验收报告。
+- `safety.py`：集中管理允许的 Multica 子命令、禁止命令、确认策略、secret redaction 和 `E:\DataBase` 禁写边界。
+
+上层边界：
+
+- `control_panel_web_service.py` 只能做薄 API 包装，把请求转给 `multica_integration` service。
+- 前端只能调用后端暴露的安全接口，不能拼接 Multica 命令。
+- `text_task_execution_service.py` 只能分发已登记的安全 task type，不能直接写 subprocess 调用。
+- `agent_handoff` 只生成任务包和 issue draft 输入，不直接调用 Multica。
+- `agent_review` 只审查结果，不负责启动 Agent、创建 issue 或 assign。
+
+其中 `cli_client.py` 应只接受参数列表并使用 `subprocess.run(..., shell=False, timeout=...)`。所有可变更状态的命令必须由上层显式传入 `confirmed=True` 或经过现有 pending task registry。安全判断应该集中在 `safety.py`，不能分散为多个模块里的硬编码字符串判断。
 
 ## 6. 最小集成方案
 
@@ -135,7 +156,7 @@ src/xiaohuang/multica_integration/
 - `multica version`
 - `multica daemon status`
 - `multica agent list --output json`
-- `multica workspace list`，先按 table 文本解析或只展示原始安全摘要，因为 0.2.16 不支持 `--output json`
+- 目标命令为 `multica workspace list --output json`；但本机 0.2.16 当前不支持该 flag，因此 C5C helper 需要版本兼容：优先尝试登记过的 JSON 命令，失败为 `unknown flag: --output` 时退回只读 `multica workspace list` table 摘要。
 
 输出：
 
@@ -222,10 +243,15 @@ multica issue run-messages <task-id> --output json --since <seq>
 
 - subprocess 必须使用参数列表，禁止 `shell=True`。
 - 每个命令必须设置 timeout。
+- Multica 允许/禁止命令表必须集中在 `multica_integration/safety.py`。
+- `daemon restart` / `daemon stop` 默认禁止。
+- `issue create` / `issue assign` 默认禁止，除非调用方提供明确确认信号并通过 pending task safety gate。
+- 禁止传入任意 shell command；CLI client 只能接收预登记的 Multica argv 模板和参数字段。
 - stdout/stderr 入库前必须限制长度并做敏感字段脱敏。
 - `description` 使用小黄生成的 handoff prompt，但要先经过 secret redaction。
 - 失败时返回结构化错误，不把完整 stderr 直接展示给用户。
 - task history 只保存 issue/run 摘要，不保存完整 run-messages 原文。
+- 禁止读取或保存 secret；禁止修改 `E:\DataBase`。
 
 ## 8. 不建议现在做的事情
 
@@ -235,6 +261,7 @@ multica issue run-messages <task-id> --output json --since <seq>
 - 不要在 C5B 阶段创建真实 issue 或 assign Agent。
 - 不要把 `open_agent_handoff_terminal` 扩展成启动 Agent 或自动粘贴 prompt。
 - 不要在 `text_task_execution_service.py` 中直接堆 Multica 执行逻辑；应先建窄 service。
+- 不要在 `control_panel_web_service.py`、`agent_handoff/service.py` 或 `agent_review/service.py` 里写死 Multica CLI 调用。
 - 不要依赖 `workspace list --output json`，当前版本不支持。
 
 ## 9. 后续阶段计划

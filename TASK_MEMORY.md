@@ -10,8 +10,9 @@
   3. Confirmed `agent list --output json` works and returns local idle agents, while `workspace list --output json` is unsupported in 0.2.16.
   4. Documented the boundary: XiaoHuang owns natural-language task understanding, database-enhanced handoff prompts, issue drafts, review, and memory; Multica owns daemon/runtime/issues/assign/runs/messages.
   5. Recommended staged follow-up: C5C readonly status panel, C5D issue draft export, C5E confirmed issue create, C5F confirmed assign, C6 runs/messages review.
+  6. Added modularity requirement: all Multica CLI calls must live under `src/xiaohuang/multica_integration/`; `control_panel_web_service.py`, `text_task_execution_service.py`, `agent_handoff/service.py`, and `agent_review/service.py` stay thin/no direct subprocess.
 - Verification: docs-only change; run compileall, unittest discover, control_panel_web `--help`, voice_overlay `--help`, `git diff --check`, and git status before reporting.
-- Known traps: Do not add direct Claude/Codex/opencode/OpenClaw launch paths; do not call `multica issue create` or `assign` without explicit confirmation; do not assume every Multica command supports `--output json`.
+- Known traps: Do not add direct Claude/Codex/opencode/OpenClaw launch paths; do not call `multica issue create` or `assign` without explicit confirmation; do not assume every Multica command supports `--output json`; keep allowed/blocked command policy centralized in `multica_integration/safety.py`.
 
 ## Current Snapshot（2026-05-11）— V1.5-C3.1 Generic Handoff Smoke Polish
 
