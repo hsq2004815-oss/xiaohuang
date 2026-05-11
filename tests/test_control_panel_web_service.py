@@ -190,6 +190,49 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertTrue(result["data"]["same_window"])
         self.assertEqual(result["data"]["view"], "text-chat")
 
+    def test_get_multica_status_success_returns_data(self):
+        from xiaohuang.multica_integration.models import MulticaStatus
+
+        status = MulticaStatus(
+            ok=True,
+            installed=True,
+            version="multica 0.2.16",
+            daemon_running=True,
+            daemon_summary="running",
+            agents=("claude", "codex"),
+            workspace_summary="hhh-ai-lab",
+        )
+        with patch(
+            "xiaohuang.multica_integration.status_service.get_multica_status",
+            return_value=status,
+        ):
+            api = ControlPanelWebApi(config_path=self.config_path)
+            result = api.get_multica_status()
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["version"], "multica 0.2.16")
+        self.assertEqual(result["data"]["agents"], ["claude", "codex"])
+
+    def test_get_multica_status_failure_returns_structured_error(self):
+        from xiaohuang.multica_integration.models import MulticaStatus
+
+        status = MulticaStatus(
+            ok=False,
+            installed=False,
+            error_code="multica_not_found",
+            message="未找到 multica CLI。",
+        )
+        with patch(
+            "xiaohuang.multica_integration.status_service.get_multica_status",
+            return_value=status,
+        ):
+            api = ControlPanelWebApi(config_path=self.config_path)
+            result = api.get_multica_status()
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "multica_not_found")
+        self.assertIn("未找到", result["error"])
+
     def test_send_text_message_returns_data(self):
         fake = TextInteractionResult(
             ok=True,
@@ -1123,6 +1166,37 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         html = self._read("frontend/control_panel/index.html")
         self.assertIn("桌面桥接", html)
         self.assertIn("drawer-bridge-status", html)
+
+    def test_multica_status_panel_static_assets(self):
+        html = self._read("frontend/control_panel/index.html")
+        js = self._read("frontend/control_panel/assets/app.js")
+        css = self._read("frontend/control_panel/assets/style.css")
+        for text in (
+            "Multica 状态",
+            "刷新 Multica 状态",
+            "multica-installed",
+            "multica-version",
+            "multica-daemon",
+            "multica-agents",
+            "multica-workspace",
+        ):
+            self.assertIn(text, html)
+        for text in (
+            "get_multica_status",
+            "renderMulticaStatus",
+            "doRefreshMulticaStatus",
+            "refresh-multica-status",
+        ):
+            self.assertIn(text, js)
+        self.assertIn(".multica-status-card", css)
+        self.assertNotIn("issue create", js.lower())
+        self.assertNotIn("issue assign", js.lower())
+
+    def test_control_panel_web_service_has_no_direct_subprocess_use_for_multica(self):
+        source = self._read("src/xiaohuang/control_panel_web_service.py")
+        self.assertIn("xiaohuang.multica_integration.status_service", source)
+        self.assertNotIn("subprocess", source)
+        self.assertNotIn("multica issue", source)
 
     def test_js_has_chinese_status_text(self):
         js = self._read("frontend/control_panel/assets/app.js")

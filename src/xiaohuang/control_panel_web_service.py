@@ -248,6 +248,19 @@ class ControlPanelWebApi:
             _record_cp_event("preflight_check", msg, "error")
             return _fail(msg, "preflight_error")
 
+    def get_multica_status(self) -> dict:
+        try:
+            from xiaohuang.multica_integration.status_service import get_multica_status
+            status = get_multica_status()
+            if not status.ok:
+                return _fail(
+                    status.message or "Multica 状态不可用。",
+                    status.error_code or "multica_unavailable",
+                )
+            return _ok(data=status.to_dict(), message=status.message or "Multica 状态已读取")
+        except Exception:
+            return _fail("读取 Multica 状态失败", "multica_status_error")
+
     def open_text_chat_window(self) -> dict:
         return _ok(
             data={"view": "text-chat", "same_window": True},

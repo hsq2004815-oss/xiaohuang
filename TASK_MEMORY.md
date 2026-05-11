@@ -1,5 +1,19 @@
 # Task Memory
 
+## Current Snapshot（2026-05-11）— V1.5-C5C Multica Readonly Status Panel
+
+- Purpose: Let XiaoHuang control panel see local Multica status through a read-only, modular integration boundary.
+- Key files: `src/xiaohuang/multica_integration/`, `src/xiaohuang/control_panel_web_service.py`, `frontend/control_panel/index.html`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_multica_integration_*.py`, `tests/test_control_panel_web_service.py`, `docs/multica-integration-research.md`.
+- Last completed:
+  1. Added `multica_integration` modules: `models.py`, `safety.py`, `cli_client.py`, `status_service.py`.
+  2. `safety.py` only allows `version`, `daemon_status`, `agent_list_json`, `workspace_list_json`, `workspace_list_table`; dangerous issue/assign/runs/daemon/agent launch keys are blocked.
+  3. `cli_client.py` accepts only command keys, uses argv list with `shell=False`, timeout, stdout/stderr truncation, and secret redaction.
+  4. `status_service.py` reads version/daemon/agents/workspace; `workspace list --output json` unsupported in Multica 0.2.16 falls back to table output with warning.
+  5. Control panel API gained thin `get_multica_status()` wrapper; frontend gained a “Multica 状态” card and “刷新 Multica 状态” button.
+  6. Real readonly backend smoke returned Multica 0.2.16, daemon running, agents `openclaw, claude, codex, opencode`, workspace fallback warning.
+- Verification: run focused multica tests, control panel tests, compileall, unittest discover, help commands, diff check before reporting.
+- Known traps: Do not add issue create/assign/runs/run-messages in C5C; future create/assign must be separate confirmed task types and must keep CLI execution in `multica_integration/cli_client.py`.
+
 ## Current Snapshot（2026-05-11）— V1.5-C5B Multica Integration Research
 
 - Purpose: Decide whether XiaoHuang should integrate with the already-running local Multica runtime instead of building a separate C5A agent launcher.

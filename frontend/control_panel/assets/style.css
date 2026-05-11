@@ -247,6 +247,57 @@ body::after{
 .card-title{font-size:14px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em;margin:0}
 .card-body{font-size:13px;line-height:1.7;color:var(--text-secondary)}
 
+/* ─── Multica readonly status ─── */
+.multica-status-card{
+  margin-bottom:22px;
+}
+.multica-status-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+}
+.multica-status-header .section-subtitle{
+  margin-top:4px;
+}
+.multica-status-grid{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:12px;
+}
+.multica-status-grid div{
+  min-width:0;
+  padding:12px;
+  border-radius:12px;
+  background:rgba(255,255,255,0.36);
+  border:1px solid rgba(255,255,255,0.42);
+}
+.multica-status-grid span{
+  display:block;
+  margin-bottom:6px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--text-muted);
+}
+.multica-status-grid strong{
+  display:block;
+  min-height:18px;
+  font-size:12px;
+  line-height:1.45;
+  color:var(--text-primary);
+  word-break:break-word;
+}
+.multica-status-warning{
+  margin-top:12px;
+  font-size:12px;
+  line-height:1.55;
+  color:var(--text-muted);
+}
+.multica-status-warning.ok{color:#166534}
+.multica-status-warning.warn{color:#92400e}
+@media(max-width:1180px){.multica-status-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.multica-status-header{flex-direction:column}.multica-status-grid{grid-template-columns:1fr}}
+
 /* ─── Glass Pill Button ─── */
 .glass-pill{
   display:inline-flex;align-items:center;justify-content:center;

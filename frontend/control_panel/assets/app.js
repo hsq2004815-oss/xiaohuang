@@ -303,6 +303,7 @@
       restart: '重启小黄',
       refresh: '刷新状态',
       'open-text-chat': '文本对话',
+      'refresh-multica-status': '刷新 Multica 状态',
       'save-config': '保存配置',
       'save-restart': '保存并重启'
     };
@@ -315,6 +316,7 @@
       stop: '停止中...',
       restart: '重启中...',
       refresh: '刷新中...',
+      'refresh-multica-status': '刷新中...',
       'save-config': '保存中...',
       'save-restart': '保存中...'
     };
@@ -464,6 +466,27 @@
     if (!el) return;
     el.textContent = text || '--';
     el.className = 'card-value' + (cls ? ' ' + cls : '');
+  }
+
+  function renderMulticaStatus(resp) {
+    var d = (resp && resp.ok && resp.data) ? resp.data : null;
+    var error = resp && (resp.error || resp.message || resp.code);
+    setMulticaText('multica-installed', d ? (d.installed ? '已安装' : '未找到') : '读取失败');
+    setMulticaText('multica-version', d ? (d.version || '--') : '--');
+    setMulticaText('multica-daemon', d ? ((d.daemon_running ? 'running' : 'stopped/unknown') + (d.daemon_summary ? ' · ' + d.daemon_summary : '')) : '--');
+    setMulticaText('multica-agents', d ? ((d.agents || []).join(' / ') || '--') : '--');
+    setMulticaText('multica-workspace', d ? (d.workspace_summary || '--') : '--');
+    var warningEl = $('multica-warnings');
+    if (warningEl) {
+      var warnings = d && Array.isArray(d.warnings) ? d.warnings : [];
+      warningEl.textContent = warnings.length ? ('警告：' + warnings.join('；')) : (d ? '只读状态读取完成。' : ('读取失败：' + (error || 'Multica 状态不可用')));
+      warningEl.className = 'multica-status-warning' + (warnings.length || !d ? ' warn' : ' ok');
+    }
+  }
+
+  function setMulticaText(id, value) {
+    var el = $(id);
+    if (el) el.textContent = fmtVal(value);
   }
 
   /* ─── Sidebar ─── */
@@ -1154,6 +1177,7 @@
     if (action === 'restart') { doRestart(btn); return; }
     if (action === 'open-text-chat') { doOpenTextChat(); return; }
     if (action === 'open-diagnostics') { doOpenDiagnostics(); return; }
+    if (action === 'refresh-multica-status') { doRefreshMulticaStatus(btn); return; }
     if (action === 'save-config') { doSaveConfig(btn); return; }
     if (action === 'save-restart') { doSaveAndRestart(btn); return; }
     if (action === 'export-diag') { doExportDiag(btn); return; }
@@ -1181,6 +1205,25 @@
     toast('正在刷新状态...', 'info');
     refreshStatus();
     setTimeout(function () { restoreButton(btn, getButtonText('refresh'), 'refresh'); }, 500);
+  }
+
+  function doRefreshMulticaStatus(btn) {
+    btn = btn || $('btn-multica-refresh');
+    setButtonLoading(btn, getLoadingText('refresh-multica-status'), 'refresh-multica-status');
+    renderMulticaStatus({ ok: true, data: { installed: true, version: '读取中...', daemon_running: false, daemon_summary: '读取中...', agents: [], workspace_summary: '读取中...', warnings: [] } });
+    apiCall('get_multica_status').then(function (resp) {
+      renderMulticaStatus(resp);
+      if (resp && resp.ok) {
+        toast('Multica 状态已刷新', 'ok');
+      } else {
+        toast((resp && resp.error) || 'Multica 状态读取失败', 'err');
+      }
+    }).catch(function (e) {
+      renderMulticaStatus({ ok: false, error: String(e), code: 'JS_ERROR' });
+      toast('Multica 状态读取出错', 'err');
+    }).finally(function () {
+      restoreButton(btn, getButtonText('refresh-multica-status'), 'refresh-multica-status');
+    });
   }
 
   function doStart(btn) {

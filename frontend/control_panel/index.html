@@ -82,6 +82,24 @@
           </div>
         </div>
 
+        <div class="glass-card multica-status-card" id="multica-status-card">
+          <div class="card-header multica-status-header">
+            <div>
+              <h3 class="card-title">Multica 状态</h3>
+              <p class="section-subtitle">只读查看本机 Multica daemon、agents 和 workspace 摘要。</p>
+            </div>
+            <button class="glass-pill" id="btn-multica-refresh" type="button" data-action="refresh-multica-status">刷新 Multica 状态</button>
+          </div>
+          <div class="multica-status-grid">
+            <div><span>安装状态</span><strong id="multica-installed">未刷新</strong></div>
+            <div><span>版本</span><strong id="multica-version">--</strong></div>
+            <div><span>Daemon</span><strong id="multica-daemon">--</strong></div>
+            <div><span>Agents</span><strong id="multica-agents">--</strong></div>
+            <div><span>Workspace</span><strong id="multica-workspace">--</strong></div>
+          </div>
+          <div class="multica-status-warning" id="multica-warnings">点击刷新读取只读状态。</div>
+        </div>
+
         <div class="glass-card" id="recent-events">
           <div class="card-header"><h3 class="card-title">最近事件</h3></div>
           <div id="events-list">--</div>

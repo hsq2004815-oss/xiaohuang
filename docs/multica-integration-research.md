@@ -280,3 +280,60 @@ multica issue run-messages <task-id> --output json --since <seq>
 小黄后续应该通过 Multica CLI 创建 issue、分配 Agent、读取运行记录，但不应该把这些动作合并成无确认的自动执行链路。
 
 最小接入应从只读状态开始，再做 issue draft。只有当用户明确确认 issue 内容、目标项目路径、assignee 和风险边界后，才允许调用 `issue create` 或 `issue assign`。
+
+## 11. C5C Readonly Status Panel Implementation
+
+C5C 已按模块化边界实现只读状态面板：
+
+```text
+src/xiaohuang/multica_integration/
+  __init__.py
+  models.py
+  safety.py
+  cli_client.py
+  status_service.py
+```
+
+职责保持如下：
+
+- `safety.py` 集中登记只读命令白名单和危险命令黑名单。
+- `cli_client.py` 只接受 command key，不接受前端或上层传入 argv；使用 `subprocess.run` 参数列表、`shell=False`、timeout、stdout/stderr 限长和基础 secret redaction。
+- `status_service.py` 聚合 `version`、`daemon_status`、`agent_list_json`、`workspace_list_json`，并在本机 0.2.16 不支持 `workspace list --output json` 时 fallback 到 `workspace_list_table`。
+- `control_panel_web_service.py` 只新增薄 API `get_multica_status()`，不直接调用 subprocess。
+- 前端只新增“Multica 状态”卡片和“刷新 Multica 状态”按钮，不提供 issue create、assign、runs、run-messages、启动 Agent 或命令输入。
+
+C5C 允许的命令保持为：
+
+```text
+version
+daemon_status
+agent_list_json
+workspace_list_json
+workspace_list_table
+```
+
+C5C 仍禁止：
+
+```text
+issue_create
+issue_assign
+issue_status
+issue_update
+issue_rerun
+issue_runs
+issue_run_messages
+daemon_restart
+daemon_stop
+agent_launch
+```
+
+真实只读后端验收结果显示：
+
+```text
+installed=True
+version=multica 0.2.16
+daemon_running=True
+agents=openclaw, claude, codex, opencode
+workspace_summary=1 workspace(s): ... hhh-ai-lab
+warning=workspace list --output json unsupported; fallback to table output
+```
