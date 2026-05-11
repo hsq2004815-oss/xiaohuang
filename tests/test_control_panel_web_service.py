@@ -233,6 +233,50 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertEqual(result["code"], "multica_not_found")
         self.assertIn("未找到", result["error"])
 
+    def test_build_multica_issue_draft_success_returns_data(self):
+        from xiaohuang.multica_integration.models import MulticaIssueDraft
+
+        draft = MulticaIssueDraft(
+            ok=True,
+            title="做页面",
+            description="desc",
+            target_project_path="E:\\Projects\\sample-project",
+            suggested_assignees=("claude", "codex"),
+            default_assignee="claude",
+            create_command_preview="multica issue create --title '做页面'",
+            markdown="# Multica Issue Draft",
+            warnings=("仅草稿，未创建 Multica issue，未分配 Agent。",),
+            message="done",
+        )
+        with patch(
+            "xiaohuang.multica_integration.issue_draft_service.build_issue_draft_from_handoff",
+            return_value=draft,
+        ) as mock_build:
+            api = ControlPanelWebApi(config_path=self.config_path)
+            result = api.build_multica_issue_draft({
+                "handoff_title": "做页面",
+                "handoff_prompt": "prompt",
+                "target_project_path": "E:\\Projects\\sample-project",
+                "related_domains": ["ui_design"],
+                "preferred_agent": "claude",
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["title"], "做页面")
+        self.assertEqual(result["data"]["suggested_assignees"], ["claude", "codex"])
+        self.assertEqual(mock_build.call_args.kwargs["related_domains"], ("ui_design",))
+
+    def test_build_multica_issue_draft_missing_prompt_returns_error(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        result = api.build_multica_issue_draft({
+            "handoff_title": "做页面",
+            "handoff_prompt": "",
+            "target_project_path": "E:\\Projects\\sample-project",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "missing_handoff_prompt")
+
     def test_send_text_message_returns_data(self):
         fake = TextInteractionResult(
             ok=True,
@@ -1189,14 +1233,35 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         ):
             self.assertIn(text, js)
         self.assertIn(".multica-status-card", css)
-        self.assertNotIn("issue create", js.lower())
+        self.assertNotIn("apiCall('multica issue", js)
+        self.assertNotIn("apiCall(\"multica issue", js)
         self.assertNotIn("issue assign", js.lower())
 
     def test_control_panel_web_service_has_no_direct_subprocess_use_for_multica(self):
         source = self._read("src/xiaohuang/control_panel_web_service.py")
         self.assertIn("xiaohuang.multica_integration.status_service", source)
         self.assertNotIn("subprocess", source)
+        self.assertNotIn("cli_client", source)
         self.assertNotIn("multica issue", source)
+
+    def test_multica_issue_draft_static_assets(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        css = self._read("frontend/control_panel/assets/style.css")
+        for text in (
+            "Multica Issue 草稿",
+            "生成 Issue 草稿",
+            "复制 Issue 标题",
+            "复制 Issue 描述",
+            "复制命令草稿",
+            "下载草稿 .md",
+            "仅草稿，未创建 issue，未分配 Agent",
+            "build_multica_issue_draft",
+        ):
+            self.assertIn(text, js)
+        self.assertIn(".multica-draft-panel", css)
+        self.assertNotIn("创建 Issue", js)
+        self.assertNotIn("分配给 Claude", js)
+        self.assertNotIn("运行 Agent", js)
 
     def test_js_has_chinese_status_text(self):
         js = self._read("frontend/control_panel/assets/app.js")

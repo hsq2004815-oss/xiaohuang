@@ -337,3 +337,54 @@ agents=openclaw, claude, codex, opencode
 workspace_summary=1 workspace(s): ... hhh-ai-lab
 warning=workspace list --output json unsupported; fallback to table output
 ```
+
+## 12. C5D Multica Issue Draft Export
+
+C5D 在 C5C 的模块化边界上新增通用 Issue 草稿导出能力。它适用于用户任意 Agent Handoff，不绑定某个业务方向或前端示例。
+
+新增模块：
+
+```text
+src/xiaohuang/multica_integration/issue_draft_service.py
+```
+
+扩展模型：
+
+```text
+MulticaIssueDraft
+```
+
+职责边界：
+
+- `issue_draft_service.py` 只把小黄生成的 Agent Handoff 转换成 Multica issue draft。
+- `control_panel_web_service.py` 只提供薄 API `build_multica_issue_draft()`。
+- 前端只展示草稿、复制文本、下载 Markdown Blob。
+- 本阶段不执行 `multica issue create`，不 assign Agent，不读取 runs / run-messages，不启动任何 Agent。
+
+通用链路：
+
+```text
+任意用户需求
+-> 小黄生成 Agent Handoff
+-> 前端读取完整 handoff prompt
+-> build_multica_issue_draft
+-> 展示 title / description / target_project_path / suggested_assignees
+-> 复制标题、复制描述、复制命令草稿、下载 Markdown 草稿
+```
+
+如果用户指定 `E:\Projects\sample-project`，issue draft 会保留该目标项目路径，并在描述中继续强调 target project、project relation、database brief 状态和安全边界。
+
+命令草稿只是文本 preview，例如：
+
+```text
+multica issue create --title '<title>' --description '<description or placeholder>' --assignee 'claude' --output json
+```
+
+当 description 过长时，命令草稿使用占位描述，并提示用户复制完整 Issue 描述或下载 Markdown 草稿。真实创建留给后续 C5E，在用户二次确认后实现。
+
+安全规则：
+
+- 草稿中必须明确“仅草稿，未创建 issue，未分配 Agent”。
+- 标题、描述、命令草稿和 Markdown 都经过基础 secret redaction。
+- suggested assignees 只是建议：`claude`, `codex`, `opencode`, `openclaw`。
+- preferred agent 未知时默认建议 `claude`，但不自动 assign。

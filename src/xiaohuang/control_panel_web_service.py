@@ -261,6 +261,31 @@ class ControlPanelWebApi:
         except Exception:
             return _fail("读取 Multica 状态失败", "multica_status_error")
 
+    def build_multica_issue_draft(self, payload: dict | None = None) -> dict:
+        try:
+            data = payload if isinstance(payload, dict) else {}
+            from xiaohuang.multica_integration.issue_draft_service import (
+                build_issue_draft_from_handoff,
+            )
+            draft = build_issue_draft_from_handoff(
+                handoff_title=str(data.get("handoff_title") or ""),
+                handoff_prompt=str(data.get("handoff_prompt") or ""),
+                target_project_path=str(data.get("target_project_path") or ""),
+                target_project_kind=str(data.get("target_project_kind") or "auto"),
+                project_relation=str(data.get("project_relation") or "unknown"),
+                database_brief_status=str(data.get("database_brief_status") or ""),
+                related_domains=_coerce_string_tuple(data.get("related_domains")),
+                preferred_agent=str(data.get("preferred_agent") or ""),
+            )
+            if not draft.ok:
+                return _fail(
+                    draft.message or "Multica issue 草稿生成失败。",
+                    draft.error_code or "multica_issue_draft_error",
+                )
+            return _ok(data=draft.to_dict(), message=draft.message or "Multica issue 草稿已生成")
+        except Exception:
+            return _fail("生成 Multica issue 草稿失败", "multica_issue_draft_error")
+
     def open_text_chat_window(self) -> dict:
         return _ok(
             data={"view": "text-chat", "same_window": True},
@@ -522,6 +547,14 @@ def _coerce_optional_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _coerce_string_tuple(value: Any) -> tuple[str, ...]:
+    if isinstance(value, (list, tuple)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str) and value.strip():
+        return tuple(part.strip() for part in value.split(",") if part.strip())
+    return ()
 
 
 def _run_startup_diagnostic(project_root: Path):

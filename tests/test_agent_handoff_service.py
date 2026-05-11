@@ -114,8 +114,8 @@ class AgentHandoffServiceTests(unittest.TestCase):
             return DatabaseBriefResult(True, "used", "external ui brief")
 
         text = (
-            "给 Claude Code 生成一个提示词，让它根据我的数据库，在 E:\\Projects\\wine-ui 里"
-            "做一个高级红酒品牌官网首页。这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
+            "给 Claude Code 生成一个提示词，让它根据我的数据库，在 E:\\Projects\\sample-project 里"
+            "做一个高级产品展示官网首页。这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
             "要求 React + Tailwind。"
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -133,7 +133,7 @@ class AgentHandoffServiceTests(unittest.TestCase):
             self.assertTrue(handoff_file.is_file())
             content = handoff_file.read_text(encoding="utf-8")
 
-        self.assertIn("目标项目路径：E:\\Projects\\wine-ui", content)
+        self.assertIn("目标项目路径：E:\\Projects\\sample-project", content)
         self.assertIn("目标项目类型：external_new", content)
         self.assertIn("与小黄项目关系：unrelated_to_xiaohuang", content)
         self.assertIn("小黄只生成任务包，不创建外部项目", content)
@@ -143,14 +143,14 @@ class AgentHandoffServiceTests(unittest.TestCase):
         self.assertIn("E:\\Projects\\xiaohuang", content)
         self.assertNotIn("src/xiaohuang/task_result_history_service.py", content)
         self.assertNotIn("frontend/control_panel/assets/app.js", content)
-        self.assertIn("高级红酒品牌官网首页", result.title)
+        self.assertIn("高级产品展示官网首页", result.title)
         self.assertNotIn("xiaohuang_project", result.domains)
         self.assertIn("ui_design", result.domains)
         self.assertIn("agent_workflow", result.domains)
         self.assertIn("目标项目类型：external_new", brief_calls[0][0])
-        self.assertIn("目标项目路径：E:\\Projects\\wine-ui", brief_calls[0][0])
+        self.assertIn("目标项目路径：E:\\Projects\\sample-project", brief_calls[0][0])
         self.assertNotIn("xiaohuang_project", brief_calls[0][1])
-        self.assertEqual(result.target_project_path, "E:\\Projects\\wine-ui")
+        self.assertEqual(result.target_project_path, "E:\\Projects\\sample-project")
         self.assertEqual(result.target_project_kind, "external_new")
         self.assertEqual(result.project_relation, "unrelated_to_xiaohuang")
         self.assertFalse(result.can_open_terminal)
@@ -159,7 +159,7 @@ class AgentHandoffServiceTests(unittest.TestCase):
     def test_existing_external_project_can_open_terminal(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "xiaohuang"
-            external = Path(tmp) / "wine-ui"
+            external = Path(tmp) / "sample-project"
             root.mkdir()
             external.mkdir()
             result = create_agent_handoff(

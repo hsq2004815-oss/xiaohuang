@@ -47,12 +47,12 @@ class AgentHandoffIntentParserTests(unittest.TestCase):
 
     def test_extract_target_project_path_supports_windows_paths(self):
         self.assertEqual(
-            extract_target_project_path("请在 E:\\Projects\\wine-ui 里做官网"),
-            "E:\\Projects\\wine-ui",
+            extract_target_project_path("请在 E:\\Projects\\sample-project 里做官网"),
+            "E:\\Projects\\sample-project",
         )
         self.assertEqual(
-            extract_target_project_path("项目放在 E:/Projects/wine-ui"),
-            "E:/Projects/wine-ui",
+            extract_target_project_path("项目放在 E:/Projects/sample-project"),
+            "E:/Projects/sample-project",
         )
 
     def test_project_relation_detects_unrelated_to_xiaohuang(self):
@@ -62,17 +62,17 @@ class AgentHandoffIntentParserTests(unittest.TestCase):
     def test_target_project_kind_variants(self):
         self.assertEqual(
             detect_target_project_kind(
-                "给 Codex 一个任务，让它做一个酒的前端界面",
-                "做一个酒的前端界面",
+                "给 Codex 一个任务，让它做一个目标项目的前端界面",
+                "做一个目标项目的前端界面",
                 None,
             ),
             "external_unspecified",
         )
         self.assertEqual(
             detect_target_project_kind(
-                "在 E:\\Projects\\wine-ui 里优化已有项目",
+                "在 E:\\Projects\\sample-project 里优化已有项目",
                 "优化已有项目",
-                "E:\\Projects\\wine-ui",
+                "E:\\Projects\\sample-project",
             ),
             "external_existing",
         )
@@ -87,18 +87,18 @@ class AgentHandoffIntentParserTests(unittest.TestCase):
 
     def test_external_project_request_extracts_generic_project_fields(self):
         text = (
-            "给 Claude Code 生成一个提示词，让它根据我的数据库，在 E:\\Projects\\wine-ui 里"
-            "做一个高级红酒品牌官网首页。这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
-            "要求 React + Tailwind，深色高级质感，玻璃拟态，包含 Hero、精选酒款、品牌故事、年份介绍、品鉴 CTA。"
+            "给 Claude Code 生成一个提示词，让它根据我的数据库，在 E:\\Projects\\sample-project 里"
+            "做一个高级产品展示官网首页。这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
+            "要求 React + Tailwind，深色高级质感，玻璃拟态，包含 Hero、核心产品、项目故事和 CTA。"
         )
         result = parse_agent_handoff_intent(text)
 
         self.assertIsNotNone(result)
         self.assertEqual(result.target_agent, "claude_code")
-        self.assertIn("高级红酒品牌官网首页", result.actual_task)
+        self.assertIn("高级产品展示官网首页", result.actual_task)
         self.assertIn("React + Tailwind", result.actual_task)
         self.assertNotIn("不要修改", result.actual_task)
-        self.assertEqual(result.target_project_path, "E:\\Projects\\wine-ui")
+        self.assertEqual(result.target_project_path, "E:\\Projects\\sample-project")
         self.assertEqual(result.target_project_kind, "external_new")
         self.assertEqual(result.project_relation, "unrelated_to_xiaohuang")
 

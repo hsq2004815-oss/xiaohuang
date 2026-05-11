@@ -4,7 +4,7 @@ from __future__ import annotations
 
 _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("xiaohuang_project", ("小黄", "xiaohuang", "控制面板", "任务历史", "语音助手", "agent handoff", "completion review", "runtime events", "voice overlay", "唤醒", "健康检查")),
-    ("ui_design", ("ui", "页面", "界面", "前端", "玻璃", "美化", "hero", "dashboard", "官网", "landing page", "react", "tailwind", "saas", "红酒", "葡萄酒", "酒", "品牌", "产品展示", "高级")),
+    ("ui_design", ("ui", "页面", "界面", "前端", "玻璃", "美化", "hero", "dashboard", "官网", "react", "tailwind", "saas", "品牌", "产品展示", "高级")),
     ("backend", ("后端", "api", "fastapi", "服务", "registry")),
     ("agent_workflow", ("claude code", "claude", "codex", "opencode", "openclaw", "agent", "提示词", "handoff")),
     ("database", ("e:\\database", "brief", "知识库")),

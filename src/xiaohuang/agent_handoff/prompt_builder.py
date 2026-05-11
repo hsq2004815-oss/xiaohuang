@@ -274,13 +274,13 @@ def _execution_requirement_lines(
     if _contains_any(text, ("任务历史", "task history", "history")):
         lines.append(f"{idx}. 优化任务历史页面或历史详情的可读性和结构，避免长文本堆叠。")
         idx += 1
-    if _is_wine_brand_task(text):
+    if _is_brand_product_site_task(text):
         lines.extend([
-            f"{idx}. 做高端酒类品牌视觉，不要做普通电商模板。",
-            f"{idx + 1}. 页面应包含 Hero、精选酒款、品牌故事、年份/产区信息、品鉴 CTA。",
+            f"{idx}. 做高质量品牌/产品视觉，不要做普通模板。",
+            f"{idx + 1}. 页面应包含 Hero、核心产品/服务、价值主张、故事信息和明确 CTA。",
             f"{idx + 2}. 视觉方向建议：深色高级、玻璃质感、细腻光影、克制动效、强产品视觉锚点。",
             f"{idx + 3}. 用数据库 UI 规则约束排版、间距、层级和质感。",
-            f"{idx + 4}. 不要使用未经授权的真实酒类品牌商标或图片；可用占位图、渐变、SVG、CSS 视觉元素。",
+            f"{idx + 4}. 不要使用未经授权的真实品牌商标或图片；可用占位图、渐变、SVG、CSS 视觉元素。",
         ])
         idx += 5
     if _contains_any(text, ("handoff", "agent handoff", "提示词", "交接")):
@@ -437,8 +437,8 @@ def _resolve_target_project_path(
     return str(request.target_project_path or request.project_hint or "未指定")
 
 
-def _is_wine_brand_task(text: str) -> bool:
+def _is_brand_product_site_task(text: str) -> bool:
     return _contains_any(
         text,
-        ("酒", "红酒", "葡萄酒", "wine", "品牌官网", "产品展示"),
+        ("品牌官网", "产品展示", "品牌页面", "官网首页", "产品页面"),
     )

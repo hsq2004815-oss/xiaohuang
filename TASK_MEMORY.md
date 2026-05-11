@@ -1,5 +1,19 @@
 # Task Memory
 
+## Current Snapshot（2026-05-11）— V1.5-C5D Multica Issue Draft Export
+
+- Purpose: Convert any XiaoHuang Agent Handoff into a generic Multica Issue Draft without creating an issue or assigning an Agent.
+- Key files: `src/xiaohuang/multica_integration/issue_draft_service.py`, `models.py`, `src/xiaohuang/control_panel_web_service.py`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_multica_integration_issue_draft_service.py`, `tests/test_control_panel_web_service.py`, `docs/multica-integration-research.md`.
+- Last completed:
+  1. Added `MulticaIssueDraft` and `build_issue_draft_from_handoff()`.
+  2. Draft includes title, description, target project path, project relation, suggested assignees, default assignee, command preview, Markdown, warnings, and structured errors.
+  3. Draft generation is generic: tests and docs use `E:\Projects\sample-project` and generic task text, not a fixed business domain.
+  4. Control panel API gained thin `build_multica_issue_draft()` wrapper; it does not call subprocess or Multica CLI.
+  5. Agent Handoff result card gained a “Multica Issue 草稿” area with generate/copy-title/copy-description/copy-command/download-md actions.
+  6. Secret redaction covers api_key/API_KEY/token/password/secret/Authorization Bearer/sk-* before data reaches UI/history.
+- Verification: run issue draft service tests, control panel tests, full compileall/unittest/help/diff check before reporting.
+- Known traps: C5D is draft export only. Do not add a “创建 Issue” button, assign button, run Agent button, frontend command input, or real `multica issue create` call.
+
 ## Current Snapshot（2026-05-11）— V1.5-C5C Multica Readonly Status Panel
 
 - Purpose: Let XiaoHuang control panel see local Multica status through a read-only, modular integration boundary.
@@ -37,7 +51,7 @@
   2. External project creation is constrained to the user-specified target path and requires path confirmation by the target Agent.
   3. external_unspecified prompts hard-stop project file modification and tell the target Agent to confirm the target path first.
   4. External validation command notes now forbid adding dependencies/scripts just to run lint/test/build.
-  5. Tests cover wine-ui external_new, external_unspecified, and XiaoHuang task-history regression prompts.
+  5. Tests cover generic external_new, external_unspecified, and XiaoHuang task-history regression prompts.
 - Verification: run focused handoff tests plus full compileall/unittest/help/diff check before reporting final completion.
 - Known traps: External prompts must not include XiaoHuang internal source suggestions or `cd E:\Projects\xiaohuang` verification when the target path is unspecified.
 
@@ -48,7 +62,7 @@
 - Last completed:
   1. Added `target_project_path`, `target_project_kind`, and `project_relation` to `AgentHandoffRequest`.
   2. Parser now extracts Windows target paths, detects unrelated-to-XiaoHuang requests, and classifies `xiaohuang`, `external_new`, `external_existing`, and `external_unspecified`.
-  3. Domain routing now defaults to `agent_workflow` only and adds `xiaohuang_project` only for real XiaoHuang tasks; wine/UI/React/Tailwind/site tasks route to `ui_design`.
+  3. Domain routing now defaults to `agent_workflow` only and adds `xiaohuang_project` only for real XiaoHuang tasks; UI/React/Tailwind/site tasks route to `ui_design`.
   4. Prompt builder separates XiaoHuang project path from target project path and emits external-project safety boundaries plus external file suggestions.
   5. Service still writes handoff files only under XiaoHuang `runtime/agent_handoffs/`; it never creates or modifies external projects.
 - Verification: run agent_handoff focused tests plus full compileall/unittest/help/diff check before reporting final completion.

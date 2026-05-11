@@ -62,3 +62,34 @@ class MulticaStatus:
             "message": self.message,
         }
 
+
+@dataclass(frozen=True)
+class MulticaIssueDraft:
+    ok: bool
+    title: str = ""
+    description: str = ""
+    target_project_path: str = ""
+    project_relation: str = ""
+    suggested_assignees: tuple[str, ...] = ()
+    default_assignee: str = ""
+    create_command_preview: str = ""
+    markdown: str = ""
+    warnings: tuple[str, ...] = ()
+    error_code: str = ""
+    message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "title": self.title,
+            "description": self.description,
+            "target_project_path": self.target_project_path,
+            "project_relation": self.project_relation,
+            "suggested_assignees": list(self.suggested_assignees),
+            "default_assignee": self.default_assignee,
+            "create_command_preview": self.create_command_preview,
+            "markdown": self.markdown,
+            "warnings": list(self.warnings),
+            "error_code": self.error_code,
+            "message": self.message,
+        }

@@ -580,6 +580,12 @@
           handleAgentHandoffTerminal(terminalButton);
           return;
         }
+        var draftButton = event.target.closest('[data-multica-draft]');
+        if (draftButton) {
+          event.preventDefault();
+          handleMulticaIssueDraftAction(draftButton);
+          return;
+        }
         var target = event.target.closest('[data-task-action]');
         if (!target) return;
         var taskId = target.getAttribute('data-task-id') || '';
@@ -846,6 +852,7 @@
     var previewHtml = handoff.preview
       ? '<div class="agent-handoff-preview"><div class="text-task-result-section-label">预览</div><pre>' + escapeHtml(handoff.preview) + '</pre></div>'
       : '';
+    var multicaDraftHtml = result.ok ? renderMulticaIssueDraftPanel(result, handoff) : '';
     return '<section class="text-task-result-card agent-handoff-result-card ' + statusClass + '">' +
       '<div class="text-task-result-header">' +
         '<div>' +
@@ -861,6 +868,7 @@
       '<div class="text-task-result-summary">' + escapeHtml(result.summary || 'Agent Handoff 已生成。') + '</div>' +
       actionsHtml +
       targetMetaHtml +
+      multicaDraftHtml +
       pathHtml +
       previewHtml +
       '<div class="text-task-result-details agent-handoff-detail"><div class="text-task-result-section-label">详情</div><pre>' + escapeHtml(details) + '</pre></div>' +
@@ -874,6 +882,9 @@
     var targetPathMatch = text.match(/(?:^|\n)目标项目路径：([^\n\r]+)/);
     var targetKindMatch = text.match(/(?:^|\n)目标项目类型：([^\n\r]+)/);
     var relationMatch = text.match(/(?:^|\n)与小黄项目关系：([^\n\r]+)/);
+    var agentMatch = text.match(/(?:^|\n)目标 Agent：([^\n\r]+)/);
+    var domainsMatch = text.match(/(?:^|\n)相关领域：([^\n\r]+)/);
+    var databaseMatch = text.match(/(?:^|\n)数据库：([^\n\r]+)/);
     var canOpenMatch = text.match(/(?:^|\n)可打开终端：([^\n\r]+)/);
     var terminalHintMatch = text.match(/(?:^|\n)终端提示：([^\n\r]+)/);
     var marker = '\n预览：\n';
@@ -883,10 +894,39 @@
       targetProjectPath: targetPathMatch ? targetPathMatch[1].trim() : '',
       targetProjectKind: targetKindMatch ? targetKindMatch[1].trim() : '',
       projectRelation: relationMatch ? relationMatch[1].trim() : '',
+      targetAgent: agentMatch ? agentMatch[1].trim() : '',
+      domains: domainsMatch ? domainsMatch[1].trim() : '',
+      databaseStatus: databaseMatch ? databaseMatch[1].trim() : '',
       canOpenTerminal: canOpenMatch ? canOpenMatch[1].trim() === '是' : false,
       terminalHint: terminalHintMatch ? terminalHintMatch[1].trim() : '',
       preview: idx >= 0 ? text.slice(idx + marker.length).trim() : ''
     };
+  }
+
+  function renderMulticaIssueDraftPanel(result, handoff) {
+    return '<div class="multica-draft-panel" data-multica-draft-panel>' +
+      '<div class="multica-draft-head">' +
+        '<div><div class="text-task-result-section-label">Multica Issue 草稿</div>' +
+        '<p>仅草稿，未创建 issue，未分配 Agent。</p></div>' +
+        '<button type="button" data-multica-draft="generate"' +
+          ' data-handoff-title="' + escapeHtml(result.title || '') + '"' +
+          ' data-handoff-path="' + escapeHtml(handoff.path) + '"' +
+          ' data-target-project-path="' + escapeHtml(handoff.targetProjectPath) + '"' +
+          ' data-target-project-kind="' + escapeHtml(handoff.targetProjectKind) + '"' +
+          ' data-project-relation="' + escapeHtml(handoff.projectRelation) + '"' +
+          ' data-database-status="' + escapeHtml(handoff.databaseStatus) + '"' +
+          ' data-related-domains="' + escapeHtml(handoff.domains) + '"' +
+          ' data-preferred-agent="' + escapeHtml(handoff.targetAgent) + '">生成 Issue 草稿</button>' +
+      '</div>' +
+      '<div class="multica-draft-summary" data-multica-draft-summary>尚未生成 Multica Issue 草稿。</div>' +
+      '<div class="multica-draft-actions">' +
+        '<button type="button" data-multica-draft="copy-title" disabled>复制 Issue 标题</button>' +
+        '<button type="button" data-multica-draft="copy-description" disabled>复制 Issue 描述</button>' +
+        '<button type="button" data-multica-draft="copy-command" disabled>复制命令草稿</button>' +
+        '<button type="button" data-multica-draft="download-md" disabled>下载草稿 .md</button>' +
+      '</div>' +
+      '<pre class="multica-draft-preview" data-multica-draft-preview></pre>' +
+    '</div>';
   }
 
   function handleAgentHandoffCopy(btn) {
@@ -936,6 +976,114 @@
     }).finally(function () {
       btn.disabled = false;
     });
+  }
+
+  function handleMulticaIssueDraftAction(btn) {
+    var action = btn.getAttribute('data-multica-draft') || '';
+    var panel = btn.closest('[data-multica-draft-panel]');
+    if (!panel) return Promise.resolve();
+    if (action === 'generate') return generateMulticaIssueDraft(btn, panel);
+    var draft = getPanelDraft(panel);
+    if (!draft) {
+      toast('请先生成 Issue 草稿', 'err');
+      return Promise.resolve();
+    }
+    if (action === 'copy-title') return copyTextToClipboard(draft.title).then(function () { toast('已复制 Issue 标题', 'ok'); });
+    if (action === 'copy-description') return copyTextToClipboard(draft.description).then(function () { toast('已复制 Issue 描述', 'ok'); });
+    if (action === 'copy-command') return copyTextToClipboard(draft.create_command_preview).then(function () { toast('已复制命令草稿', 'ok'); });
+    if (action === 'download-md') {
+      downloadTextFile(draft.markdown, buildDraftFilename(draft.title));
+      toast('已下载草稿 .md', 'ok');
+    }
+    return Promise.resolve();
+  }
+
+  function generateMulticaIssueDraft(btn, panel) {
+    var summary = panel.querySelector('[data-multica-draft-summary]');
+    var preview = panel.querySelector('[data-multica-draft-preview]');
+    var path = btn.getAttribute('data-handoff-path') || '';
+    btn.disabled = true;
+    if (summary) summary.textContent = '正在生成 Issue 草稿...';
+    return apiCall('read_agent_handoff_file', { path: path }).then(function (fileResp) {
+      if (!fileResp || !fileResp.ok || !fileResp.content) {
+        throw new Error((fileResp && fileResp.error) || '无法读取完整 handoff prompt');
+      }
+      return apiCall('build_multica_issue_draft', {
+        handoff_title: btn.getAttribute('data-handoff-title') || '',
+        handoff_prompt: fileResp.content,
+        target_project_path: btn.getAttribute('data-target-project-path') || '',
+        target_project_kind: btn.getAttribute('data-target-project-kind') || 'auto',
+        project_relation: btn.getAttribute('data-project-relation') || 'unknown',
+        database_brief_status: btn.getAttribute('data-database-status') || '',
+        related_domains: splitCommaList(btn.getAttribute('data-related-domains') || ''),
+        preferred_agent: btn.getAttribute('data-preferred-agent') || ''
+      });
+    }).then(function (resp) {
+      if (!resp || !resp.ok || !resp.data) {
+        throw new Error((resp && (resp.error || resp.message || resp.code)) || 'Issue 草稿生成失败');
+      }
+      setPanelDraft(panel, resp.data);
+      renderPanelDraft(panel, resp.data);
+      toast('Multica Issue 草稿已生成', 'ok');
+    }).catch(function (err) {
+      if (summary) summary.textContent = 'Issue 草稿生成失败：' + ((err && err.message) || err);
+      if (preview) preview.textContent = '';
+      toast('Issue 草稿生成失败', 'err');
+    }).finally(function () {
+      btn.disabled = false;
+    });
+  }
+
+  function setPanelDraft(panel, draft) {
+    panel.dataset.issueDraftJson = JSON.stringify(draft || {});
+    panel.querySelectorAll('[data-multica-draft]').forEach(function (button) {
+      var action = button.getAttribute('data-multica-draft') || '';
+      if (action !== 'generate') button.disabled = false;
+    });
+  }
+
+  function getPanelDraft(panel) {
+    try {
+      return panel && panel.dataset.issueDraftJson ? JSON.parse(panel.dataset.issueDraftJson) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function renderPanelDraft(panel, draft) {
+    var summary = panel.querySelector('[data-multica-draft-summary]');
+    var preview = panel.querySelector('[data-multica-draft-preview]');
+    var warnings = Array.isArray(draft.warnings) ? draft.warnings : [];
+    if (summary) {
+      summary.innerHTML = '<div><span>标题</span><strong>' + escapeHtml(draft.title || '--') + '</strong></div>' +
+        '<div><span>建议 Agent</span><strong>' + escapeHtml((draft.suggested_assignees || []).join(' / ') || '--') + '</strong></div>' +
+        '<div><span>默认建议</span><strong>' + escapeHtml(draft.default_assignee || '--') + '</strong></div>' +
+        '<div><span>目标项目</span><code>' + escapeHtml(draft.target_project_path || '未指定') + '</code></div>' +
+        '<div><span>安全状态</span><strong>仅草稿，未创建 issue，未分配 Agent</strong></div>' +
+        (warnings.length ? '<p>' + escapeHtml(warnings.join('；')) + '</p>' : '');
+    }
+    if (preview) preview.textContent = draft.create_command_preview || '';
+  }
+
+  function splitCommaList(text) {
+    return String(text || '').split(',').map(function (item) { return item.trim(); }).filter(Boolean);
+  }
+
+  function downloadTextFile(text, filename) {
+    var blob = new Blob([String(text || '')], { type: 'text/markdown;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename || 'multica-issue-draft.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function buildDraftFilename(title) {
+    var safe = String(title || 'multica-issue-draft').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').slice(0, 64);
+    return (safe || 'multica-issue-draft') + '.md';
   }
 
   function getExecutionStatusLabel(status, ok) {

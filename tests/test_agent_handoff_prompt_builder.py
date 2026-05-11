@@ -61,13 +61,13 @@ class AgentHandoffPromptBuilderTests(unittest.TestCase):
         prompt = build_agent_handoff_prompt(
             AgentHandoffRequest(
                 user_request=(
-                    "给 Claude Code 生成一个提示词，让它根据我的数据库，在 E:\\Projects\\wine-ui 里"
-                    "做一个高级红酒品牌官网首页。这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
+                    "给 Claude Code 生成一个提示词，让它根据我的数据库，在 E:\\Projects\\sample-project 里"
+                    "做一个高级产品展示官网首页。这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
                     "要求 React + Tailwind。"
                 ),
                 target_agent="claude_code",
-                actual_task="做一个高级红酒品牌官网首页。要求 React + Tailwind",
-                target_project_path="E:\\Projects\\wine-ui",
+                actual_task="做一个高级产品展示官网首页。要求 React + Tailwind",
+                target_project_path="E:\\Projects\\sample-project",
                 target_project_kind="external_new",
                 project_relation="unrelated_to_xiaohuang",
             ),
@@ -82,7 +82,7 @@ class AgentHandoffPromptBuilderTests(unittest.TestCase):
 
         for text in (
             "小黄项目路径：E:\\Projects\\xiaohuang",
-            "目标项目路径：E:\\Projects\\wine-ui",
+            "目标项目路径：E:\\Projects\\sample-project",
             "目标项目类型：external_new",
             "与小黄项目关系：unrelated_to_xiaohuang",
             "不要修改 E:\\Projects\\xiaohuang",
@@ -91,8 +91,8 @@ class AgentHandoffPromptBuilderTests(unittest.TestCase):
             "package.json",
             "src/App.jsx 或 src/App.tsx",
             "vite.config.*",
-            "做高端酒类品牌视觉",
-            "Hero、精选酒款、品牌故事、年份/产区信息、品鉴 CTA",
+            "做高质量品牌/产品视觉",
+            "Hero、核心产品/服务、价值主张、故事信息和明确 CTA",
             "ui_design, agent_workflow",
             "React + Tailwind",
             "如果 package.json 不存在或没有这些 scripts，不要强行新增依赖或脚本",
@@ -105,9 +105,9 @@ class AgentHandoffPromptBuilderTests(unittest.TestCase):
     def test_external_unspecified_prompt_requires_path_confirmation(self):
         prompt = build_agent_handoff_prompt(
             AgentHandoffRequest(
-                user_request="给 Codex 一个任务，让它根据我的数据库做一个酒的前端界面",
+                user_request="给 Codex 一个任务，让它根据我的数据库做一个目标项目的前端界面",
                 target_agent="codex",
-                actual_task="做一个酒的前端界面",
+                actual_task="做一个目标项目的前端界面",
                 target_project_kind="external_unspecified",
                 project_relation="auto",
             ),

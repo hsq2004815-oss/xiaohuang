@@ -36,10 +36,10 @@ class AgentHandoffDomainRouterTests(unittest.TestCase):
         self.assertIn("xiaohuang_project", domains)
         self.assertIn("ui_design", domains)
 
-    def test_wine_brand_site_routes_ui_not_xiaohuang(self):
+    def test_product_site_routes_ui_not_xiaohuang(self):
         domains = route_domains(
-            "给 Claude Code 生成一个提示词，让它根据我的数据库，在 E:\\Projects\\wine-ui "
-            "里做一个高级红酒品牌官网首页"
+            "给 Claude Code 生成一个提示词，让它根据我的数据库，在 E:\\Projects\\sample-project "
+            "里做一个高级产品展示官网首页"
         )
 
         self.assertIn("agent_workflow", domains)
@@ -47,8 +47,8 @@ class AgentHandoffDomainRouterTests(unittest.TestCase):
         self.assertNotIn("xiaohuang_project", domains)
         self.assertNotIn("backend", domains)
 
-    def test_wine_frontend_without_path_routes_ui_not_xiaohuang(self):
-        domains = route_domains("给 Codex 一个任务，让它做一个酒的前端界面")
+    def test_frontend_without_path_routes_ui_not_xiaohuang(self):
+        domains = route_domains("给 Codex 一个任务，让它做一个目标项目的前端界面")
 
         self.assertIn("agent_workflow", domains)
         self.assertIn("ui_design", domains)
@@ -56,7 +56,7 @@ class AgentHandoffDomainRouterTests(unittest.TestCase):
 
     def test_unrelated_to_xiaohuang_suppresses_xiaohuang_domain(self):
         domains = route_domains(
-            "这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang，在 E:\\Projects\\wine-ui 做页面"
+            "这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang，在 E:\\Projects\\sample-project 做页面"
         )
 
         self.assertIn("ui_design", domains)

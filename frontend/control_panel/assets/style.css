@@ -556,6 +556,28 @@ select.glass-input{cursor:pointer}
 .agent-handoff-actions button:hover{background:rgba(255,255,255,0.88);color:var(--accent-blue)}
 .agent-handoff-actions button:disabled{opacity:.6;cursor:default}
 .agent-handoff-copy-status{color:var(--text-muted);font-size:12px;font-weight:800}
+.multica-draft-panel{
+  margin-top:10px;padding:10px;border-radius:12px;border:1px solid rgba(79,110,246,0.14);
+  background:rgba(79,110,246,0.06);user-select:text
+}
+.multica-draft-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px}
+.multica-draft-head p{margin:3px 0 0;color:var(--text-muted);font-size:11px;line-height:1.45}
+.multica-draft-head button,.multica-draft-actions button{
+  border-radius:var(--radius-pill);border:1px solid rgba(79,110,246,0.22);background:rgba(255,255,255,0.72);
+  color:var(--text-secondary);font-size:11px;font-weight:900;cursor:pointer;padding:6px 10px
+}
+.multica-draft-head button:hover:not(:disabled),.multica-draft-actions button:hover:not(:disabled){background:rgba(255,255,255,0.88);color:var(--accent-blue)}
+.multica-draft-head button:disabled,.multica-draft-actions button:disabled{opacity:.55;cursor:default}
+.multica-draft-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;color:var(--text-secondary);font-size:11px}
+.multica-draft-summary>div{min-width:0;padding:8px;border-radius:10px;background:rgba(255,255,255,0.44)}
+.multica-draft-summary span{display:block;margin-bottom:3px;color:var(--text-muted);font-weight:900}
+.multica-draft-summary strong,.multica-draft-summary code{word-break:break-word}
+.multica-draft-summary p{grid-column:1 / -1;color:#92400e;line-height:1.45}
+.multica-draft-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}
+.multica-draft-preview{
+  margin-top:9px;max-height:150px;overflow:auto;color:var(--text-secondary);font-size:10px;line-height:1.45;
+  white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace
+}
 .agent-handoff-target-meta,.agent-handoff-path,.agent-handoff-preview{
   margin-top:10px;padding:10px;border-radius:12px;border:1px solid rgba(79,110,246,0.12);
   background:rgba(255,255,255,0.52);user-select:text
