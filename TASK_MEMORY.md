@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-11）— V1.5-C5B Multica Integration Research
+
+- Purpose: Decide whether XiaoHuang should integrate with the already-running local Multica runtime instead of building a separate C5A agent launcher.
+- Key files: `docs/multica-integration-research.md`, `docs/agent-handoff-design.md`, `TASK_MEMORY.md`.
+- Last completed:
+  1. Confirmed `multica` is installed at `C:\Users\29468\.multica\bin\multica.exe`, version `0.2.16`, with daemon running and daemon aliases `claude`, `codex`, `opencode`, `openclaw`.
+  2. Confirmed `issue create`, `issue assign`, `issue runs`, and `issue run-messages` command surfaces through `--help` only; no real issue was created and no Agent was assigned.
+  3. Confirmed `agent list --output json` works and returns local idle agents, while `workspace list --output json` is unsupported in 0.2.16.
+  4. Documented the boundary: XiaoHuang owns natural-language task understanding, database-enhanced handoff prompts, issue drafts, review, and memory; Multica owns daemon/runtime/issues/assign/runs/messages.
+  5. Recommended staged follow-up: C5C readonly status panel, C5D issue draft export, C5E confirmed issue create, C5F confirmed assign, C6 runs/messages review.
+- Verification: docs-only change; run compileall, unittest discover, control_panel_web `--help`, voice_overlay `--help`, `git diff --check`, and git status before reporting.
+- Known traps: Do not add direct Claude/Codex/opencode/OpenClaw launch paths; do not call `multica issue create` or `assign` without explicit confirmation; do not assume every Multica command supports `--output json`.
+
 ## Current Snapshot（2026-05-11）— V1.5-C3.1 Generic Handoff Smoke Polish
 
 - Purpose: Tighten generic external-project handoff wording before real smoke use.

@@ -64,6 +64,12 @@ C3.1 tightens the smoke-use wording for external projects. Prompts now state tha
 
 Auto-launching engineering agents crosses from low-risk prompt generation into local process execution. C1 keeps the workflow reviewable: the user can inspect and copy the prompt before any external agent acts.
 
+## Multica Integration Direction
+
+C5B changes the immediate launch direction. Because the user's machine already has Multica running as the local Agent runtime/daemon/issue/run system, XiaoHuang should not build a separate low-grade Agent launcher as its primary path. XiaoHuang should generate database-enhanced handoff packages and Multica issue drafts, then only create issues or assign Agents after explicit user confirmation.
+
+The recommended boundary is: XiaoHuang owns task understanding, target project identification, prompt drafting, safety review, and Chinese acceptance summaries; Multica owns Agent runtime, issue assignment, execution runs, and run messages. Details are recorded in `docs/multica-integration-research.md`.
+
 ## Roadmap
 
 - C1: Database-Aware Agent Handoff Draft
@@ -71,6 +77,10 @@ Auto-launching engineering agents crosses from low-risk prompt generation into l
 - C3: Generic Project Agent Handoff
 - C3.1: Agent Handoff Result UI Polish
 - C4: Open Project Terminal + Copy Prompt
-- C5: Whitelisted Agent Launcher
-- C6: Commit/GitHub Review Assist
+- C5B: Multica Integration Research
+- C5C: Multica Readonly Status Panel
+- C5D: Multica Issue Draft Export
+- C5E: Multica Issue Create with Explicit Confirmation
+- C5F: Multica Assign Agent with Explicit Confirmation
+- C6: Multica Runs Review and Agent Completion Review
 - C7: Multi-Agent Workflow Board
