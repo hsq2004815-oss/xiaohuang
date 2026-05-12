@@ -614,6 +614,92 @@ select.glass-input{cursor:pointer}
   color:#166534;font-size:11px;font-weight:900;cursor:pointer;padding:6px 10px
 }
 .multica-assign-panel button:disabled{opacity:.55;cursor:default}
+
+/* standalone assign existing Multica issue — Chat workspace block */
+.multica-standalone-assign-panel{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.multica-standalone-assign-panel label{
+  display:grid;
+  gap:4px;
+  font-weight:600;
+  font-size:var(--font-size-xs,11px);
+  color:var(--text-muted,#7b8ba0);
+}
+.multica-standalone-assign-panel select,
+.multica-standalone-assign-panel input[type="text"]{
+  padding:6px 8px;
+  font-size:var(--font-size-xs,11px);
+  border-radius:6px;
+  border:1px solid var(--rim,rgba(255,255,255,0.12));
+  background:var(--fill-card-secondary,rgba(255,255,255,0.06));
+  color:var(--text-primary,#e2e8f0);
+}
+.multica-standalone-assign-panel input[type="text"]{
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+}
+.multica-standalone-assign-panel button{
+  padding:6px 12px;
+  border-radius:999px;
+  border:1px solid var(--rim,rgba(255,255,255,0.18));
+  background:var(--fill-card,rgba(255,255,255,0.12));
+  color:var(--text-primary,#e2e8f0);
+  cursor:pointer;
+  font-size:var(--font-size-xs,11px);
+  font-weight:600;
+  white-space:nowrap;
+}
+.multica-standalone-assign-panel button:disabled{opacity:.55;cursor:default}
+.multica-assign-blurb{
+  margin:0 0 8px;
+  font-size:var(--font-size-xs,10px);
+  color:var(--text-muted,#7b8ba0);
+  line-height:1.45;
+}
+.multica-assign-workspace-block .multica-assign-confirm{
+  margin-top:2px;
+  padding:10px;
+  border-radius:8px;
+  background:rgba(251,191,36,0.10);
+  border:1px solid rgba(251,191,36,0.25);
+}
+.multica-assign-workspace-block .multica-assign-confirm p{
+  margin:0 0 6px;
+  font-size:var(--font-size-xs,10px);
+  line-height:1.45;
+  color:#fbbf24;
+}
+.multica-assign-workspace-block .multica-assign-confirm code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  font-size:var(--font-size-xs,11px);
+  background:rgba(0,0,0,0.2);
+  padding:2px 6px;
+  border-radius:4px;
+}
+.multica-assign-workspace-block .multica-assign-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:6px;
+}
+.multica-assign-workspace-block [data-sa-result]{
+  margin-top:8px;
+  padding:8px;
+  border-radius:8px;
+  background:rgba(34,197,94,0.1);
+  border:1px solid rgba(34,197,94,0.25);
+  font-size:var(--font-size-xs,11px);
+  color:#22c55e;
+  line-height:1.45;
+}
+.multica-assign-workspace-block [data-sa-result] code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  background:rgba(0,0,0,0.15);
+  padding:1px 5px;
+  border-radius:3px;
+}
 .multica-assign-confirm,.multica-assign-result{
   padding:8px;border-radius:10px;border:1px solid rgba(22,101,52,0.18);background:rgba(255,255,255,0.58)
 }

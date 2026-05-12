@@ -194,6 +194,20 @@
 - Verification: compileall OK; unittest discover OK (1054 tests, 1 skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
 - Known traps: Do not launch agents or terminals from C1; database context must stay through `http://127.0.0.1:8765/brief` or safely degrade.
 
+## Current Snapshot（2026-05-13）— V1.5-C5F.2 Assign Existing Issue Entry
+
+- Purpose: Add a standalone "分配已有 Multica Issue" entry in Chat workspace — independent of create result cards. Reuses existing `assign_multica_issue_to_agent` backend.
+- Key files: `frontend/control_panel/index.html` (+standalone assign workspace block), `frontend/control_panel/assets/app.js` (+standalone assign handlers), `frontend/control_panel/assets/style.css` (+standalone panel styles), `tests/test_control_panel_web_service.py` (+18 new static tests).
+- Last completed:
+  1. HTML: New workspace block in `text-chat-workspace` with `multica-standalone-assign-panel` — Issue ID input, Agent select (claude/codex/opencode/openclaw), prepare/confirm buttons, confirmation phrase area (hidden until prepare), result area.
+  2. JS: `prepareStandaloneAssign()`, `confirmStandaloneAssign(btn)`, `renderStandaloneAssignResult()`, `initStandaloneAssignListeners()` — reusable ASSIGN <id> TO <agent> confirmation flow, phrase must match exactly, calls `assign_multica_issue_to_agent` API.
+  3. Safety blurb: "小黄不会读取 runs/run-messages，也不会额外启动本地 Agent" visible on the panel.
+  4. Confirmation: `ASSIGN <issue_id> TO <agent>` must be manually typed, cannot be bypassed. Confirm button disabled until phrase matches.
+  5. No new backend API — reuses existing `ControlPanelWebApi.assign_multica_issue_to_agent`.
+  6. Backend unchanged — no new imports in control_panel_web_service.py, no changes to Multica integration services.
+- Verification: compileall OK; unittest discover OK (1212 tests, 1 skipped, +8 new); focused Multica suites OK; control_panel_web --help OK; voice_overlay --help OK; diff check OK.
+- Known traps: Standalone panel uses separate data-sa-* attributes to avoid conflicts with draft-panel-embedded assign panel. Real assign NOT performed — user to manually verify with issue 78480e61/HHH-19.
+
 ## Current Snapshot（2026-05-10）— V1.5-C0 Natural Language Action Task Safety Design Doc
 
 - Purpose: Upgrade the task model from "text task" to "voice-or-text natural language task" and design the safety boundaries for action-type tasks. Design only — no code changes.

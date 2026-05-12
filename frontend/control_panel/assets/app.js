@@ -1298,6 +1298,112 @@
     return created && created.issue_id ? String(created.issue_id).trim() : '';
   }
 
+  /* ─── Standalone assign existing Multica issue ─── */
+  function getStandaloneAssignPanel() {
+    return document.querySelector('[data-multica-standalone-assign-panel]');
+  }
+
+  function getStandaloneIssueId() {
+    var input = document.querySelector('[data-sa-issue-id]');
+    return input ? String(input.value || '').trim() : '';
+  }
+
+  function getStandaloneAgent() {
+    var select = document.querySelector('[data-sa-agent]');
+    return select ? select.value : 'claude';
+  }
+
+  function prepareStandaloneAssign() {
+    var issueId = getStandaloneIssueId();
+    var agent = getStandaloneAgent();
+    var confirmBox = document.querySelector('[data-sa-confirm]');
+    var expectedEl = document.querySelector('[data-sa-expected]');
+    var phrase = document.querySelector('[data-sa-phrase]');
+    var confirmButton = document.querySelector('[data-sa-action="confirm"]');
+    var status = document.querySelector('[data-sa-status]');
+    if (!issueId) {
+      if (status) status.textContent = '请先输入已有 Multica issue id 或 identifier。';
+      toast('请先输入 Issue ID / Identifier', 'err');
+      return;
+    }
+    var expected = buildAssignConfirmation(issueId, agent);
+    if (confirmBox) confirmBox.hidden = false;
+    if (expectedEl) expectedEl.textContent = expected;
+    if (phrase) { phrase.value = ''; phrase.focus(); }
+    if (confirmButton) confirmButton.disabled = true;
+    if (status) status.textContent = '输入精确确认短语后才能分配真实 issue。';
+    toast('请检查 issue id 和 agent 后输入确认短语', 'info');
+  }
+
+  function confirmStandaloneAssign(btn) {
+    var issueId = getStandaloneIssueId();
+    var agent = getStandaloneAgent();
+    var phrase = document.querySelector('[data-sa-phrase]');
+    var status = document.querySelector('[data-sa-status]');
+    var confirmButton = document.querySelector('[data-sa-action="confirm"]');
+    var expected = buildAssignConfirmation(issueId, agent);
+    var text = phrase ? phrase.value.trim() : '';
+    if (!issueId || text !== expected) {
+      if (status) status.textContent = '确认短语不匹配。';
+      toast('确认短语不匹配', 'err');
+      return;
+    }
+    btn.disabled = true;
+    if (confirmButton) confirmButton.disabled = true;
+    if (status) status.textContent = '正在分配 Multica issue...';
+    apiCall('assign_multica_issue_to_agent', {
+      issue_id: issueId,
+      agent: agent,
+      confirmed: true,
+      confirmation_text: text
+    }).then(function (resp) {
+      if (!resp || !resp.ok || !resp.data) {
+        throw new Error((resp && (resp.error || resp.message || resp.code)) || '分配 Agent 失败');
+      }
+      renderStandaloneAssignResult(resp.data);
+      if (status) status.textContent = 'Multica issue 已分配。';
+      toast('Multica issue 已分配给 ' + (resp.data.agent || agent), 'ok');
+    }).catch(function (err) {
+      if (status) status.textContent = '分配失败：' + ((err && err.message) || err);
+      toast('分配 Multica issue 失败', 'err');
+    }).finally(function () {
+      btn.disabled = false;
+      if (confirmButton) confirmButton.disabled = false;
+    });
+  }
+
+  function renderStandaloneAssignResult(result) {
+    var box = document.querySelector('[data-sa-result]');
+    if (!box) return;
+    box.hidden = false;
+    box.innerHTML = '<strong>Multica issue 已分配给 ' + escapeHtml(result.agent || '--') + '</strong>' +
+      '<div>Issue ID: <code>' + escapeHtml(result.issue_id || '--') + '</code></div>' +
+      '<div>状态: ' + escapeHtml(result.status || '--') + '</div>' +
+      '<div>下一步 C6 可读取 runs / run-messages 做验收</div>';
+  }
+
+  function initStandaloneAssignListeners() {
+    var block = $('multica-standalone-assign-block');
+    if (!block || block.dataset.saBound === '1') return;
+    block.dataset.saBound = '1';
+    block.addEventListener('click', function (event) {
+      var btn = event.target.closest('[data-sa-action]');
+      if (!btn) return;
+      event.preventDefault();
+      var action = btn.getAttribute('data-sa-action') || '';
+      if (action === 'prepare') prepareStandaloneAssign();
+      if (action === 'confirm') confirmStandaloneAssign(btn);
+    });
+    var phraseInput = block.querySelector('[data-sa-phrase]');
+    if (phraseInput) {
+      phraseInput.addEventListener('input', function () {
+        var expected = buildAssignConfirmation(getStandaloneIssueId(), getStandaloneAgent());
+        var confirmBtn = block.querySelector('[data-sa-action="confirm"]');
+        if (confirmBtn) confirmBtn.disabled = phraseInput.value.trim() !== expected;
+      });
+    }
+  }
+
   function splitCommaList(text) {
     return String(text || '').split(',').map(function (item) { return item.trim(); }).filter(Boolean);
   }
@@ -2234,6 +2340,7 @@
     initDrawerControls();
     initTextChat();
     initTaskHistory();
+    initStandaloneAssignListeners();
     switchShell(currentShell);
     switchSection(currentSection);
     updateBridgeIndicator();

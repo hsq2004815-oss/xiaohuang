@@ -1830,3 +1830,63 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
         js = self._read("frontend/control_panel/assets/app.js")
         self.assertNotIn("showTaskHistoryLoading(false)", js,
                          "finally block must not call showTaskHistoryLoading which could overwrite error state")
+
+
+class V15C5F2StandaloneAssignUITests(unittest.TestCase):
+    """V1.5-C5F.2 standalone assign existing Multica issue static/structure tests."""
+
+    def setUp(self):
+        self.root = Path(__file__).resolve().parents[1]
+
+    def _read(self, rel):
+        return (self.root / rel).read_text(encoding="utf-8")
+
+    def test_html_has_standalone_assign_block(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("分配已有 Multica Issue", html)
+        self.assertIn("multica-standalone-assign-panel", html)
+        self.assertIn("multica-standalone-assign-block", html)
+
+    def test_html_has_assign_form_fields(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn('data-sa-issue-id', html)
+        self.assertIn('data-sa-agent', html)
+        self.assertIn('data-sa-action="prepare"', html)
+        self.assertIn('data-sa-action="confirm"', html)
+        self.assertIn('准备分配 Agent', html)
+        self.assertIn('确认分配 Agent', html)
+
+    def test_html_has_agent_options(self):
+        html = self._read("frontend/control_panel/index.html")
+        for agent in ("claude", "codex", "opencode", "openclaw"):
+            self.assertIn('value="' + agent + '"', html,
+                          "Missing agent option: " + agent)
+
+    def test_html_has_safety_blurb(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("不会读取 runs/run-messages", html)
+        self.assertIn("不会额外启动本地 Agent", html)
+
+    def test_js_has_standalone_assign_functions(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("function prepareStandaloneAssign", js)
+        self.assertIn("function confirmStandaloneAssign", js)
+        self.assertIn("function initStandaloneAssignListeners", js)
+        self.assertIn("function renderStandaloneAssignResult", js)
+        self.assertIn("ASSIGN", js)
+
+    def test_js_standalone_uses_escape_html(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("escapeHtml(result.agent", js)
+        self.assertIn("escapeHtml(result.issue_id", js)
+
+    def test_js_no_dangerous_standalone_text(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertNotIn("分配并运行", js)
+        self.assertNotIn("自动验收", js)
+        self.assertNotIn("启动 Agent", js)
+
+    def test_css_has_standalone_assign_classes(self):
+        css = self._read("frontend/control_panel/assets/style.css")
+        self.assertIn(".multica-standalone-assign-panel", css)
+        self.assertIn(".multica-assign-workspace-block", css)
