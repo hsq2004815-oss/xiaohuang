@@ -198,7 +198,13 @@ def _parse_run_messages_json(stdout: str, task_id: str) -> tuple[list[MulticaRun
     if isinstance(data, list):
         items = data
     elif isinstance(data, dict):
-        items = data.get("data") or data.get("messages") or data.get("items") or []
+        extracted = _extract_list_from_dict(data)
+        if extracted is not None:
+            items = extracted
+        else:
+            warnings.append("run-messages JSON 结构未识别")
+            return messages, warnings
+
     if not isinstance(items, list):
         warnings.append("run-messages JSON 结构未识别")
         return messages, warnings
@@ -206,47 +212,174 @@ def _parse_run_messages_json(stdout: str, task_id: str) -> tuple[list[MulticaRun
     for item in items:
         if not isinstance(item, dict):
             continue
-        content = str(item.get("content") or item.get("text") or "")
+        content = _extract_message_content(item)
         if len(content) > _MAX_MESSAGE_CHARS:
             content = content[:_MAX_MESSAGE_CHARS].rstrip() + "..."
         messages.append(MulticaRunMessage(
             message_id=str(item.get("id") or item.get("message_id") or ""),
+            seq=str(item.get("seq") or ""),
+            tool=str(item.get("tool") or ""),
+            message_type=str(item.get("type") or item.get("message_type") or ""),
             role=str(item.get("role") or ""),
             author=str(item.get("author") or item.get("sender") or ""),
             content=content,
             created_at=str(item.get("created_at") or item.get("timestamp") or ""),
             raw_summary=_compact_dict_text(item),
         ))
+
+    messages.sort(key=lambda m: _seq_sort_key(m.seq))
     return messages, warnings
+
+
+def _seq_sort_key(seq: str) -> int:
+    try:
+        return int(seq)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _extract_list_from_dict(data: dict) -> list | None:
+    candidates = ("data", "messages", "items", "events", "logs", "steps", "result")
+    for key in candidates:
+        val = data.get(key)
+        if isinstance(val, list):
+            return val
+
+    task = data.get("task")
+    if isinstance(task, dict):
+        val = task.get("messages")
+        if isinstance(val, list):
+            return val
+
+    list_vals = [v for v in data.values() if isinstance(v, list)]
+    if len(list_vals) == 1:
+        return list_vals[0]
+
+    return None
+
+
+def _extract_message_content(item: dict) -> str:
+    content = item.get("content")
+    if content is not None and str(content).strip():
+        return str(content)
+
+    text = item.get("text")
+    if text is not None and str(text).strip():
+        return str(text)
+
+    message = item.get("message")
+    if message is not None and str(message).strip():
+        return str(message)
+
+    output = item.get("output")
+    if output is not None and str(output).strip():
+        return str(output)
+
+    summary = item.get("summary")
+    if summary is not None and str(summary).strip():
+        return str(summary)
+
+    inp = item.get("input")
+    if inp is not None:
+        return _format_input(inp)
+
+    return _compact_dict_text(item)
+
+
+def _format_input(inp) -> str:
+    if isinstance(inp, dict):
+        parts: list[str] = []
+        command = inp.get("command")
+        if command and str(command).strip():
+            parts.append(f"command: {command}")
+        description = inp.get("description")
+        if description and str(description).strip():
+            parts.append(f"description: {description}")
+        if parts:
+            return "\n".join(parts)
+        return _compact_dict_text(inp)
+    return str(inp)
 
 
 def _build_review_summary(messages: list[MulticaRunMessage], task_id: str) -> str:
     if not messages:
         return f"运行消息不足 (task_id={task_id})，无法判断最终完成质量。"
+
+    tool_use_count = 0
+    tool_result_count = 0
+    tools_seen: set[str] = set()
+    commands_seen: list[str] = []
     author_msgs: dict[str, int] = {}
     has_error = False
     has_complete = False
-    for m in messages:
-        author = m.author or "unknown"
-        author_msgs[author] = author_msgs.get(author, 0) + 1
-        content_lower = m.content.lower()
-        if any(kw in content_lower for kw in ("error", "failed", "fail", "exception", "traceback")):
-            has_error = True
-        if any(kw in content_lower for kw in ("complete", "done", "finished", "success", "pass")):
-            has_complete = True
+    status_changes: list[str] = []
 
-    parts: list[str] = [
-        f"共 {len(messages)} 条消息",
-        f"参与者: {', '.join(f'{k}({v})' for k, v in author_msgs.items())}",
-    ]
+    _ERROR_KW = ("error", "failed", "fail", "exception", "traceback",
+                 "失败", "报错", "异常")
+    _COMPLETE_KW = ("complete", "done", "finished", "success", "pass",
+                    "完成", "成功", "通过")
+    _STATUS_CHANGE_KW = ("in_review", "changed to", "状态变更",
+                         "已分配", "已创建", "completed", "done")
+
+    for m in messages:
+        msg_type = m.message_type or ""
+        if msg_type == "tool_use":
+            tool_use_count += 1
+        elif msg_type == "tool_result":
+            tool_result_count += 1
+
+        tool = m.tool.strip()
+        if tool:
+            tools_seen.add(tool)
+
+        content_lower = (m.content or "").lower()
+        if any(kw in content_lower for kw in _ERROR_KW):
+            has_error = True
+        if any(kw in content_lower for kw in _COMPLETE_KW):
+            has_complete = True
+        for kw in _STATUS_CHANGE_KW:
+            idx = content_lower.find(kw)
+            if idx >= 0:
+                snippet = m.content[max(0, idx - 10):idx + len(kw) + 30]
+                status_changes.append(snippet.strip())
+                break
+
+        author = m.author or m.tool or "unknown"
+        author_msgs[author] = author_msgs.get(author, 0) + 1
+        for line in (m.content or "").splitlines():
+            stripped = line.strip()
+            if stripped.lower().startswith("command:") or stripped.startswith("command:"):
+                cmd = stripped.split(":", 1)[-1].strip()
+                if cmd and cmd not in commands_seen:
+                    commands_seen.append(cmd)
+
+    parts: list[str] = [f"共 {len(messages)} 条消息"]
+
+    if tool_use_count or tool_result_count:
+        parts.append(f"工具事件：tool_use {tool_use_count} 条 / tool_result {tool_result_count} 条")
+        if tools_seen:
+            parts.append(f"涉及工具：{', '.join(sorted(tools_seen))}")
+        if commands_seen:
+            parts.append(f"发现命令：{', '.join(commands_seen[:5])}")
+    else:
+        parts.append(f"参与者: {', '.join(f'{k}({v})' for k, v in author_msgs.items())}")
+
+    if status_changes:
+        unique_changes = list(dict.fromkeys(status_changes))[:3]
+        parts.append(f"发现状态变更：{'；'.join(unique_changes)}")
+
     if has_error and has_complete:
         parts.append("发现错误信号但也有完成信号，建议手动查看完整消息。")
     elif has_error:
         parts.append("发现错误信号，运行可能未成功完成。")
     elif has_complete:
-        parts.append("发现完成信号，运行可能已成功。")
+        parts.append("发现完成信号，运行可能已成功，仍建议人工验收。")
     else:
-        parts.append("消息中未找到明确成功或失败信号，无法判断最终完成质量。")
+        if tool_use_count or tool_result_count:
+            parts.append("消息中未找到明确成功或失败信号，无法判断最终完成质量。")
+        else:
+            parts.append("消息中未找到明确成功或失败信号，无法判断最终完成质量。")
+
     return "；".join(parts)
 
 

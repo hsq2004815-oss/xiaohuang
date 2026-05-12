@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import unittest
 
@@ -163,6 +164,188 @@ class MulticaRunReaderIntegrationTests(unittest.TestCase):
         result = read_issue_runs(issue_id="HHH-19", runner=fake_run)
         self.assertTrue(result.ok)
         self.assertIn("HHH-19", calls[0])
+
+
+class RunMessagesToolEventParseTests(unittest.TestCase):
+    """Tests for real tool_use / tool_result format."""
+
+    def test_parse_tool_use_and_tool_result(self):
+        stdout = json.dumps([
+            {
+                "input": {"command": "multica issue get HHH-19 --output json",
+                          "description": "Get issue details for assigned task"},
+                "issue_id": "78480e61",
+                "seq": 1,
+                "task_id": "de4c05f1",
+                "tool": "Bash",
+                "type": "tool_use",
+            },
+            {
+                "issue_id": "78480e61",
+                "output": "Issue HHH-19 status changed to in_review.",
+                "seq": 68,
+                "task_id": "de4c05f1",
+                "tool": "Bash",
+                "type": "tool_result",
+            },
+        ])
+        msgs, warnings = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 2)
+        self.assertEqual(len(warnings), 0)
+
+    def test_tool_use_extracts_input_command(self):
+        stdout = json.dumps([{
+            "input": {"command": "multica issue get HHH-19 --output json"},
+            "seq": 1,
+            "tool": "Bash",
+            "type": "tool_use",
+        }])
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("multica issue get", msgs[0].content)
+
+    def test_tool_use_extracts_input_description(self):
+        stdout = json.dumps([{
+            "input": {"description": "Get issue details for assigned task"},
+            "seq": 1,
+            "tool": "Bash",
+            "type": "tool_use",
+        }])
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("Get issue details", msgs[0].content)
+
+    def test_tool_result_extracts_output(self):
+        stdout = json.dumps([{
+            "output": "Issue HHH-19 status changed to in_review.",
+            "seq": 68,
+            "tool": "Bash",
+            "type": "tool_result",
+        }])
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("in_review", msgs[0].content)
+
+    def test_seq_tool_type_fields_preserved(self):
+        stdout = json.dumps([{
+            "input": {"command": "ls"},
+            "seq": 42,
+            "tool": "Bash",
+            "type": "tool_use",
+        }])
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(msgs[0].seq, "42")
+        self.assertEqual(msgs[0].tool, "Bash")
+        self.assertEqual(msgs[0].message_type, "tool_use")
+
+    def test_messages_sorted_by_seq(self):
+        stdout = json.dumps([
+            {"output": "third", "seq": 100, "type": "tool_result"},
+            {"input": {"command": "first"}, "seq": 1, "type": "tool_use"},
+            {"output": "second", "seq": 50, "type": "tool_result"},
+        ])
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual([m.seq for m in msgs], ["1", "50", "100"])
+
+    def test_no_content_text_but_has_output_returns_messages(self):
+        stdout = json.dumps([{
+            "output": "result text here",
+        }])
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("result text here", msgs[0].content)
+
+    def test_no_content_text_but_has_input_returns_messages(self):
+        stdout = json.dumps([{
+            "input": {"command": "echo hello"},
+        }])
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("echo hello", msgs[0].content)
+
+    def test_input_string_displayed_directly(self):
+        stdout = json.dumps([{
+            "input": "plain text input",
+        }])
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("plain text input", msgs[0].content)
+
+    def test_dict_with_events_key(self):
+        stdout = json.dumps({
+            "events": [{"output": "event1", "seq": 1}, {"output": "event2", "seq": 2}],
+        })
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 2)
+
+    def test_dict_with_logs_key(self):
+        stdout = json.dumps({"logs": [{"output": "log entry"}]})
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+
+    def test_dict_with_steps_key(self):
+        stdout = json.dumps({"steps": [{"output": "step"}]})
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+
+    def test_dict_with_task_messages_key(self):
+        stdout = json.dumps({"task": {"messages": [{"output": "nested"}]}})
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+
+    def test_dict_single_list_value_extracted(self):
+        stdout = json.dumps({"unknown_key": [{"output": "auto found"}]})
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+
+
+class ReviewSummaryToolEventTests(unittest.TestCase):
+    def test_counts_tool_use_and_tool_result(self):
+        msgs = [
+            MulticaRunMessage(message_type="tool_use", tool="Bash",
+                              content="command: ls"),
+            MulticaRunMessage(message_type="tool_use", tool="Read",
+                              content="command: cat file"),
+            MulticaRunMessage(message_type="tool_result", tool="Bash",
+                              content="file list"),
+        ]
+        summary = _build_review_summary(msgs, "t1")
+        self.assertIn("tool_use 2", summary)
+        self.assertIn("tool_result 1", summary)
+        self.assertIn("Bash", summary)
+        self.assertIn("Read", summary)
+
+    def test_detects_status_change(self):
+        msgs = [
+            MulticaRunMessage(message_type="tool_result", tool="Bash",
+                              content="Issue HHH-19 status changed to in_review."),
+        ]
+        summary = _build_review_summary(msgs, "t1")
+        self.assertIn("状态变更", summary.lower())
+
+    def test_detects_commands_in_content(self):
+        msgs = [
+            MulticaRunMessage(message_type="tool_use", tool="Bash",
+                              content="command: multica issue get HHH-19 --output json\ndescription: Get issue"),
+        ]
+        summary = _build_review_summary(msgs, "t1")
+        self.assertIn("multica issue get", summary)
+
+    def test_chinese_error_keywords(self):
+        msgs = [
+            MulticaRunMessage(message_type="tool_result", tool="Bash",
+                              content="编译失败：找不到模块"),
+        ]
+        summary = _build_review_summary(msgs, "t1")
+        self.assertIn("错误", summary)
+
+    def test_chinese_complete_keywords(self):
+        msgs = [
+            MulticaRunMessage(message_type="tool_result", tool="Bash",
+                              content="任务执行完成，测试通过"),
+        ]
+        summary = _build_review_summary(msgs, "t1")
+        self.assertIn("完成", summary)
 
 
 class ReviewSummaryTests(unittest.TestCase):

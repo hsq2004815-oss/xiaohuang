@@ -152,6 +152,9 @@ class MulticaRunSummary:
 @dataclass(frozen=True)
 class MulticaRunMessage:
     message_id: str = ""
+    seq: str = ""
+    tool: str = ""
+    message_type: str = ""
     role: str = ""
     author: str = ""
     content: str = ""
@@ -212,6 +215,9 @@ class MulticaRunMessagesResult:
             "messages": [
                 {
                     "message_id": m.message_id,
+                    "seq": m.seq,
+                    "tool": m.tool,
+                    "message_type": m.message_type,
                     "role": m.role,
                     "author": m.author,
                     "content": m.content,

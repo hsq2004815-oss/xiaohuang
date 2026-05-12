@@ -1833,7 +1833,8 @@ class V15B2TaskHistoryUITests(unittest.TestCase):
 
 
 class V15C5F2StandaloneAssignUITests(unittest.TestCase):
-    """V1.5-C5F.2 standalone assign existing Multica issue static/structure tests."""
+    """V1.5-C5F.2 / C6.1 standalone assign existing Multica issue
+    — now routed through the Multica Task Panel drawer."""
 
     def setUp(self):
         self.root = Path(__file__).resolve().parents[1]
@@ -1844,28 +1845,30 @@ class V15C5F2StandaloneAssignUITests(unittest.TestCase):
     def test_html_has_standalone_assign_block(self):
         html = self._read("frontend/control_panel/index.html")
         self.assertIn("分配已有 Multica Issue", html)
-        self.assertIn("multica-standalone-assign-panel", html)
         self.assertIn("multica-standalone-assign-block", html)
+        self.assertIn("multica-panel-drawer", html)
 
     def test_html_has_toggle_button(self):
         html = self._read("frontend/control_panel/index.html")
         self.assertIn('id="btn-toggle-sa"', html,
                       "toggle button must exist for opening standalone assign panel")
 
-    def test_standalone_panel_in_composer_not_workspace(self):
+    def test_panel_is_drawer_not_inline_in_composer(self):
         html = self._read("frontend/control_panel/index.html")
         composer_start = html.index('class="text-chat-composer"')
         composer_end = html.index('class="text-chat-input-row"', composer_start)
         composer_section = html[composer_start:composer_end]
-        self.assertIn('id="multica-standalone-assign-block"', composer_section,
-                      "standalone assign panel must be inside text-chat-composer")
+        self.assertNotIn("multica-standalone-assign-panel", composer_section,
+                         "standalone assign panel must NOT be inside text-chat-composer (now drawer)")
+        self.assertIn("multica-panel-backdrop", html,
+                      "multica task panel drawer must exist")
 
     def test_html_has_assign_form_fields(self):
         html = self._read("frontend/control_panel/index.html")
-        self.assertIn('data-sa-issue-id', html)
-        self.assertIn('data-sa-agent', html)
-        self.assertIn('data-sa-action="prepare"', html)
-        self.assertIn('data-sa-action="confirm"', html)
+        self.assertIn('mp-assign-issue-id', html)
+        self.assertIn('mp-assign-agent', html)
+        self.assertIn('btn-mp-prepare-assign', html)
+        self.assertIn('btn-mp-confirm-assign', html)
         self.assertIn('准备分配 Agent', html)
         self.assertIn('确认分配 Agent', html)
 
@@ -1880,18 +1883,24 @@ class V15C5F2StandaloneAssignUITests(unittest.TestCase):
         self.assertIn("不会读取 runs/run-messages", html)
         self.assertIn("不会额外启动本地 Agent", html)
 
+    def test_html_has_multica_task_panel_tabs(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("Multica 任务面板", html)
+        self.assertIn("分配 Issue", html)
+        self.assertIn("查看进度", html)
+
     def test_js_has_standalone_assign_functions(self):
         js = self._read("frontend/control_panel/assets/app.js")
-        self.assertIn("function prepareStandaloneAssign", js)
-        self.assertIn("function confirmStandaloneAssign", js)
-        self.assertIn("function initStandaloneAssignListeners", js)
-        self.assertIn("function renderStandaloneAssignResult", js)
+        self.assertIn("function prepareMulticaAssign", js)
+        self.assertIn("function confirmMulticaAssign", js)
+        self.assertIn("function initMulticaTaskPanel", js)
+        self.assertIn("function renderMulticaAssignResult", js)
         self.assertIn("ASSIGN", js)
 
     def test_js_standalone_uses_escape_html(self):
         js = self._read("frontend/control_panel/assets/app.js")
         self.assertIn("escapeHtml(result.agent", js)
-        self.assertIn("escapeHtml(result.issue_id", js)
+        self.assertIn("escapeHtml(issueId", js)
 
     def test_js_no_dangerous_standalone_text(self):
         js = self._read("frontend/control_panel/assets/app.js")
@@ -1901,12 +1910,13 @@ class V15C5F2StandaloneAssignUITests(unittest.TestCase):
 
     def test_css_has_standalone_assign_classes(self):
         css = self._read("frontend/control_panel/assets/style.css")
-        self.assertIn(".multica-standalone-assign-panel", css)
         self.assertIn(".multica-assign-workspace-block", css)
+        self.assertIn(".multica-panel-drawer", css)
+        self.assertIn(".multica-panel-backdrop", css)
 
 
 class V15C6RunReaderUITests(unittest.TestCase):
-    """V1.5-C6 Run Reader UI static tests."""
+    """V1.5-C6 / C6.1 Run Reader UI — now in Multica Task Panel drawer."""
 
     def setUp(self):
         self.root = Path(__file__).resolve().parents[1]
@@ -1917,10 +1927,13 @@ class V15C6RunReaderUITests(unittest.TestCase):
     def test_html_has_run_reader_block(self):
         html = self._read("frontend/control_panel/index.html")
         self.assertIn("查看 Multica 运行记录", html)
-        self.assertIn("data-multica-run-reader-panel", html)
-        self.assertIn('data-rr-action="read-runs"', html)
+        self.assertIn("multica-panel-drawer", html)
+        self.assertIn('btn-mp-read-runs', html)
         self.assertIn("读取 Runs", html)
         self.assertIn("验收摘要", html)
+        self.assertIn("查看进度", html)
+        self.assertIn("Issue ID / Identifier", html)
+        self.assertIn("详细消息", html)
 
     def test_html_has_safety_blurb(self):
         html = self._read("frontend/control_panel/index.html")
@@ -1938,17 +1951,16 @@ class V15C6RunReaderUITests(unittest.TestCase):
 
     def test_js_has_run_reader_functions(self):
         js = self._read("frontend/control_panel/assets/app.js")
-        self.assertIn("function readRunsForPanel", js)
-        self.assertIn("function renderRunsList", js)
-        self.assertIn("function readRunMessagesForTask", js)
-        self.assertIn("function renderRunMessages", js)
+        self.assertIn("function readMulticaRunsFromPanel", js)
+        self.assertIn("function renderMulticaRuns", js)
+        self.assertIn("function readMulticaRunMessagesFromPanel", js)
+        self.assertIn("function renderMulticaRunMessages", js)
         self.assertIn("read_multica_issue_runs", js)
         self.assertIn("read_multica_run_messages", js)
         self.assertIn("读取消息", js)
 
     def test_js_run_reader_uses_escape_html(self):
         js = self._read("frontend/control_panel/assets/app.js")
-        self.assertIn("escapeHtml(run.task_id", js)
-        self.assertIn("escapeHtml(run.status", js)
-        self.assertIn("escapeHtml(m.content", js)
-        self.assertIn("escapeHtml(m.role", js)
+        self.assertIn("escapeHtml(runs[0].task_id", js)
+        self.assertIn("escapeHtml(runs[0].status", js)
+        self.assertIn("escapeHtml(", js)

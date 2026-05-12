@@ -1298,29 +1298,122 @@
     return created && created.issue_id ? String(created.issue_id).trim() : '';
   }
 
-  /* ─── Standalone assign existing Multica issue ─── */
-  function getStandaloneAssignPanel() {
-    return document.querySelector('[data-multica-standalone-assign-panel]');
+  /* ─── Multica Task Panel ─── */
+
+  function initMulticaTaskPanel() {
+    var block = $('multica-standalone-assign-block');
+    if (!block || block.dataset.mpBound === '1') return;
+    block.dataset.mpBound = '1';
+
+    var saBtn = $('btn-toggle-sa');
+    if (saBtn) saBtn.addEventListener('click', function () { openMulticaTaskPanel('assign'); });
+
+    var rrBtn = $('btn-toggle-rr');
+    if (rrBtn) rrBtn.addEventListener('click', function () { openMulticaTaskPanel('progress'); });
+
+    var closeBtn = $('btn-multica-panel-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeMulticaTaskPanel);
+
+    var backdrop = $('multica-panel-backdrop');
+    if (backdrop) backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) closeMulticaTaskPanel();
+    });
+
+    document.querySelectorAll('[data-mp-tab]').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        switchMulticaTaskPanelTab(tab.getAttribute('data-mp-tab') || '');
+      });
+    });
+
+    var prepareBtn = $('btn-mp-prepare-assign');
+    if (prepareBtn) prepareBtn.addEventListener('click', prepareMulticaAssign);
+
+    var confirmBtn = $('btn-mp-confirm-assign');
+    if (confirmBtn) confirmBtn.addEventListener('click', function () { confirmMulticaAssign(confirmBtn); });
+
+    var phraseInput = $('mp-assign-phrase');
+    if (phraseInput) phraseInput.addEventListener('input', function () {
+      var expected = buildAssignConfirmation(getPanelIssueId(), getPanelAgent());
+      var btn = $('btn-mp-confirm-assign');
+      if (btn) btn.disabled = phraseInput.value.trim() !== expected;
+    });
+
+    var readRunsBtn = $('btn-mp-read-runs');
+    if (readRunsBtn) readRunsBtn.addEventListener('click', readMulticaRunsFromPanel);
+
+    var msgList = $('mp-messages-list');
+    if (msgList) msgList.addEventListener('click', function (e) {
+      var toggle = e.target.closest('.multica-detail-toggle');
+      if (!toggle) return;
+      var body = toggle.nextElementSibling;
+      if (!body) return;
+      var expanded = body.style.maxHeight !== '60px';
+      body.style.maxHeight = expanded ? '60px' : 'none';
+      toggle.textContent = expanded ? '展开' : '折叠';
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !$('multica-panel-backdrop').hidden) closeMulticaTaskPanel();
+    });
   }
 
-  function getStandaloneIssueId() {
-    var input = document.querySelector('[data-sa-issue-id]');
+  function openMulticaTaskPanel(tabName) {
+    var backdrop = $('multica-panel-backdrop');
+    if (backdrop) backdrop.hidden = false;
+    switchMulticaTaskPanelTab(tabName || 'progress');
+  }
+
+  function closeMulticaTaskPanel() {
+    var backdrop = $('multica-panel-backdrop');
+    if (backdrop) backdrop.hidden = true;
+  }
+
+  function switchMulticaTaskPanelTab(tabName) {
+    document.querySelectorAll('.multica-panel-tab').forEach(function (t) {
+      t.classList.toggle('active', t.getAttribute('data-mp-tab') === tabName);
+    });
+    document.querySelectorAll('.multica-panel-tab-content').forEach(function (c) {
+      c.classList.toggle('active', c.id === 'mp-tab-' + tabName);
+    });
+    syncIssueIdAcrossTabs();
+  }
+
+  /* ─── Shared helpers ─── */
+
+  function getPanelIssueId() {
+    var activeTab = document.querySelector('.multica-panel-tab-content.active');
+    if (!activeTab) return '';
+    var input = activeTab.querySelector('input[type="text"]');
     return input ? String(input.value || '').trim() : '';
   }
 
-  function getStandaloneAgent() {
-    var select = document.querySelector('[data-sa-agent]');
+  function getPanelAgent() {
+    var select = $('mp-assign-agent');
     return select ? select.value : 'claude';
   }
 
-  function prepareStandaloneAssign() {
-    var issueId = getStandaloneIssueId();
-    var agent = getStandaloneAgent();
-    var confirmBox = document.querySelector('[data-sa-confirm]');
-    var expectedEl = document.querySelector('[data-sa-expected]');
-    var phrase = document.querySelector('[data-sa-phrase]');
-    var confirmButton = document.querySelector('[data-sa-action="confirm"]');
-    var status = document.querySelector('[data-sa-status]');
+  function syncIssueIdAcrossTabs() {
+    var assignInput = $('mp-assign-issue-id');
+    var progressInput = $('mp-progress-issue-id');
+    var activeTab = document.querySelector('.multica-panel-tab-content.active');
+    if (!activeTab || !assignInput || !progressInput) return;
+    if (activeTab.id === 'mp-tab-assign' && assignInput.value.trim()) {
+      progressInput.value = assignInput.value.trim();
+    } else if (activeTab.id === 'mp-tab-progress' && progressInput.value.trim()) {
+      assignInput.value = progressInput.value.trim();
+    }
+  }
+
+  /* ─── Assign tab ─── */
+
+  function prepareMulticaAssign() {
+    var issueId = getPanelIssueId();
+    var agent = getPanelAgent();
+    var confirmBox = $('mp-assign-confirm');
+    var expectedEl = $('mp-assign-expected');
+    var phrase = $('mp-assign-phrase');
+    var confirmBtn = $('btn-mp-confirm-assign');
+    var status = $('mp-assign-status');
     if (!issueId) {
       if (status) status.textContent = '请先输入已有 Multica issue id 或 identifier。';
       toast('请先输入 Issue ID / Identifier', 'err');
@@ -1330,17 +1423,17 @@
     if (confirmBox) confirmBox.hidden = false;
     if (expectedEl) expectedEl.textContent = expected;
     if (phrase) { phrase.value = ''; phrase.focus(); }
-    if (confirmButton) confirmButton.disabled = true;
+    if (confirmBtn) confirmBtn.disabled = true;
     if (status) status.textContent = '输入精确确认短语后才能分配真实 issue。';
     toast('请检查 issue id 和 agent 后输入确认短语', 'info');
   }
 
-  function confirmStandaloneAssign(btn) {
-    var issueId = getStandaloneIssueId();
-    var agent = getStandaloneAgent();
-    var phrase = document.querySelector('[data-sa-phrase]');
-    var status = document.querySelector('[data-sa-status]');
-    var confirmButton = document.querySelector('[data-sa-action="confirm"]');
+  function confirmMulticaAssign(btn) {
+    var issueId = getPanelIssueId();
+    var agent = getPanelAgent();
+    var phrase = $('mp-assign-phrase');
+    var status = $('mp-assign-status');
+    var confirmBtn = $('btn-mp-confirm-assign');
     var expected = buildAssignConfirmation(issueId, agent);
     var text = phrase ? phrase.value.trim() : '';
     if (!issueId || text !== expected) {
@@ -1349,7 +1442,7 @@
       return;
     }
     btn.disabled = true;
-    if (confirmButton) confirmButton.disabled = true;
+    if (confirmBtn) confirmBtn.disabled = true;
     if (status) status.textContent = '正在分配 Multica issue...';
     apiCall('assign_multica_issue_to_agent', {
       issue_id: issueId,
@@ -1360,126 +1453,49 @@
       if (!resp || !resp.ok || !resp.data) {
         throw new Error((resp && (resp.error || resp.message || resp.code)) || '分配 Agent 失败');
       }
-      renderStandaloneAssignResult(resp.data);
+      renderMulticaAssignResult(resp.data);
       if (status) status.textContent = 'Multica issue 已分配。';
       toast('Multica issue 已分配给 ' + (resp.data.agent || agent), 'ok');
+      syncIssueIdAcrossTabs();
     }).catch(function (err) {
       if (status) status.textContent = '分配失败：' + ((err && err.message) || err);
       toast('分配 Multica issue 失败', 'err');
     }).finally(function () {
       btn.disabled = false;
-      if (confirmButton) confirmButton.disabled = false;
+      if (confirmBtn) confirmBtn.disabled = false;
     });
   }
 
-  function renderStandaloneAssignResult(result) {
-    var box = document.querySelector('[data-sa-result]');
+  function renderMulticaAssignResult(result) {
+    var box = $('mp-assign-result');
     if (!box) return;
     box.hidden = false;
+    var issueId = result.issue_id || '--';
     box.innerHTML = '<strong>Multica issue 已分配给 ' + escapeHtml(result.agent || '--') + '</strong>' +
-      '<div>Issue ID: <code>' + escapeHtml(result.issue_id || '--') + '</code></div>' +
+      '<div>Issue ID: <code>' + escapeHtml(issueId) + '</code></div>' +
       '<div>状态: ' + escapeHtml(result.status || '--') + '</div>' +
-      '<div>下一步 C6 可读取 runs / run-messages 做验收</div>';
+      '<button type="button" class="glass-pill" style="margin-top:8px;font-size:11px" onclick="openMulticaTaskPanel(\'progress\');$(\'mp-progress-issue-id\').value=\'' + escapeHtml(issueId) + '\'">查看该 Issue 进度</button>';
   }
 
-  function initStandaloneAssignListeners() {
-    var block = $('multica-standalone-assign-block');
-    if (!block || block.dataset.saBound === '1') return;
-    block.dataset.saBound = '1';
+  /* ─── Progress tab ─── */
 
-    var toggleBtn = $('btn-toggle-sa');
-    if (toggleBtn) {
-      toggleBtn.addEventListener('click', function () {
-        var panel = $('sa-panel');
-        if (!panel) return;
-        var visible = panel.style.display !== 'none';
-        panel.style.display = visible ? 'none' : '';
-        toggleBtn.textContent = visible ? '分配已有 Multica Issue' : '收起 Multica Issue 分配';
-        var rrPanel = $('rr-panel');
-        if (rrPanel) rrPanel.style.display = 'none';
-        var rrToggle = $('btn-toggle-rr');
-        if (rrToggle) rrToggle.textContent = '查看 Multica 运行记录';
-      });
-    }
-
-    var rrToggleBtn = $('btn-toggle-rr');
-    if (rrToggleBtn) {
-      rrToggleBtn.addEventListener('click', function () {
-        var panel = $('rr-panel');
-        if (!panel) return;
-        var visible = panel.style.display !== 'none';
-        panel.style.display = visible ? 'none' : '';
-        rrToggleBtn.textContent = visible ? '查看 Multica 运行记录' : '收起 Multica 运行记录';
-        var saPanel = $('sa-panel');
-        if (saPanel) saPanel.style.display = 'none';
-        var saToggle = $('btn-toggle-sa');
-        if (saToggle) saToggle.textContent = '分配已有 Multica Issue';
-      });
-    }
-
-    block.addEventListener('click', function (event) {
-      var btn = event.target.closest('[data-sa-action]');
-      if (!btn) return;
-      event.preventDefault();
-      var action = btn.getAttribute('data-sa-action') || '';
-      if (action === 'prepare') prepareStandaloneAssign();
-      if (action === 'confirm') confirmStandaloneAssign(btn);
-    });
-    var phraseInput = block.querySelector('[data-sa-phrase]');
-    if (phraseInput) {
-      phraseInput.addEventListener('input', function () {
-        var expected = buildAssignConfirmation(getStandaloneIssueId(), getStandaloneAgent());
-        var confirmBtn = block.querySelector('[data-sa-action="confirm"]');
-        if (confirmBtn) confirmBtn.disabled = phraseInput.value.trim() !== expected;
-      });
-    }
-
-    /* run reader listeners */
-    block.addEventListener('click', function (event) {
-      var btn = event.target.closest('[data-rr-action]');
-      if (!btn) return;
-      event.preventDefault();
-      var action = btn.getAttribute('data-rr-action') || '';
-      if (action === 'read-runs') readRunsForPanel();
-    });
-    var rrPanel = $('rr-panel');
-    if (rrPanel) {
-      rrPanel.addEventListener('click', function (event) {
-        var msgBtn = event.target.closest('[data-rr-read-msgs]');
-        if (!msgBtn) return;
-        event.preventDefault();
-        var taskId = msgBtn.getAttribute('data-rr-read-msgs') || '';
-        if (taskId) readRunMessagesForTask(taskId);
-      });
-    }
-  }
-
-  /* ─── Run reader helpers ─── */
-
-  function getRunReaderIssueId() {
-    var input = document.querySelector('[data-rr-issue-id]');
-    return input ? String(input.value || '').trim() : '';
-  }
-
-  function readRunsForPanel() {
-    var issueId = getRunReaderIssueId();
-    var status = document.querySelector('[data-rr-status]');
+  function readMulticaRunsFromPanel() {
+    var issueId = getPanelIssueId();
+    var status = $('mp-progress-status');
     if (!issueId) {
       if (status) status.textContent = '请先输入 Issue ID / Identifier。';
       toast('请先输入 Issue ID / Identifier', 'err');
       return;
     }
     if (status) status.textContent = '正在读取 runs...';
-    var runsDiv = document.querySelector('[data-rr-runs]');
-    if (runsDiv) runsDiv.hidden = true;
-    var msgsDiv = document.querySelector('[data-rr-messages]');
-    if (msgsDiv) msgsDiv.hidden = true;
+    $('mp-runs-section').hidden = true;
+    $('mp-messages-section').hidden = true;
 
     apiCall('read_multica_issue_runs', { issue_id: issueId }).then(function (resp) {
       if (!resp || !resp.ok || !resp.data) {
         throw new Error((resp && (resp.error || resp.message)) || '读取 runs 失败');
       }
-      renderRunsList(resp.data);
+      renderMulticaRuns(resp.data);
       if (status) status.textContent = resp.message || 'runs 读取完成';
     }).catch(function (err) {
       if (status) status.textContent = '读取失败：' + ((err && err.message) || err);
@@ -1487,44 +1503,51 @@
     });
   }
 
-  function renderRunsList(data) {
+  function renderMulticaRuns(data) {
     var runs = (data && data.runs) ? data.runs : [];
-    var runsDiv = document.querySelector('[data-rr-runs]');
-    var list = document.querySelector('[data-rr-runs-list]');
-    if (!runsDiv || !list) return;
-    runsDiv.hidden = false;
+    var section = $('mp-runs-section');
+    var summary = $('mp-runs-summary');
+    var list = $('mp-runs-list');
+    if (!section || !list) return;
+    section.hidden = false;
+
+    var issueId = data.issue_id || getPanelIssueId() || '--';
+    if (summary) {
+      summary.innerHTML = 'issue: ' + escapeHtml(issueId) +
+        ' · runs: ' + runs.length +
+        (runs.length ? ' · status: ' + escapeHtml(runs[0].status || '--') : '') +
+        (runs.length && runs[0].task_id ? ' · task_id: ' + escapeHtml(runs[0].task_id.substring(0, 16) + '...') : '') +
+        (runs.length && runs[0].agent ? ' · agent/tool: ' + escapeHtml(runs[0].agent) : '');
+    }
     if (!runs.length) {
       list.innerHTML = '<p style="font-size:11px;color:var(--text-muted)">未找到运行记录。</p>';
       return;
     }
     var html = '';
-    runs.forEach(function (run) {
+    runs.forEach(function (run, i) {
       var taskId = run.task_id || run.run_id || '';
       var title = run.title || taskId || '--';
-      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--rim,rgba(255,255,255,0.06));gap:8px">' +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:11px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(title) + '</div>' +
-          '<div style="font-size:10px;color:var(--text-muted)">' +
-            escapeHtml(run.task_id || '') + ' · ' + escapeHtml(run.status || '--') + ' · ' + escapeHtml(run.agent || '--') +
-          '</div>' +
+      html += '<div class="multica-run-row">' +
+        '<div class="multica-run-row-meta">' +
+          '<div class="multica-run-row-title">#' + (i + 1) + ' ' + escapeHtml(taskId.length > 20 ? taskId.substring(0, 20) + '...' : taskId) + ' ' + escapeHtml(run.status || '--') + '</div>' +
+          '<div class="multica-run-row-detail">' + escapeHtml(run.agent || '') + ' · ' + escapeHtml(run.started_at || '') + '</div>' +
         '</div>' +
-        (taskId ? '<button type="button" data-rr-read-msgs="' + escapeHtml(taskId) + '" class="glass-pill" style="font-size:10px;padding:3px 8px;flex-shrink:0">读取消息</button>' : '') +
+        (taskId ? '<button type="button" class="glass-pill" onclick="readMulticaRunMessagesFromPanel(\'' + escapeHtml(taskId) + '\')">读取消息</button>' : '') +
       '</div>';
     });
     list.innerHTML = html;
   }
 
-  function readRunMessagesForTask(taskId) {
-    var status = document.querySelector('[data-rr-status]');
+  function readMulticaRunMessagesFromPanel(taskId) {
+    var status = $('mp-progress-status');
     if (status) status.textContent = '正在读取消息...';
-    var msgsDiv = document.querySelector('[data-rr-messages]');
-    if (msgsDiv) msgsDiv.hidden = true;
+    $('mp-messages-section').hidden = true;
 
     apiCall('read_multica_run_messages', { task_id: taskId }).then(function (resp) {
       if (!resp || !resp.ok || !resp.data) {
         throw new Error((resp && (resp.error || resp.message)) || '读取 run-messages 失败');
       }
-      renderRunMessages(resp.data);
+      renderMulticaRunMessages(resp.data);
       if (status) status.textContent = resp.message || 'run-messages 读取完成';
     }).catch(function (err) {
       if (status) status.textContent = '读取失败：' + ((err && err.message) || err);
@@ -1532,29 +1555,50 @@
     });
   }
 
-  function renderRunMessages(data) {
-    var msgsDiv = document.querySelector('[data-rr-messages]');
-    var list = document.querySelector('[data-rr-messages-list]');
-    var review = document.querySelector('[data-rr-review]');
-    if (!msgsDiv || !list) return;
-    msgsDiv.hidden = false;
+  function renderMulticaRunMessages(data) {
+    var section = $('mp-messages-section');
+    var review = $('mp-review-summary');
+    var list = $('mp-messages-list');
+    if (!section || !list) return;
+    section.hidden = false;
+
+    if (review) review.textContent = data.review_summary || '';
+
     var messages = (data && data.messages) ? data.messages : [];
     if (!messages.length) {
       list.innerHTML = '<p style="font-size:11px;color:var(--text-muted)">未找到运行消息。</p>';
-    } else {
-      var html = '';
-      messages.forEach(function (m) {
-        html += '<div style="padding:6px 8px;margin-bottom:4px;border-radius:6px;background:var(--fill-card-secondary,rgba(255,255,255,0.04));font-size:10px">' +
-          '<div style="display:flex;gap:8px;margin-bottom:3px">' +
-            '<span style="font-weight:600;color:var(--text-muted)">' + escapeHtml(m.role || m.author || '--') + '</span>' +
-            '<span style="color:var(--text-muted)">' + escapeHtml(m.created_at || '') + '</span>' +
-          '</div>' +
-          '<div style="color:var(--text-secondary);line-height:1.45;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.content || '') + '</div>' +
-        '</div>';
-      });
-      list.innerHTML = html;
+      return;
     }
-    if (review) review.textContent = data.review_summary || '';
+    var html = '';
+    messages.forEach(function (m, i) {
+      html += buildMulticaMessageCard(m, i);
+    });
+    list.innerHTML = html;
+  }
+
+  function buildMulticaMessageCard(m, index) {
+    var msgType = m.message_type || m.role || '';
+    var tool = m.tool || '';
+    var seq = m.seq || '';
+    var headerParts = [];
+    if (seq) headerParts.push('#' + seq);
+    if (msgType) headerParts.push(msgType);
+    if (tool) headerParts.push(tool);
+    var header = headerParts.join(' ') || m.author || m.role || '--';
+
+    var content = m.content || '';
+    var isLong = content.length > 200;
+    return '<div class="multica-message-card">' +
+      '<div class="multica-message-card-header">' +
+        '<span class="multica-message-card-type">' + escapeHtml(header) + '</span>' +
+        '<span class="multica-message-card-meta">' + escapeHtml(m.message_id || '') + '</span>' +
+      '</div>' +
+      (isLong
+        ? '<button type="button" class="multica-detail-toggle">展开</button>' +
+          '<div class="multica-message-card-body" style="max-height:60px;overflow:hidden">' + escapeHtml(content) + '</div>'
+        : '<div class="multica-message-card-body">' + escapeHtml(content) + '</div>'
+      ) +
+    '</div>';
   }
 
   function splitCommaList(text) {
@@ -2493,7 +2537,7 @@
     initDrawerControls();
     initTextChat();
     initTaskHistory();
-    initStandaloneAssignListeners();
+    initMulticaTaskPanel();
     switchShell(currentShell);
     switchSection(currentSection);
     updateBridgeIndicator();
