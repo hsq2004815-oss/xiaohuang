@@ -48,7 +48,13 @@ _UNRELATED_XIAOHUANG_TERMS = (
     "和小黄无关",
     "跟小黄无关",
     "不是小黄项目",
+    "不修改小黄",
+    "不修改小黄项目",
     "不要修改小黄",
+    "不要修改小黄项目",
+    "不改小黄",
+    "不改小黄项目",
+    "不要改小黄",
     "不要改小黄项目",
     "不要修改e:\\projects\\xiaohuang",
     "不要修改e:/projects/xiaohuang",
@@ -220,7 +226,7 @@ def detect_target_project_kind(
 ) -> str:
     relation = project_relation or detect_project_relation(text, actual_task)
     path = str(target_project_path or "")
-    if relation == "xiaohuang_project" or _is_xiaohuang_path(path):
+    if is_xiaohuang_project_path(path):
         return "xiaohuang"
 
     combined = _normalize(f"{text} {actual_task}")
@@ -231,6 +237,8 @@ def detect_target_project_kind(
         if _contains_any(combined, _EXTERNAL_EXISTING_TERMS):
             return "external_existing"
         return "external_existing"
+    if relation == "xiaohuang_project":
+        return "xiaohuang"
     if has_external_hint:
         return "external_unspecified"
     return "auto"
@@ -271,7 +279,7 @@ def _polish_actual_task(text: str) -> str:
     value = re.sub(rf"项目放在\s*{quoted_path}\s*[，,。；;、]?\s*", "", value)
     value = re.sub(r"(?:这个任务)?(?:和|跟)小黄项目?无关[，,。；;\s]*", "", value)
     value = re.sub(r"不是小黄项目[，,。；;\s]*", "", value)
-    value = re.sub(r"不要(?:修改|改)\s*(?:小黄项目|小黄|[A-Za-z]:[\\/][^\s，。；;、]+)[，,。；;\s]*", "", value)
+    value = re.sub(r"不(?:要)?(?:修改|改)\s*(?:小黄项目|小黄|[A-Za-z]:[\\/][^\s，。；;、]+)[，,。；;\s]*", "", value)
     for prefix in ("帮我", "去", "来", "继续帮我"):
         if value.startswith(prefix):
             value = value[len(prefix):].strip(" ，。；;：:")
@@ -282,6 +290,6 @@ def _polish_actual_task(text: str) -> str:
     return value or ""
 
 
-def _is_xiaohuang_path(path: str) -> bool:
+def is_xiaohuang_project_path(path: str) -> bool:
     normalized = str(path or "").replace("/", "\\").rstrip("\\").lower()
     return normalized.endswith("\\projects\\xiaohuang")

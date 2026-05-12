@@ -90,6 +90,35 @@ class AgentHandoffIntentParserTests(unittest.TestCase):
         text = "这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
         self.assertEqual(detect_project_relation(text), "unrelated_to_xiaohuang")
 
+    def test_external_path_with_do_not_modify_xiaohuang_is_not_xiaohuang(self):
+        cases = (
+            (
+                '给 Claude Code 生成一个提示词，让它在 "E:\\Projects\\target-app" 里做一次 C5E smoke test，'
+                "只创建说明文档草稿，不修改小黄项目，不启动任何 Agent。"
+            ),
+            (
+                '给 Claude Code 生成一个提示词，让它在 "E:\\Projects\\target-app" 里做一次 C5E smoke test，'
+                "只创建说明文档草稿，不要修改 E:\\Projects\\xiaohuang。"
+            ),
+            (
+                '给 Claude Code 生成一个提示词，让它在 "E:\\Projects\\target-app" 里做一次 C5E smoke test，'
+                "只创建说明文档草稿，这个任务和小黄项目无关。"
+            ),
+            (
+                '给 Claude Code 生成一个提示词，让它在 "E:\\Projects\\target-app" 里做一次 C5E smoke test，'
+                "只创建说明文档草稿，不是小黄项目。"
+            ),
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                result = parse_agent_handoff_intent(text)
+
+                self.assertIsNotNone(result)
+                self.assertEqual(result.target_project_path, "E:\\Projects\\target-app")
+                self.assertIn(result.target_project_kind, ("external_existing", "external_new"))
+                self.assertNotEqual(result.target_project_kind, "xiaohuang")
+                self.assertEqual(result.project_relation, "unrelated_to_xiaohuang")
+
     def test_target_project_kind_variants(self):
         self.assertEqual(
             detect_target_project_kind(

@@ -180,6 +180,26 @@ class AgentHandoffServiceTests(unittest.TestCase):
             self.assertEqual(result.project_relation, "unrelated_to_xiaohuang")
             self.assertTrue(result.can_open_terminal)
 
+    def test_external_path_with_xiaohuang_boundary_stays_external(self):
+        text = (
+            '给 Claude Code 生成一个提示词，让它在 "E:\\Projects\\target-app" 里做一次 C5E smoke test，'
+            "只创建说明文档草稿，不修改小黄项目，不启动任何 Agent。"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = create_agent_handoff(
+                AgentHandoffRequest(user_request=text, target_agent="claude_code"),
+                project_root=Path(tmp),
+                brief_fetcher=lambda query, domains: DatabaseBriefResult(False, "unavailable"),
+            )
+
+        self.assertTrue(result.ok)
+        self.assertEqual(result.target_project_path, "E:\\Projects\\target-app")
+        self.assertIn(result.target_project_kind, ("external_existing", "external_new"))
+        self.assertNotEqual(result.target_project_kind, "xiaohuang")
+        self.assertEqual(result.project_relation, "unrelated_to_xiaohuang")
+        self.assertNotIn("xiaohuang_project", result.domains)
+        self.assertIn("不能回退到小黄项目", result.terminal_hint)
+
     def test_unspecified_external_project_cannot_open_terminal(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = create_agent_handoff(

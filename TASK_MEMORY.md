@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-12）— V1.5-C5E.1 Target Project Classification Regression Fix
+
+- Purpose: Fix Agent Handoff regression where an external target path plus “不修改小黄项目” could be misclassified as the XiaoHuang project.
+- Key files: `src/xiaohuang/agent_handoff/intent_parser.py`, `service.py`, `prompt_builder.py`, `tests/test_agent_handoff_intent_parser.py`, `tests/test_agent_handoff_prompt_builder.py`, `tests/test_agent_handoff_service.py`, `tests/test_control_panel_web_service.py`.
+- Last completed:
+  1. Added missing negative XiaoHuang boundary terms such as `不修改小黄项目`.
+  2. `detect_target_project_kind()` now treats explicit non-XiaoHuang Windows target paths as external before considering `xiaohuang_project` relation.
+  3. `create_agent_handoff()` repairs stale `target_project_kind=xiaohuang` when the request clearly has an external target path and unrelated boundary.
+  4. Prompt builder fallback now resolves auto kind from target path before relation, preventing external path display regressions.
+  5. C5E create flow remains unchanged: no issue create without `CREATE_MULTICA_ISSUE`, no assign, no Agent startup, no external project writes, no `E:\DataBase` writes.
+- Verification: run focused handoff/control-panel/Multica draft-create tests plus full compileall/unittest/help/diff check before reporting.
+- Known traps: Do not encode any specific user test directory or business domain into parser logic/tests/docs; use generic `target-app` / `sample-project`.
+
 ## Current Snapshot（2026-05-12）— V1.5-C5E Confirmed Multica Issue Create
 
 - Purpose: Add the first state-changing Multica action: create a real issue only after explicit user confirmation from an existing draft.

@@ -147,6 +147,31 @@ class AgentHandoffPromptBuilderTests(unittest.TestCase):
         self.assertIn("cd E:\\Projects\\target-app", prompt)
         self.assertNotIn('E:\\Projects\\target-app"', prompt)
 
+    def test_external_project_prompt_keeps_do_not_modify_xiaohuang_as_boundary(self):
+        prompt = build_agent_handoff_prompt(
+            AgentHandoffRequest(
+                user_request=(
+                    '给 Claude Code 生成提示词，让它在 "E:\\Projects\\target-app" 里做一次 C5E smoke test，'
+                    "只创建说明文档草稿，不修改小黄项目。"
+                ),
+                target_agent="claude_code",
+                actual_task="做一次 C5E smoke test，只创建说明文档草稿",
+                target_project_path="E:\\Projects\\target-app",
+                target_project_kind="external_existing",
+                project_relation="unrelated_to_xiaohuang",
+            ),
+            project_root="E:\\Projects\\xiaohuang",
+            domains=["agent_workflow"],
+            database_brief=DatabaseBriefResult(database_used=False, database_status="unavailable"),
+        )
+
+        self.assertIn("目标项目路径：E:\\Projects\\target-app", prompt)
+        self.assertIn("目标项目类型：external_existing", prompt)
+        self.assertIn("与小黄项目关系：unrelated_to_xiaohuang", prompt)
+        self.assertIn("不要修改 E:\\Projects\\xiaohuang", prompt)
+        self.assertNotIn("目标项目类型：xiaohuang", prompt)
+        self.assertNotIn("与小黄项目关系：xiaohuang_project", prompt)
+
     def test_xiaohuang_project_prompt_regression(self):
         prompt = build_agent_handoff_prompt(
             AgentHandoffRequest(

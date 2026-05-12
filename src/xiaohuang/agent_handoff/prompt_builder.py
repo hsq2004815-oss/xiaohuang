@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from xiaohuang.agent_handoff.intent_parser import normalize_windows_paths_in_text, normalize_windows_target_path
+from xiaohuang.agent_handoff.intent_parser import (
+    is_xiaohuang_project_path,
+    normalize_windows_paths_in_text,
+    normalize_windows_target_path,
+)
 from xiaohuang.agent_handoff.models import AgentHandoffRequest, DatabaseBriefResult
 
 _AGENT_LABELS = {
@@ -415,10 +419,11 @@ def _resolve_target_project_kind(request: AgentHandoffRequest) -> str:
     if kind != "auto":
         return kind
     relation = str(request.project_relation or "auto")
+    target_path = normalize_windows_target_path(request.target_project_path or request.project_hint or "")
+    if target_path:
+        return "xiaohuang" if is_xiaohuang_project_path(target_path) else "external_existing"
     if relation == "xiaohuang_project":
         return "xiaohuang"
-    if request.target_project_path:
-        return "external_existing"
     return "external_unspecified" if relation == "unrelated_to_xiaohuang" else "xiaohuang"
 
 

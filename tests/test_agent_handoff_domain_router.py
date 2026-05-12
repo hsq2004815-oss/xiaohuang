@@ -62,6 +62,15 @@ class AgentHandoffDomainRouterTests(unittest.TestCase):
         self.assertIn("ui_design", domains)
         self.assertNotIn("xiaohuang_project", domains)
 
+    def test_do_not_modify_xiaohuang_boundary_suppresses_xiaohuang_domain(self):
+        domains = route_domains(
+            "给 Claude Code 生成提示词 在 E:\\Projects\\target-app 做一次 C5E smoke test "
+            "不修改小黄项目 unrelated_to_xiaohuang"
+        )
+
+        self.assertIn("agent_workflow", domains)
+        self.assertNotIn("xiaohuang_project", domains)
+
 
 if __name__ == "__main__":
     unittest.main()

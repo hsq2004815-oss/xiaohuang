@@ -655,6 +655,35 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertIn("claude_code", entry["tags"])
         _reset_for_test()
 
+    def test_confirm_agent_handoff_external_path_boundary_not_xiaohuang(self):
+        from xiaohuang.task_result_history_service import _reset_for_test
+        _reset_for_test()
+
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._project_root = Path(self.tmp.name)
+        task = _pending_task("text-task-external-handoff", task_type="agent_handoff_draft")
+        task["title"] = "生成 Agent 交接提示词"
+        task["original_text"] = (
+            '给 Claude Code 生成提示词，让它在 "E:\\Projects\\target-app" 里做一次 C5E smoke test，'
+            "只创建说明文档草稿，不修改小黄项目，不启动任何 Agent。"
+        )
+        api._text_task_registry.register(task)
+
+        with patch(
+            "xiaohuang.agent_handoff.service.fetch_database_brief",
+            return_value=_brief_result(False, "unavailable"),
+        ):
+            result = api.confirm_text_task({"task_id": "text-task-external-handoff"})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["ok"])
+        self.assertIn("目标项目路径：E:\\Projects\\target-app", result["data"]["details"])
+        self.assertIn("目标项目类型：external_existing", result["data"]["details"])
+        self.assertIn("与小黄项目关系：unrelated_to_xiaohuang", result["data"]["details"])
+        self.assertNotIn("目标项目类型：xiaohuang", result["data"]["details"])
+        self.assertNotIn("与小黄项目关系：xiaohuang_project", result["data"]["details"])
+        _reset_for_test()
+
     def test_agent_completion_review_chat_confirm_flow_writes_history(self):
         from xiaohuang.task_result_history_service import (
             _reset_for_test,

@@ -14,10 +14,17 @@ _DOMAIN_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 _DEFAULT_DOMAINS = ("agent_workflow",)
 _UNRELATED_XIAOHUANG_TERMS = (
+    "unrelated_to_xiaohuang",
     "和小黄无关",
     "跟小黄无关",
     "不是小黄项目",
+    "不修改小黄",
+    "不修改小黄项目",
     "不要修改小黄",
+    "不要修改小黄项目",
+    "不改小黄",
+    "不改小黄项目",
+    "不要改小黄",
     "不要改小黄项目",
     "不要修改e:\\projects\\xiaohuang",
     "不要修改e:/projects/xiaohuang",

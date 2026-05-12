@@ -16,6 +16,7 @@ from xiaohuang.agent_handoff.intent_parser import detect_project_relation
 from xiaohuang.agent_handoff.intent_parser import detect_target_project_kind
 from xiaohuang.agent_handoff.intent_parser import extract_actual_task
 from xiaohuang.agent_handoff.intent_parser import extract_target_project_path
+from xiaohuang.agent_handoff.intent_parser import is_xiaohuang_project_path
 from xiaohuang.agent_handoff.intent_parser import normalize_windows_target_path
 from xiaohuang.agent_handoff.models import (
     AgentHandoffRequest,
@@ -57,14 +58,18 @@ def create_agent_handoff(
     target_agent = request.target_agent if request.target_agent and request.target_agent != "generic" else detect_target_agent(user_request)
     actual_task = str(request.actual_task or "").strip() or extract_actual_task(user_request, target_agent=target_agent) or user_request
     target_project_path = normalize_windows_target_path(request.target_project_path or "") or extract_target_project_path(user_request)
+    has_external_target_path = bool(target_project_path and not is_xiaohuang_project_path(target_project_path))
+    detected_project_relation = detect_project_relation(user_request, actual_task=actual_task)
     project_relation = (
         request.project_relation
         if request.project_relation and request.project_relation != "auto"
-        else detect_project_relation(user_request, actual_task=actual_task)
+        else detected_project_relation
     )
+    if has_external_target_path and detected_project_relation == "unrelated_to_xiaohuang":
+        project_relation = "unrelated_to_xiaohuang"
     target_project_kind = (
         request.target_project_kind
-        if request.target_project_kind and request.target_project_kind != "auto"
+        if request.target_project_kind and request.target_project_kind != "auto" and not (has_external_target_path and request.target_project_kind == "xiaohuang")
         else detect_target_project_kind(
             user_request,
             actual_task,
