@@ -1847,6 +1847,19 @@ class V15C5F2StandaloneAssignUITests(unittest.TestCase):
         self.assertIn("multica-standalone-assign-panel", html)
         self.assertIn("multica-standalone-assign-block", html)
 
+    def test_html_has_toggle_button(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn('id="btn-toggle-sa"', html,
+                      "toggle button must exist for opening standalone assign panel")
+
+    def test_standalone_panel_in_composer_not_workspace(self):
+        html = self._read("frontend/control_panel/index.html")
+        composer_start = html.index('class="text-chat-composer"')
+        composer_end = html.index('class="text-chat-input-row"', composer_start)
+        composer_section = html[composer_start:composer_end]
+        self.assertIn('id="multica-standalone-assign-block"', composer_section,
+                      "standalone assign panel must be inside text-chat-composer")
+
     def test_html_has_assign_form_fields(self):
         html = self._read("frontend/control_panel/index.html")
         self.assertIn('data-sa-issue-id', html)

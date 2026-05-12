@@ -1386,6 +1386,18 @@
     var block = $('multica-standalone-assign-block');
     if (!block || block.dataset.saBound === '1') return;
     block.dataset.saBound = '1';
+
+    var toggleBtn = $('btn-toggle-sa');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function () {
+        var panel = $('sa-panel');
+        if (!panel) return;
+        var visible = panel.style.display !== 'none';
+        panel.style.display = visible ? 'none' : '';
+        toggleBtn.textContent = visible ? '分配已有 Multica Issue' : '收起 Multica Issue 分配';
+      });
+    }
+
     block.addEventListener('click', function (event) {
       var btn = event.target.closest('[data-sa-action]');
       if (!btn) return;

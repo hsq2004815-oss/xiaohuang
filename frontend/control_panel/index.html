@@ -125,6 +125,37 @@
                 <button type="button" data-text-prompt="总结最近运行事件">运行事件总结</button>
                 <button type="button" data-text-prompt="总结当前配置">配置摘要</button>
               </div>
+              <div class="multica-assign-workspace-block" id="multica-standalone-assign-block">
+                <button type="button" class="multica-assign-toggle glass-pill" id="btn-toggle-sa">分配已有 Multica Issue</button>
+                <div class="multica-standalone-assign-panel" data-multica-standalone-assign-panel id="sa-panel" style="display:none">
+                  <p class="multica-assign-blurb">用于分配已经存在的 Multica issue。小黄不会读取 runs/run-messages，也不会额外启动本地 Agent。</p>
+                  <label>Issue ID / Identifier
+                    <input type="text" data-sa-issue-id class="glass-input" autocomplete="off" spellcheck="false"
+                      placeholder="例如：78480e61 或 HHH-19">
+                  </label>
+                  <label>Agent
+                    <select data-sa-agent class="glass-input">
+                      <option value="claude">claude</option>
+                      <option value="codex">codex</option>
+                      <option value="opencode">opencode</option>
+                      <option value="openclaw">openclaw</option>
+                    </select>
+                  </label>
+                  <div class="multica-standalone-assign-actions">
+                    <button type="button" data-sa-action="prepare" class="glass-pill">准备分配 Agent</button>
+                  </div>
+                  <div class="multica-assign-confirm" data-sa-confirm hidden>
+                    <p>将把真实 Multica issue 分配给所选 Agent。Multica 可能会让该 Agent 开始处理或进入工作队列。小黄不会额外启动本地 Agent，也不会读取 runs/run-messages。</p>
+                    <div>需要输入：<code data-sa-expected></code></div>
+                    <input type="text" data-sa-phrase class="glass-input" autocomplete="off" spellcheck="false">
+                    <div class="multica-assign-actions">
+                      <button type="button" data-sa-action="confirm" disabled class="glass-pill">确认分配 Agent</button>
+                      <span data-sa-status></span>
+                    </div>
+                  </div>
+                  <div data-sa-result hidden></div>
+                </div>
+              </div>
               <div class="text-chat-input-row">
                 <span class="text-chat-model">DeepSeek V4 Flash</span>
                 <textarea id="text-chat-input" rows="2" placeholder="输入消息，例如：帮我看看最近错误"></textarea>
@@ -160,35 +191,6 @@
               <button type="button" data-text-prompt="帮我做一次健康检查">健康检查</button>
               <button type="button" data-text-prompt="帮我看看最近错误">最近错误</button>
               <button type="button" data-text-prompt="总结最近运行事件">运行事件总结</button>
-            </div>
-            <div class="workspace-block multica-assign-workspace-block" id="multica-standalone-assign-block">
-              <h3>分配已有 Multica Issue</h3>
-              <p class="multica-assign-blurb">用于分配已经存在的 Multica issue。必须输入 Issue ID / Identifier，选择 Agent，并输入绑定 issue 和 agent 的确认短语。小黄不会读取 runs/run-messages，也不会额外启动本地 Agent。</p>
-              <div class="multica-standalone-assign-panel" data-multica-standalone-assign-panel>
-                <label>Issue ID / Identifier
-                  <input type="text" data-sa-issue-id class="glass-input" autocomplete="off" spellcheck="false"
-                    placeholder="例如：78480e61 或 HHH-19">
-                </label>
-                <label>Agent
-                  <select data-sa-agent class="glass-input">
-                    <option value="claude">claude</option>
-                    <option value="codex">codex</option>
-                    <option value="opencode">opencode</option>
-                    <option value="openclaw">openclaw</option>
-                  </select>
-                </label>
-                <button type="button" data-sa-action="prepare">准备分配 Agent</button>
-                <div class="multica-assign-confirm" data-sa-confirm hidden>
-                  <p>将把真实 Multica issue 分配给所选 Agent。Multica 可能会让该 Agent 开始处理或进入工作队列。小黄不会额外启动本地 Agent，也不会读取 runs/run-messages。</p>
-                  <div>需要输入：<code data-sa-expected></code></div>
-                  <input type="text" data-sa-phrase class="glass-input" autocomplete="off" spellcheck="false">
-                  <div class="multica-assign-actions">
-                    <button type="button" data-sa-action="confirm" disabled>确认分配 Agent</button>
-                    <span data-sa-status></span>
-                  </div>
-                </div>
-                <div data-sa-result hidden></div>
-              </div>
             </div>
           </aside>
         </div>

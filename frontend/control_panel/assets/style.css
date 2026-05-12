@@ -615,11 +615,21 @@ select.glass-input{cursor:pointer}
 }
 .multica-assign-panel button:disabled{opacity:.55;cursor:default}
 
-/* standalone assign existing Multica issue — Chat workspace block */
+/* standalone assign existing Multica issue — Chat composer */
+.multica-assign-toggle{
+  font-size:var(--font-size-xs,11px);
+  padding:4px 10px;
+  white-space:nowrap;
+}
 .multica-standalone-assign-panel{
   display:flex;
   flex-direction:column;
   gap:8px;
+  margin-top:10px;
+  padding:12px;
+  border-radius:10px;
+  background:var(--fill-card,rgba(255,255,255,0.08));
+  border:1px solid var(--rim,rgba(255,255,255,0.12));
 }
 .multica-standalone-assign-panel label{
   display:grid;
@@ -640,18 +650,18 @@ select.glass-input{cursor:pointer}
 .multica-standalone-assign-panel input[type="text"]{
   font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
 }
-.multica-standalone-assign-panel button{
-  padding:6px 12px;
-  border-radius:999px;
-  border:1px solid var(--rim,rgba(255,255,255,0.18));
-  background:var(--fill-card,rgba(255,255,255,0.12));
-  color:var(--text-primary,#e2e8f0);
-  cursor:pointer;
+.multica-standalone-assign-actions{
+  display:flex;
+  gap:6px;
+}
+.multica-standalone-assign-panel .glass-pill{
   font-size:var(--font-size-xs,11px);
-  font-weight:600;
-  white-space:nowrap;
+  padding:5px 11px;
 }
 .multica-standalone-assign-panel button:disabled{opacity:.55;cursor:default}
+.text-chat-composer .multica-assign-workspace-block{
+  margin-top:8px;
+}
 .multica-assign-blurb{
   margin:0 0 8px;
   font-size:var(--font-size-xs,10px);

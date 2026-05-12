@@ -194,6 +194,20 @@
 - Verification: compileall OK; unittest discover OK (1054 tests, 1 skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
 - Known traps: Do not launch agents or terminals from C1; database context must stay through `http://127.0.0.1:8765/brief` or safely degrade.
 
+## Current Snapshot（2026-05-13）— V1.5-C5F.2.1 Make Assign Existing Issue Entry Visible
+
+- Purpose: Fix C5F.2 standalone assign panel being invisible — it was placed in `text-chat-workspace` which has `display:none` from UI0 Chat focus mode. Moved to composer area with toggle button.
+- Key files: `frontend/control_panel/index.html` (moved block from workspace to composer), `frontend/control_panel/assets/app.js` (+toggle button handler), `frontend/control_panel/assets/style.css` (+composer-specific styles), `tests/test_control_panel_web_service.py` (+2 new tests).
+- Last completed:
+  1. Root cause: `text-chat-workspace{display:none}` from V1.5-UI0.1 Chat focus mode — workspace area is intentionally hidden.
+  2. Moved standalone assign block from `text-chat-workspace` to `text-chat-composer` — between prompt chips and input row.
+  3. Added toggle button (`btn-toggle-sa`): "分配已有 Multica Issue" → click toggles panel visibility, label changes to "收起 Multica Issue 分配".
+  4. Panel hidden by default (`style="display:none"`), toggled by button. Safe — cannot accidentally trigger.
+  5. All security preserved: ASSIGN confirmation phrase still required, backend unchanged.
+  6. Removed old workspace block entirely, keeping workspace clean.
+- Verification: compileall OK; unittest discover OK (1214 tests, 1 skipped, +2 new); focused suites OK; help OK; diff OK.
+- Known traps: Toggle state resets on page reload — panel always starts hidden. Panel is in composer DOM, below prompt chips, above input row.
+
 ## Current Snapshot（2026-05-13）— V1.5-C5F.2 Assign Existing Issue Entry
 
 - Purpose: Add a standalone "分配已有 Multica Issue" entry in Chat workspace — independent of create result cards. Reuses existing `assign_multica_issue_to_agent` backend.
