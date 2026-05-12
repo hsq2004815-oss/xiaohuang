@@ -1005,6 +1005,8 @@
     if (action === 'copy-command') return copyTextToClipboard(draft.create_command_preview).then(function () { toast('已复制命令草稿', 'ok'); });
     if (action === 'prepare-create') return prepareMulticaIssueCreate(panel);
     if (action === 'confirm-create') return confirmMulticaIssueCreate(btn, panel, draft);
+    if (action === 'prepare-assign') return prepareMulticaIssueAssign(panel);
+    if (action === 'confirm-assign') return confirmMulticaIssueAssign(btn, panel);
     if (action === 'download-md') {
       downloadTextFile(draft.markdown, buildDraftFilename(draft.title));
       toast('已下载草稿 .md', 'ok');
@@ -1068,6 +1070,14 @@
   function getPanelDraft(panel) {
     try {
       return panel && panel.dataset.issueDraftJson ? JSON.parse(panel.dataset.issueDraftJson) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function getPanelCreateResult(panel) {
+    try {
+      return panel && panel.dataset.issueCreateResultJson ? JSON.parse(panel.dataset.issueCreateResultJson) : null;
     } catch (err) {
       return null;
     }
@@ -1150,7 +1160,125 @@
       '<div>状态: ' + escapeHtml(result.status || '--') + '</div>' +
       '<div>未分配 Agent</div>' +
       '<div>下一步可在 C5F 中确认分配 Agent</div>' +
+      (warnings.length ? '<p>' + escapeHtml(warnings.join('；')) + '</p>' : '') +
+      renderMulticaIssueAssignPanel(result);
+  }
+
+  function renderMulticaIssueAssignPanel(result) {
+    var issueId = result && result.issue_id ? String(result.issue_id) : '';
+    if (!issueId) return '<p>未返回 Issue ID，不能分配 Agent。</p>';
+    return '<div class="multica-assign-panel" data-multica-assign-panel>' +
+      '<label>Agent' +
+        '<select data-multica-assign-agent>' +
+          '<option value="claude">claude</option>' +
+          '<option value="codex">codex</option>' +
+          '<option value="opencode">opencode</option>' +
+          '<option value="openclaw">openclaw</option>' +
+        '</select>' +
+      '</label>' +
+      '<button type="button" data-multica-draft="prepare-assign">准备分配 Agent</button>' +
+      '<div class="multica-assign-confirm" data-multica-assign-confirm hidden>' +
+        '<p>将把真实 Multica issue 分配给所选 Agent。Multica 可能会让该 Agent 开始处理或进入工作队列。小黄不会额外启动本地 Agent，也不会读取 runs/run-messages。请确认 issue id 和 agent。</p>' +
+        '<div>需要输入：<code data-multica-assign-expected></code></div>' +
+        '<input type="text" data-multica-assign-phrase autocomplete="off" spellcheck="false">' +
+        '<div class="multica-assign-actions">' +
+          '<button type="button" data-multica-draft="confirm-assign" disabled>确认分配 Agent</button>' +
+          '<span data-multica-assign-status></span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="multica-assign-result" data-multica-assign-result hidden></div>' +
+    '</div>';
+  }
+
+  function prepareMulticaIssueAssign(panel) {
+    var created = getPanelCreateResult(panel);
+    var issueId = created && created.issue_id ? String(created.issue_id) : '';
+    var agentSelect = panel.querySelector('[data-multica-assign-agent]');
+    var agent = agentSelect ? agentSelect.value : '';
+    var confirmBox = panel.querySelector('[data-multica-assign-confirm]');
+    var expectedEl = panel.querySelector('[data-multica-assign-expected]');
+    var phrase = panel.querySelector('[data-multica-assign-phrase]');
+    var confirmButton = panel.querySelector('[data-multica-draft="confirm-assign"]');
+    var status = panel.querySelector('[data-multica-assign-status]');
+    if (!issueId) {
+      toast('缺少 Issue ID，不能分配 Agent', 'err');
+      return Promise.resolve();
+    }
+    var expected = buildAssignConfirmation(issueId, agent);
+    if (confirmBox) confirmBox.hidden = false;
+    if (expectedEl) expectedEl.textContent = expected;
+    if (agentSelect) {
+      agentSelect.onchange = function () {
+        expected = buildAssignConfirmation(issueId, agentSelect.value);
+        if (expectedEl) expectedEl.textContent = expected;
+        if (phrase) phrase.value = '';
+        if (confirmButton) confirmButton.disabled = true;
+        if (status) status.textContent = 'Agent 已变更，请重新输入精确确认短语。';
+      };
+    }
+    if (phrase) {
+      phrase.value = '';
+      phrase.focus();
+      phrase.oninput = function () {
+        if (confirmButton) confirmButton.disabled = phrase.value.trim() !== expected;
+      };
+    }
+    if (confirmButton) confirmButton.disabled = true;
+    if (status) status.textContent = '输入精确确认短语后才能分配真实 issue。';
+    toast('请检查 issue id 和 agent 后输入确认短语', 'info');
+    return Promise.resolve();
+  }
+
+  function confirmMulticaIssueAssign(btn, panel) {
+    var created = getPanelCreateResult(panel);
+    var issueId = created && created.issue_id ? String(created.issue_id) : '';
+    var agentSelect = panel.querySelector('[data-multica-assign-agent]');
+    var agent = agentSelect ? agentSelect.value : '';
+    var phrase = panel.querySelector('[data-multica-assign-phrase]');
+    var status = panel.querySelector('[data-multica-assign-status]');
+    var expected = buildAssignConfirmation(issueId, agent);
+    var text = phrase ? phrase.value.trim() : '';
+    if (!issueId || text !== expected) {
+      if (status) status.textContent = '确认短语不匹配。';
+      toast('确认短语不匹配', 'err');
+      return Promise.resolve();
+    }
+    btn.disabled = true;
+    if (status) status.textContent = '正在分配 Multica issue...';
+    return apiCall('assign_multica_issue_to_agent', {
+      issue_id: issueId,
+      agent: agent,
+      confirmed: true,
+      confirmation_text: text
+    }).then(function (resp) {
+      if (!resp || !resp.ok || !resp.data) {
+        throw new Error((resp && (resp.error || resp.message || resp.code)) || '分配 Agent 失败');
+      }
+      renderMulticaIssueAssignResult(panel, resp.data);
+      if (status) status.textContent = 'Multica issue 已分配。';
+      toast('Multica issue 已分配给 ' + (resp.data.agent || agent), 'ok');
+    }).catch(function (err) {
+      if (status) status.textContent = '分配失败：' + ((err && err.message) || err);
+      toast('分配 Multica issue 失败', 'err');
+    }).finally(function () {
+      btn.disabled = false;
+    });
+  }
+
+  function renderMulticaIssueAssignResult(panel, result) {
+    var box = panel.querySelector('[data-multica-assign-result]');
+    if (!box) return;
+    var warnings = Array.isArray(result.warnings) ? result.warnings : [];
+    box.hidden = false;
+    box.innerHTML = '<strong>Multica issue 已分配给 ' + escapeHtml(result.agent || '--') + '</strong>' +
+      '<div>Issue ID: <code>' + escapeHtml(result.issue_id || '--') + '</code></div>' +
+      '<div>状态: ' + escapeHtml(result.status || '--') + '</div>' +
+      '<div>下一步 C6 可读取 runs / run-messages 做验收</div>' +
       (warnings.length ? '<p>' + escapeHtml(warnings.join('；')) + '</p>' : '');
+  }
+
+  function buildAssignConfirmation(issueId, agent) {
+    return 'ASSIGN ' + String(issueId || '').trim() + ' TO ' + String(agent || '').trim();
   }
 
   function splitCommaList(text) {

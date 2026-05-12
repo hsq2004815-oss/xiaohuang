@@ -132,3 +132,37 @@ class MulticaIssueCreateResult:
             "error_code": self.error_code,
             "message": self.message,
         }
+
+
+@dataclass(frozen=True)
+class MulticaIssueAssignRequest:
+    issue_id: str
+    agent: str
+    confirmed: bool = False
+    confirmation_text: str = ""
+
+
+@dataclass(frozen=True)
+class MulticaIssueAssignResult:
+    ok: bool
+    assigned: bool = False
+    issue_id: str = ""
+    agent: str = ""
+    status: str = ""
+    raw_summary: str = ""
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+    error_code: str = ""
+    message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "assigned": self.assigned,
+            "issue_id": self.issue_id,
+            "agent": self.agent,
+            "status": self.status,
+            "raw_summary": self.raw_summary,
+            "warnings": list(self.warnings),
+            "error_code": self.error_code,
+            "message": self.message,
+        }

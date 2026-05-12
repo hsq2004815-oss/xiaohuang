@@ -599,6 +599,27 @@ select.glass-input{cursor:pointer}
 .multica-create-result{border-color:rgba(22,101,52,0.20);background:rgba(240,253,244,0.72)}
 .multica-create-result strong{display:block;margin-bottom:5px;color:#166534}
 .multica-create-result div{margin-top:3px}
+.multica-assign-panel{
+  margin-top:9px;padding-top:8px;border-top:1px solid rgba(22,101,52,0.14);display:grid;gap:8px
+}
+.multica-assign-panel label{display:grid;gap:5px;font-weight:900;color:var(--text-muted)}
+.multica-assign-panel select,.multica-assign-panel input{
+  min-height:34px;border-radius:9px;border:1px solid rgba(79,110,246,0.18);padding:6px 9px;
+  background:rgba(255,255,255,0.82);color:var(--text-primary);font:inherit
+}
+.multica-assign-panel input{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}
+.multica-assign-panel button{
+  justify-self:start;border-radius:var(--radius-pill);border:1px solid rgba(22,101,52,0.24);background:rgba(255,255,255,0.76);
+  color:#166534;font-size:11px;font-weight:900;cursor:pointer;padding:6px 10px
+}
+.multica-assign-panel button:disabled{opacity:.55;cursor:default}
+.multica-assign-confirm,.multica-assign-result{
+  padding:8px;border-radius:10px;border:1px solid rgba(22,101,52,0.18);background:rgba(255,255,255,0.58)
+}
+.multica-assign-confirm p,.multica-assign-result p{margin:0 0 6px;color:#166534;font-weight:800}
+.multica-assign-confirm code,.multica-assign-result code{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}
+.multica-assign-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.multica-assign-actions span{color:#166534;font-weight:800}
 .agent-handoff-target-meta,.agent-handoff-path,.agent-handoff-preview{
   margin-top:10px;padding:10px;border-radius:12px;border:1px solid rgba(79,110,246,0.12);
   background:rgba(255,255,255,0.52);user-select:text

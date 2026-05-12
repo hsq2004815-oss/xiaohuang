@@ -178,10 +178,7 @@ def export_diagnostics_to_file(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    filename = f"xiaohuang_diagnostics_{ts}.txt"
-    filepath = out_dir / filename
-
-    resolved = filepath.resolve()
+    resolved = _unique_export_path(out_dir, safe_base, ts)
     if not str(resolved).startswith(str(safe_base) + os.sep) and str(resolved) != str(safe_base):
         return DiagnosticExportResult(ok=False, message="导出路径超出安全目录")
 
@@ -195,6 +192,16 @@ def export_diagnostics_to_file(
 
 
 # ── internal helpers ──
+
+def _unique_export_path(out_dir: Path, safe_base: Path, ts: str) -> Path:
+    for idx in range(1000):
+        suffix = "" if idx == 0 else f"_{idx}"
+        candidate = (out_dir / f"xiaohuang_diagnostics_{ts}{suffix}.txt").resolve()
+        if not str(candidate).startswith(str(safe_base) + os.sep) and str(candidate) != str(safe_base):
+            return candidate
+        if not candidate.exists():
+            return candidate
+    raise FileExistsError("too_many_diagnostic_exports")
 
 def _parse_input(data: dict) -> DiagnosticExportInput:
     return DiagnosticExportInput(

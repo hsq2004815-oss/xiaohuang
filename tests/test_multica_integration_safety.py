@@ -3,15 +3,22 @@ from __future__ import annotations
 import unittest
 
 from xiaohuang.multica_integration.safety import (
+    ALLOWED_ASSIGN_AGENTS,
     BLOCKED_COMMAND_KEYS,
+    CONFIRMED_ISSUE_ASSIGN_KEY,
     CONFIRMED_ISSUE_CREATE_KEY,
     ISSUE_CREATE_CONFIRMATION_TEXT,
+    build_issue_assign_argv,
     build_issue_create_argv,
+    can_assign_issue,
     can_create_issue,
+    expected_issue_assign_confirmation,
     get_command_argv,
     is_allowed_confirmed_argv,
     is_allowed_command,
     is_blocked_command,
+    is_safe_issue_id,
+    is_supported_assign_agent,
 )
 
 
@@ -88,6 +95,51 @@ class MulticaIntegrationSafetyTests(unittest.TestCase):
             CONFIRMED_ISSUE_CREATE_KEY,
             ("multica", "issue", "create", "--title", "t", "--description", "d", "--assignee", "claude", "--output", "json"),
         ))
+
+    def test_confirmed_issue_assign_uses_separate_gate_and_agent_whitelist(self):
+        self.assertFalse(is_allowed_command("issue_assign"))
+        self.assertEqual(ALLOWED_ASSIGN_AGENTS, ("claude", "codex", "opencode", "openclaw"))
+        for agent in ALLOWED_ASSIGN_AGENTS:
+            self.assertTrue(is_supported_assign_agent(agent))
+        for agent in ("shell", "powershell", "cmd", "python", "node", "agent:f73a741e", "claude;whoami"):
+            self.assertFalse(is_supported_assign_agent(agent))
+        self.assertEqual(expected_issue_assign_confirmation("4e344c98", "claude"), "ASSIGN 4e344c98 TO claude")
+        self.assertFalse(can_assign_issue(issue_id="4e344c98", agent="claude", confirmed=False, confirmation_text="ASSIGN 4e344c98 TO claude"))
+        self.assertFalse(can_assign_issue(issue_id="4e344c98", agent="claude", confirmed=True, confirmation_text="ASSIGN HHH-18 TO claude"))
+        self.assertTrue(can_assign_issue(issue_id="4e344c98", agent="claude", confirmed=True, confirmation_text="ASSIGN 4e344c98 TO claude"))
+
+    def test_build_issue_assign_argv_rejects_dangerous_values(self):
+        for issue_id in ("", "4e344c98;whoami", "E:\\Projects\\x", "https://example.com", "HHH 18"):
+            self.assertFalse(is_safe_issue_id(issue_id), issue_id)
+        for issue_id in ("4e344c98", "HHH-18"):
+            self.assertTrue(is_safe_issue_id(issue_id), issue_id)
+        with self.assertRaises(ValueError):
+            build_issue_assign_argv(
+                issue_id="4e344c98",
+                agent="powershell",
+                confirmed=True,
+                confirmation_text="ASSIGN 4e344c98 TO powershell",
+            )
+        with self.assertRaises(ValueError):
+            build_issue_assign_argv(
+                issue_id="4e344c98",
+                agent="claude",
+                confirmed=True,
+                confirmation_text="ASSIGN HHH-18 TO claude",
+            )
+
+    def test_build_issue_assign_argv_allows_only_confirmed_assign_shape(self):
+        argv = build_issue_assign_argv(
+            issue_id="4e344c98",
+            agent="claude",
+            confirmed=True,
+            confirmation_text="ASSIGN 4e344c98 TO claude",
+        )
+
+        self.assertEqual(argv, ("multica", "issue", "assign", "4e344c98", "--to", "claude", "--output", "json"))
+        self.assertTrue(is_allowed_confirmed_argv(CONFIRMED_ISSUE_ASSIGN_KEY, argv))
+        self.assertFalse(is_allowed_confirmed_argv(CONFIRMED_ISSUE_ASSIGN_KEY, ("multica", "issue", "runs", "4e344c98")))
+        self.assertFalse(is_allowed_confirmed_argv(CONFIRMED_ISSUE_ASSIGN_KEY, ("multica", "issue", "assign", "4e344c98", "--to", "shell", "--output", "json")))
 
 
 if __name__ == "__main__":

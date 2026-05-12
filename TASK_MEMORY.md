@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-12）— V1.5-C5F Confirmed Multica Assign Agent
+
+- Purpose: Add confirmed Multica issue assignment after real issue creation, without auto-running or reading execution records.
+- Key files: `src/xiaohuang/multica_integration/issue_assign_service.py`, `models.py`, `safety.py`, `cli_client.py`, `src/xiaohuang/control_panel_web_service.py`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_multica_integration_issue_assign_service.py`, related safety/cli/control-panel tests.
+- Last completed:
+  1. Added `MulticaIssueAssignRequest` / `MulticaIssueAssignResult`.
+  2. Added `confirmed_issue_assign` gate with exact confirmation phrase `ASSIGN <issue_id> TO <agent>`.
+  3. Agent whitelist is `claude`, `codex`, `opencode`, `openclaw`; unsafe issue ids and arbitrary agents are rejected before subprocess.
+  4. Added assign service that runs only `multica issue assign <issue-id> --to <agent> --output json` through argv-list `shell=False`.
+  5. Control panel shows assign UI only after a real issue create result with issue id; it does not auto assign, auto run, rerun, or read runs/run-messages.
+- Verification: run issue assign, safety, CLI, control panel tests plus full compileall/unittest/help/diff check before reporting.
+- Known traps: Assign may cause Multica to queue work, so keep confirmation phrase bound to both issue id and agent; C6 owns runs/run-messages review.
+
 ## Current Snapshot（2026-05-12）— V1.5-C5E.1 Target Project Classification Regression Fix
 
 - Purpose: Fix Agent Handoff regression where an external target path plus “不修改小黄项目” could be misclassified as the XiaoHuang project.

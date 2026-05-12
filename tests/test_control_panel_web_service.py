@@ -319,6 +319,61 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertEqual(result["data"]["issue_id"], "iss_123")
         self.assertEqual(mock_create.call_args.kwargs["confirmation_text"], "CREATE_MULTICA_ISSUE")
 
+    def test_assign_multica_issue_to_agent_requires_confirmation(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        result = api.assign_multica_issue_to_agent({
+            "issue_id": "4e344c98",
+            "agent": "claude",
+            "confirmed": False,
+            "confirmation_text": "",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "confirmation_required")
+        self.assertIn("二次确认", result["error"])
+
+    def test_assign_multica_issue_to_agent_rejects_invalid_agent(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        result = api.assign_multica_issue_to_agent({
+            "issue_id": "4e344c98",
+            "agent": "powershell",
+            "confirmed": True,
+            "confirmation_text": "ASSIGN 4e344c98 TO powershell",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "unsupported_agent")
+
+    def test_assign_multica_issue_to_agent_success_returns_data(self):
+        from xiaohuang.multica_integration.models import MulticaIssueAssignResult
+
+        assign_result = MulticaIssueAssignResult(
+            ok=True,
+            assigned=True,
+            issue_id="4e344c98",
+            agent="claude",
+            status="todo",
+            warnings=("小黄没有执行 run/rerun/runs/run-messages。",),
+            message="Multica issue 已分配给 claude。",
+        )
+        with patch(
+            "xiaohuang.multica_integration.issue_assign_service.assign_issue_to_agent",
+            return_value=assign_result,
+        ) as mock_assign:
+            api = ControlPanelWebApi(config_path=self.config_path)
+            result = api.assign_multica_issue_to_agent({
+                "issue_id": "4e344c98",
+                "agent": "claude",
+                "confirmed": True,
+                "confirmation_text": "ASSIGN 4e344c98 TO claude",
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["assigned"])
+        self.assertEqual(result["data"]["issue_id"], "4e344c98")
+        self.assertEqual(result["data"]["agent"], "claude")
+        self.assertEqual(mock_assign.call_args.kwargs["confirmation_text"], "ASSIGN 4e344c98 TO claude")
+
     def test_send_text_message_returns_data(self):
         fake = TextInteractionResult(
             ok=True,
@@ -1312,6 +1367,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         source = self._read("src/xiaohuang/control_panel_web_service.py")
         self.assertIn("xiaohuang.multica_integration.status_service", source)
         self.assertIn("xiaohuang.multica_integration.issue_create_service", source)
+        self.assertIn("xiaohuang.multica_integration.issue_assign_service", source)
         self.assertNotIn("subprocess", source)
         self.assertNotIn("cli_client", source)
         self.assertNotIn("multica issue", source)
@@ -1335,12 +1391,26 @@ class V13UIFrontendStructureTests(unittest.TestCase):
             "不会分配 Agent",
             "不会启动 Claude/Codex/opencode/OpenClaw",
             "create_multica_issue_from_draft",
+            "准备分配 Agent",
+            "确认分配 Agent",
+            "ASSIGN",
+            "claude",
+            "codex",
+            "opencode",
+            "openclaw",
+            "不会额外启动本地 Agent",
+            "不会读取 runs/run-messages",
+            "assign_multica_issue_to_agent",
         ):
             self.assertIn(text, js)
         self.assertIn(".multica-draft-panel", css)
+        self.assertIn(".multica-assign-panel", css)
         self.assertNotIn("分配给 Claude", js)
         self.assertNotIn("创建并运行", js)
         self.assertNotIn("创建并分配 Claude", js)
+        self.assertNotIn("分配并运行", js)
+        self.assertNotIn("一键派发并监听", js)
+        self.assertNotIn("自动验收", js)
         self.assertNotIn("自动派发", js)
 
     def test_js_has_chinese_status_text(self):

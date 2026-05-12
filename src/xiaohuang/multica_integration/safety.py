@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Sequence
 
 
@@ -22,7 +23,10 @@ ALLOWED_COMMANDS: dict[str, MulticaCommandSpec] = {
 }
 
 CONFIRMED_ISSUE_CREATE_KEY = "confirmed_issue_create"
+CONFIRMED_ISSUE_ASSIGN_KEY = "confirmed_issue_assign"
 ISSUE_CREATE_CONFIRMATION_TEXT = "CREATE_MULTICA_ISSUE"
+ALLOWED_ASSIGN_AGENTS = ("claude", "codex", "opencode", "openclaw")
+_SAFE_ISSUE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,63}$")
 
 BLOCKED_COMMAND_KEYS: tuple[str, ...] = (
     "issue_create",
@@ -94,10 +98,77 @@ def build_issue_create_argv(
     return tuple(argv)
 
 
-def is_allowed_confirmed_argv(command_key: str, argv: Sequence[str]) -> bool:
-    if str(command_key or "") != CONFIRMED_ISSUE_CREATE_KEY:
+def normalize_assign_agent(agent: str) -> str:
+    return str(agent or "").strip().lower()
+
+
+def is_supported_assign_agent(agent: str) -> bool:
+    return normalize_assign_agent(agent) in ALLOWED_ASSIGN_AGENTS
+
+
+def is_safe_issue_id(issue_id: str) -> bool:
+    return bool(_SAFE_ISSUE_ID_RE.fullmatch(str(issue_id or "").strip()))
+
+
+def expected_issue_assign_confirmation(issue_id: str, agent: str) -> str:
+    return f"ASSIGN {str(issue_id or '').strip()} TO {normalize_assign_agent(agent)}"
+
+
+def can_assign_issue(*, issue_id: str, agent: str, confirmed: bool, confirmation_text: str) -> bool:
+    clean_issue_id = str(issue_id or "").strip()
+    clean_agent = normalize_assign_agent(agent)
+    if not bool(confirmed) or not is_safe_issue_id(clean_issue_id) or not is_supported_assign_agent(clean_agent):
         return False
+    return str(confirmation_text or "").strip() == expected_issue_assign_confirmation(clean_issue_id, clean_agent)
+
+
+def build_issue_assign_argv(
+    *,
+    issue_id: str,
+    agent: str,
+    confirmed: bool,
+    confirmation_text: str,
+) -> tuple[str, ...]:
+    clean_issue_id = str(issue_id or "").strip()
+    clean_agent = normalize_assign_agent(agent)
+    if not clean_issue_id:
+        raise ValueError("missing_issue_id")
+    if not clean_agent:
+        raise ValueError("missing_agent")
+    if not is_supported_assign_agent(clean_agent):
+        raise ValueError("unsupported_agent")
+    if not is_safe_issue_id(clean_issue_id):
+        raise ValueError("invalid_issue_id")
+    if not can_assign_issue(
+        issue_id=clean_issue_id,
+        agent=clean_agent,
+        confirmed=confirmed,
+        confirmation_text=confirmation_text,
+    ):
+        raise ValueError("confirmation_required")
+    return (
+        "multica",
+        "issue",
+        "assign",
+        clean_issue_id,
+        "--to",
+        clean_agent,
+        "--output",
+        "json",
+    )
+
+
+def is_allowed_confirmed_argv(command_key: str, argv: Sequence[str]) -> bool:
     values = tuple(str(item or "") for item in argv)
+    key = str(command_key or "")
+    if key == CONFIRMED_ISSUE_CREATE_KEY:
+        return _is_allowed_issue_create_argv(values)
+    if key == CONFIRMED_ISSUE_ASSIGN_KEY:
+        return _is_allowed_issue_assign_argv(values)
+    return False
+
+
+def _is_allowed_issue_create_argv(values: tuple[str, ...]) -> bool:
     if len(values) < 9 or values[:3] != ("multica", "issue", "create"):
         return False
     allowed_flags = {"--title", "--description", "--priority", "--project", "--output"}
@@ -110,3 +181,16 @@ def is_allowed_confirmed_argv(command_key: str, argv: Sequence[str]) -> bool:
         seen[flag] = values[idx + 1]
         idx += 2
     return bool(seen.get("--title")) and bool(seen.get("--description")) and seen.get("--output") == "json"
+
+
+def _is_allowed_issue_assign_argv(values: tuple[str, ...]) -> bool:
+    if len(values) != 8 or values[:3] != ("multica", "issue", "assign"):
+        return False
+    issue_id = values[3]
+    return (
+        is_safe_issue_id(issue_id)
+        and values[4] == "--to"
+        and is_supported_assign_agent(values[5])
+        and values[6] == "--output"
+        and values[7] == "json"
+    )

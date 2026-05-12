@@ -309,6 +309,27 @@ class ControlPanelWebApi:
         except Exception:
             return _fail("创建 Multica issue 失败", "multica_issue_create_error")
 
+    def assign_multica_issue_to_agent(self, payload: dict | None = None) -> dict:
+        try:
+            data = payload if isinstance(payload, dict) else {}
+            from xiaohuang.multica_integration.issue_assign_service import (
+                assign_issue_to_agent,
+            )
+            result = assign_issue_to_agent(
+                issue_id=str(data.get("issue_id") or ""),
+                agent=str(data.get("agent") or ""),
+                confirmed=bool(data.get("confirmed", False)),
+                confirmation_text=str(data.get("confirmation_text") or ""),
+            )
+            if not result.ok:
+                return _fail(
+                    result.message or "Multica issue 分配失败。",
+                    result.error_code or "multica_issue_assign_error",
+                )
+            return _ok(data=result.to_dict(), message=result.message or "Multica issue 已分配")
+        except Exception:
+            return _fail("分配 Multica issue 失败", "multica_issue_assign_error")
+
     def open_text_chat_window(self) -> dict:
         return _ok(
             data={"view": "text-chat", "same_window": True},
