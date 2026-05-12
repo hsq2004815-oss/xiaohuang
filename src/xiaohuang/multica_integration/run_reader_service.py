@@ -1,0 +1,257 @@
+"""run_reader_service.py — readonly Multica runs / run-messages reader.
+
+Reads Multica issue run history and run-message logs.
+No create, no assign, no rerun, no Agent launch.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Callable
+
+from xiaohuang.multica_integration.cli_client import Runner, run_multica_argv
+from xiaohuang.multica_integration.models import (
+    MulticaRunMessage,
+    MulticaRunMessagesResult,
+    MulticaRunsResult,
+    MulticaRunSummary,
+)
+from xiaohuang.multica_integration.safety import (
+    CONFIRMED_ISSUE_RUNS_KEY,
+    CONFIRMED_RUN_MESSAGES_KEY,
+    build_issue_runs_argv,
+    build_run_messages_argv,
+    is_safe_issue_id,
+    is_safe_task_id,
+)
+
+_MAX_MESSAGE_CHARS = 1600
+
+
+def read_issue_runs(
+    *,
+    issue_id: str,
+    runner: Runner | None = None,
+) -> MulticaRunsResult:
+    """Read the list of runs for a Multica issue."""
+    clean = str(issue_id or "").strip()
+    if not clean:
+        return MulticaRunsResult(
+            ok=False,
+            issue_id="",
+            error_code="missing_issue_id",
+            message="Issue ID / Identifier 不能为空。",
+        )
+    if not is_safe_issue_id(clean):
+        return MulticaRunsResult(
+            ok=False,
+            issue_id=clean,
+            error_code="invalid_issue_id",
+            message="Issue ID / Identifier 格式不安全。",
+        )
+
+    try:
+        argv = build_issue_runs_argv(issue_id=clean)
+    except ValueError as exc:
+        return MulticaRunsResult(
+            ok=False,
+            issue_id=clean,
+            error_code=str(exc),
+            message="无法构建 runs 命令。",
+        )
+
+    result = run_multica_argv(CONFIRMED_ISSUE_RUNS_KEY, argv, runner=runner)
+    if not result.ok:
+        return MulticaRunsResult(
+            ok=False,
+            issue_id=clean,
+            raw_summary=result.stdout or result.stderr,
+            error_code=result.error_code,
+            message=result.message,
+        )
+
+    runs, warnings = _parse_runs_json(result.stdout, clean)
+    return MulticaRunsResult(
+        ok=True,
+        issue_id=clean,
+        runs=tuple(runs),
+        raw_summary=result.stdout,
+        warnings=tuple(warnings),
+        message=f"读取到 {len(runs)} 条运行记录。",
+    )
+
+
+def read_run_messages(
+    *,
+    task_id: str,
+    runner: Runner | None = None,
+) -> MulticaRunMessagesResult:
+    """Read the run-messages for a specific Multica task/run."""
+    clean = str(task_id or "").strip()
+    if not clean:
+        return MulticaRunMessagesResult(
+            ok=False,
+            task_id="",
+            error_code="missing_task_id",
+            message="Task ID 不能为空。",
+        )
+    if not is_safe_task_id(clean):
+        return MulticaRunMessagesResult(
+            ok=False,
+            task_id=clean,
+            error_code="invalid_task_id",
+            message="Task ID 格式不安全。",
+        )
+
+    try:
+        argv = build_run_messages_argv(task_id=clean)
+    except ValueError as exc:
+        return MulticaRunMessagesResult(
+            ok=False,
+            task_id=clean,
+            error_code=str(exc),
+            message="无法构建 run-messages 命令。",
+        )
+
+    result = run_multica_argv(CONFIRMED_RUN_MESSAGES_KEY, argv, runner=runner)
+    if not result.ok:
+        return MulticaRunMessagesResult(
+            ok=False,
+            task_id=clean,
+            raw_summary=result.stdout or result.stderr,
+            error_code=result.error_code,
+            message=result.message,
+        )
+
+    messages, warnings = _parse_run_messages_json(result.stdout, clean)
+    review = _build_review_summary(messages, clean)
+    return MulticaRunMessagesResult(
+        ok=True,
+        task_id=clean,
+        messages=tuple(messages),
+        raw_summary=result.stdout,
+        review_summary=review,
+        warnings=tuple(warnings),
+        message=f"读取到 {len(messages)} 条消息。",
+    )
+
+
+# ── internal parsers ──
+
+def _parse_runs_json(stdout: str, issue_id: str) -> tuple[list[MulticaRunSummary], list[str]]:
+    warnings: list[str] = []
+    runs: list[MulticaRunSummary] = []
+    raw = str(stdout or "").strip()
+    if not raw:
+        warnings.append("runs 输出为空")
+        return runs, warnings
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        warnings.append("runs 输出非 JSON 格式，保留原文")
+        return runs, warnings
+
+    items: list[dict] = []
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        items = data.get("data") or data.get("runs") or data.get("items") or []
+    if not isinstance(items, list):
+        warnings.append("runs JSON 结构未识别")
+        return runs, warnings
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        run_id = str(item.get("id") or item.get("run_id") or "")
+        task_id = str(item.get("task_id") or item.get("run_id") or item.get("id") or "")
+        runs.append(MulticaRunSummary(
+            run_id=run_id,
+            task_id=task_id,
+            issue_id=str(item.get("issue_id") or issue_id),
+            status=str(item.get("status") or item.get("state") or ""),
+            agent=str(item.get("agent") or item.get("assignee") or ""),
+            title=str(item.get("title") or item.get("name") or ""),
+            started_at=str(item.get("started_at") or item.get("created_at") or ""),
+            updated_at=str(item.get("updated_at") or item.get("completed_at") or ""),
+            raw_summary=_compact_dict_text(item),
+        ))
+    return runs, warnings
+
+
+def _parse_run_messages_json(stdout: str, task_id: str) -> tuple[list[MulticaRunMessage], list[str]]:
+    warnings: list[str] = []
+    messages: list[MulticaRunMessage] = []
+    raw = str(stdout or "").strip()
+    if not raw:
+        warnings.append("run-messages 输出为空")
+        return messages, warnings
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        warnings.append("run-messages 输出非 JSON 格式，保留原文")
+        return messages, warnings
+
+    items: list[dict] = []
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        items = data.get("data") or data.get("messages") or data.get("items") or []
+    if not isinstance(items, list):
+        warnings.append("run-messages JSON 结构未识别")
+        return messages, warnings
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        content = str(item.get("content") or item.get("text") or "")
+        if len(content) > _MAX_MESSAGE_CHARS:
+            content = content[:_MAX_MESSAGE_CHARS].rstrip() + "..."
+        messages.append(MulticaRunMessage(
+            message_id=str(item.get("id") or item.get("message_id") or ""),
+            role=str(item.get("role") or ""),
+            author=str(item.get("author") or item.get("sender") or ""),
+            content=content,
+            created_at=str(item.get("created_at") or item.get("timestamp") or ""),
+            raw_summary=_compact_dict_text(item),
+        ))
+    return messages, warnings
+
+
+def _build_review_summary(messages: list[MulticaRunMessage], task_id: str) -> str:
+    if not messages:
+        return f"运行消息不足 (task_id={task_id})，无法判断最终完成质量。"
+    author_msgs: dict[str, int] = {}
+    has_error = False
+    has_complete = False
+    for m in messages:
+        author = m.author or "unknown"
+        author_msgs[author] = author_msgs.get(author, 0) + 1
+        content_lower = m.content.lower()
+        if any(kw in content_lower for kw in ("error", "failed", "fail", "exception", "traceback")):
+            has_error = True
+        if any(kw in content_lower for kw in ("complete", "done", "finished", "success", "pass")):
+            has_complete = True
+
+    parts: list[str] = [
+        f"共 {len(messages)} 条消息",
+        f"参与者: {', '.join(f'{k}({v})' for k, v in author_msgs.items())}",
+    ]
+    if has_error and has_complete:
+        parts.append("发现错误信号但也有完成信号，建议手动查看完整消息。")
+    elif has_error:
+        parts.append("发现错误信号，运行可能未成功完成。")
+    elif has_complete:
+        parts.append("发现完成信号，运行可能已成功。")
+    else:
+        parts.append("消息中未找到明确成功或失败信号，无法判断最终完成质量。")
+    return "；".join(parts)
+
+
+def _compact_dict_text(item: dict) -> str:
+    text = json.dumps(item, ensure_ascii=False, default=str)
+    if len(text) > 400:
+        return text[:400].rstrip() + "..."
+    return text

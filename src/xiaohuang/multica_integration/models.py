@@ -137,6 +137,98 @@ class MulticaIssueCreateResult:
 
 
 @dataclass(frozen=True)
+class MulticaRunSummary:
+    run_id: str = ""
+    task_id: str = ""
+    issue_id: str = ""
+    status: str = ""
+    agent: str = ""
+    title: str = ""
+    started_at: str = ""
+    updated_at: str = ""
+    raw_summary: str = ""
+
+
+@dataclass(frozen=True)
+class MulticaRunMessage:
+    message_id: str = ""
+    role: str = ""
+    author: str = ""
+    content: str = ""
+    created_at: str = ""
+    raw_summary: str = ""
+
+
+@dataclass(frozen=True)
+class MulticaRunsResult:
+    ok: bool
+    issue_id: str = ""
+    runs: tuple[MulticaRunSummary, ...] = ()
+    raw_summary: str = ""
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+    error_code: str = ""
+    message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "issue_id": self.issue_id,
+            "runs": [
+                {
+                    "run_id": r.run_id,
+                    "task_id": r.task_id,
+                    "issue_id": r.issue_id,
+                    "status": r.status,
+                    "agent": r.agent,
+                    "title": r.title,
+                    "started_at": r.started_at,
+                    "updated_at": r.updated_at,
+                    "raw_summary": r.raw_summary,
+                }
+                for r in self.runs
+            ],
+            "raw_summary": self.raw_summary,
+            "warnings": list(self.warnings),
+            "error_code": self.error_code,
+            "message": self.message,
+        }
+
+
+@dataclass(frozen=True)
+class MulticaRunMessagesResult:
+    ok: bool
+    task_id: str = ""
+    messages: tuple[MulticaRunMessage, ...] = ()
+    raw_summary: str = ""
+    review_summary: str = ""
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+    error_code: str = ""
+    message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "task_id": self.task_id,
+            "messages": [
+                {
+                    "message_id": m.message_id,
+                    "role": m.role,
+                    "author": m.author,
+                    "content": m.content,
+                    "created_at": m.created_at,
+                    "raw_summary": m.raw_summary,
+                }
+                for m in self.messages
+            ],
+            "raw_summary": self.raw_summary,
+            "review_summary": self.review_summary,
+            "warnings": list(self.warnings),
+            "error_code": self.error_code,
+            "message": self.message,
+        }
+
+
+@dataclass(frozen=True)
 class MulticaIssueAssignRequest:
     issue_id: str
     agent: str

@@ -24,9 +24,12 @@ ALLOWED_COMMANDS: dict[str, MulticaCommandSpec] = {
 
 CONFIRMED_ISSUE_CREATE_KEY = "confirmed_issue_create"
 CONFIRMED_ISSUE_ASSIGN_KEY = "confirmed_issue_assign"
+CONFIRMED_ISSUE_RUNS_KEY = "confirmed_issue_runs"
+CONFIRMED_RUN_MESSAGES_KEY = "confirmed_run_messages"
 ISSUE_CREATE_CONFIRMATION_TEXT = "CREATE_MULTICA_ISSUE"
 ALLOWED_ASSIGN_AGENTS = ("claude", "codex", "opencode", "openclaw")
 _SAFE_ISSUE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,63}$")
+_SAFE_TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,80}$")
 
 BLOCKED_COMMAND_KEYS: tuple[str, ...] = (
     "issue_create",
@@ -34,8 +37,6 @@ BLOCKED_COMMAND_KEYS: tuple[str, ...] = (
     "issue_status",
     "issue_update",
     "issue_rerun",
-    "issue_runs",
-    "issue_run_messages",
     "daemon_restart",
     "daemon_stop",
     "agent_launch",
@@ -165,6 +166,10 @@ def is_allowed_confirmed_argv(command_key: str, argv: Sequence[str]) -> bool:
         return _is_allowed_issue_create_argv(values)
     if key == CONFIRMED_ISSUE_ASSIGN_KEY:
         return _is_allowed_issue_assign_argv(values)
+    if key == CONFIRMED_ISSUE_RUNS_KEY:
+        return _is_allowed_issue_runs_argv(values)
+    if key == CONFIRMED_RUN_MESSAGES_KEY:
+        return _is_allowed_run_messages_argv(values)
     return False
 
 
@@ -194,3 +199,37 @@ def _is_allowed_issue_assign_argv(values: tuple[str, ...]) -> bool:
         and values[6] == "--output"
         and values[7] == "json"
     )
+
+
+def is_safe_task_id(task_id: str) -> bool:
+    return bool(_SAFE_TASK_ID_RE.fullmatch(str(task_id or "").strip()))
+
+
+def build_issue_runs_argv(*, issue_id: str) -> tuple[str, ...]:
+    clean = str(issue_id or "").strip()
+    if not clean:
+        raise ValueError("missing_issue_id")
+    if not is_safe_issue_id(clean):
+        raise ValueError("invalid_issue_id")
+    return ("multica", "issue", "runs", clean, "--output", "json")
+
+
+def build_run_messages_argv(*, task_id: str) -> tuple[str, ...]:
+    clean = str(task_id or "").strip()
+    if not clean:
+        raise ValueError("missing_task_id")
+    if not is_safe_task_id(clean):
+        raise ValueError("invalid_task_id")
+    return ("multica", "issue", "run-messages", clean, "--output", "json")
+
+
+def _is_allowed_issue_runs_argv(values: tuple[str, ...]) -> bool:
+    if len(values) != 6 or values[:3] != ("multica", "issue", "runs"):
+        return False
+    return is_safe_issue_id(values[3]) and values[4] == "--output" and values[5] == "json"
+
+
+def _is_allowed_run_messages_argv(values: tuple[str, ...]) -> bool:
+    if len(values) != 6 or values[:3] != ("multica", "issue", "run-messages"):
+        return False
+    return is_safe_task_id(values[3]) and values[4] == "--output" and values[5] == "json"

@@ -194,6 +194,21 @@
 - Verification: compileall OK; unittest discover OK (1054 tests, 1 skip); control_panel_web `--help` OK; voice_overlay `--help` OK; diff check OK.
 - Known traps: Do not launch agents or terminals from C1; database context must stay through `http://127.0.0.1:8765/brief` or safely degrade.
 
+## Current Snapshot（2026-05-13）— V1.5-C6 Read Multica Runs / Run Messages and Review
+
+- Purpose: Add readonly Multica runs and run-messages reading capability — view run history, read messages, generate review summary. No create, assign, rerun, or Agent launch.
+- Key files: `src/xiaohuang/multica_integration/run_reader_service.py` (new), `models.py` (+4 dataclasses), `safety.py` (+runs/run-messages argv builders), `control_panel_web_service.py` (+2 thin APIs), frontend (toggleable "查看 Multica 运行记录" panel in composer), tests (new suite + extended safety + UI).
+- Last completed:
+  1. `run_reader_service.py`: `read_issue_runs()` and `read_run_messages()` — validated issue_id/task_id, build argv, run via cli_client, parse JSON, generate review summary.
+  2. `models.py`: `MulticaRunSummary`, `MulticaRunMessage`, `MulticaRunsResult`, `MulticaRunMessagesResult` — all with `to_dict()`.
+  3. `safety.py`: `CONFIRMED_ISSUE_RUNS_KEY` / `CONFIRMED_RUN_MESSAGES_KEY`, `build_issue_runs_argv()` / `build_run_messages_argv()`, `is_safe_task_id()`, argv validation. `issue_runs`/`issue_run_messages` removed from BLOCKED_COMMAND_KEYS (now handled as confirmed argv).
+  4. `control_panel_web_service.py`: `read_multica_issue_runs()` and `read_multica_run_messages()` thin APIs — payload {issue_id} / {task_id}, call service, return structured result.
+  5. Frontend: toggleable "查看 Multica 运行记录" button in composer → panel with Issue ID input, "读取 Runs" button, runs list (status/agent/task_id), per-run "读取消息" button, messages panel with review summary. Mutually exclusive with assign panel toggle.
+  6. Review summary: `_build_review_summary()` detects error signals, completion signals, and generates human-readable Chinese summary. Explicitly states "无法判断最终完成质量" when insufficient.
+  7. Safety: shell=False, timeout, argv fixed, no frontend argv pass, no create/assign/rerun/comment/daemon.
+- Verification: compileall OK; unittest discover OK (1249 tests, 1 skipped, +37 new); focused suites all OK; help commands OK; diff OK.
+- Known traps: Multica JSON output format varies — parser handles list, dict with data/runs/messages/items keys. Non-JSON output gracefully falls back. Real runs/messages verification not done — user to manually verify with HHH-19.
+
 ## Current Snapshot（2026-05-13）— V1.5-C5F.2.1 Make Assign Existing Issue Entry Visible
 
 - Purpose: Fix C5F.2 standalone assign panel being invisible — it was placed in `text-chat-workspace` which has `display:none` from UI0 Chat focus mode. Moved to composer area with toggle button.

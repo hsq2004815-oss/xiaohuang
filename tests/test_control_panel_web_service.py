@@ -1903,3 +1903,52 @@ class V15C5F2StandaloneAssignUITests(unittest.TestCase):
         css = self._read("frontend/control_panel/assets/style.css")
         self.assertIn(".multica-standalone-assign-panel", css)
         self.assertIn(".multica-assign-workspace-block", css)
+
+
+class V15C6RunReaderUITests(unittest.TestCase):
+    """V1.5-C6 Run Reader UI static tests."""
+
+    def setUp(self):
+        self.root = Path(__file__).resolve().parents[1]
+
+    def _read(self, rel):
+        return (self.root / rel).read_text(encoding="utf-8")
+
+    def test_html_has_run_reader_block(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("查看 Multica 运行记录", html)
+        self.assertIn("data-multica-run-reader-panel", html)
+        self.assertIn('data-rr-action="read-runs"', html)
+        self.assertIn("读取 Runs", html)
+        self.assertIn("验收摘要", html)
+
+    def test_html_has_safety_blurb(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertIn("不会 rerun", html)
+        self.assertIn("不会 assign", html)
+        self.assertIn("不会启动本地 Agent", html)
+        self.assertIn("优先使用 Identifier", html)
+
+    def test_html_no_dangerous_run_text(self):
+        html = self._read("frontend/control_panel/index.html")
+        self.assertNotIn("重新运行", html)
+        self.assertNotIn("自动验收通过", html)
+        self.assertNotIn("分配并运行", html)
+        self.assertNotIn("派发给 Agent", html)
+
+    def test_js_has_run_reader_functions(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("function readRunsForPanel", js)
+        self.assertIn("function renderRunsList", js)
+        self.assertIn("function readRunMessagesForTask", js)
+        self.assertIn("function renderRunMessages", js)
+        self.assertIn("read_multica_issue_runs", js)
+        self.assertIn("read_multica_run_messages", js)
+        self.assertIn("读取消息", js)
+
+    def test_js_run_reader_uses_escape_html(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertIn("escapeHtml(run.task_id", js)
+        self.assertIn("escapeHtml(run.status", js)
+        self.assertIn("escapeHtml(m.content", js)
+        self.assertIn("escapeHtml(m.role", js)

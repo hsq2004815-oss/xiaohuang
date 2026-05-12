@@ -127,6 +127,8 @@
               </div>
               <div class="multica-assign-workspace-block" id="multica-standalone-assign-block">
                 <button type="button" class="multica-assign-toggle glass-pill" id="btn-toggle-sa">分配已有 Multica Issue</button>
+                <button type="button" class="multica-assign-toggle glass-pill" id="btn-toggle-rr" style="margin-left:4px">查看 Multica 运行记录</button>
+                <div class="multica-assign-workspace-block" id="multica-run-reader-block">
                 <div class="multica-standalone-assign-panel" data-multica-standalone-assign-panel id="sa-panel" style="display:none">
                   <p class="multica-assign-blurb">用于分配已经存在的 Multica issue。小黄不会读取 runs/run-messages，也不会额外启动本地 Agent。</p>
                   <label>Issue ID / Identifier
@@ -155,6 +157,27 @@
                   </div>
                   <div data-sa-result hidden></div>
                 </div>
+                <div class="multica-standalone-assign-panel" data-multica-run-reader-panel id="rr-panel" style="display:none">
+                  <p class="multica-assign-blurb">只读查看 Multica issue 的 runs/run-messages，不会 rerun，不会 assign，不会启动本地 Agent。优先使用 Identifier（例如 HHH-19）。</p>
+                  <label>Issue ID / Identifier
+                    <input type="text" data-rr-issue-id class="glass-input" autocomplete="off" spellcheck="false"
+                      placeholder="例如：HHH-19">
+                  </label>
+                  <button type="button" data-rr-action="read-runs" class="glass-pill">读取 Runs</button>
+                  <div data-rr-runs hidden>
+                    <div data-rr-runs-list></div>
+                  </div>
+                  <div data-rr-messages hidden>
+                    <div class="tasks-history-detail-block-title">运行消息</div>
+                    <div data-rr-messages-list></div>
+                    <div class="tasks-history-detail-block" style="margin-top:10px">
+                      <div class="tasks-history-detail-block-title">验收摘要</div>
+                      <div data-rr-review></div>
+                    </div>
+                  </div>
+                  <div data-rr-status></div>
+                </div>
+              </div>
               </div>
               <div class="text-chat-input-row">
                 <span class="text-chat-model">DeepSeek V4 Flash</span>

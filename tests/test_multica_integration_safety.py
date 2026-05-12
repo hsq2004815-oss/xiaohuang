@@ -7,9 +7,13 @@ from xiaohuang.multica_integration.safety import (
     BLOCKED_COMMAND_KEYS,
     CONFIRMED_ISSUE_ASSIGN_KEY,
     CONFIRMED_ISSUE_CREATE_KEY,
+    CONFIRMED_ISSUE_RUNS_KEY,
+    CONFIRMED_RUN_MESSAGES_KEY,
     ISSUE_CREATE_CONFIRMATION_TEXT,
     build_issue_assign_argv,
     build_issue_create_argv,
+    build_issue_runs_argv,
+    build_run_messages_argv,
     can_assign_issue,
     can_create_issue,
     expected_issue_assign_confirmation,
@@ -18,6 +22,7 @@ from xiaohuang.multica_integration.safety import (
     is_allowed_command,
     is_blocked_command,
     is_safe_issue_id,
+    is_safe_task_id,
     is_supported_assign_agent,
 )
 
@@ -38,8 +43,6 @@ class MulticaIntegrationSafetyTests(unittest.TestCase):
         for key in (
             "issue_create",
             "issue_assign",
-            "issue_runs",
-            "issue_run_messages",
             "daemon_restart",
             "daemon_stop",
         ):
@@ -150,6 +153,58 @@ class MulticaIntegrationSafetyTests(unittest.TestCase):
         self.assertTrue(is_allowed_confirmed_argv(CONFIRMED_ISSUE_ASSIGN_KEY, argv))
         self.assertFalse(is_allowed_confirmed_argv(CONFIRMED_ISSUE_ASSIGN_KEY, ("multica", "issue", "runs", "4e344c98")))
         self.assertFalse(is_allowed_confirmed_argv(CONFIRMED_ISSUE_ASSIGN_KEY, ("multica", "issue", "assign", "4e344c98", "--to", "shell", "--output", "json")))
+
+    def test_issue_runs_not_in_blocked_keys(self):
+        self.assertNotIn("issue_runs", BLOCKED_COMMAND_KEYS)
+        self.assertNotIn("issue_run_messages", BLOCKED_COMMAND_KEYS)
+
+    def test_build_issue_runs_argv_rejects_dangerous_issue_id(self):
+        for issue_id in ("", "78480e61;rm", "HHH-19 && cmd", "http://example.com"):
+            with self.subTest(issue_id=issue_id):
+                with self.assertRaises(ValueError):
+                    build_issue_runs_argv(issue_id=issue_id)
+
+    def test_build_issue_runs_argv_allows_safe_issue_id(self):
+        argv = build_issue_runs_argv(issue_id="HHH-19")
+        self.assertEqual(argv, ("multica", "issue", "runs", "HHH-19", "--output", "json"))
+        self.assertTrue(is_allowed_confirmed_argv(CONFIRMED_ISSUE_RUNS_KEY, argv))
+
+    def test_build_issue_runs_argv_allows_hex_issue_id(self):
+        argv = build_issue_runs_argv(issue_id="78480e61")
+        self.assertTrue(is_allowed_confirmed_argv(CONFIRMED_ISSUE_RUNS_KEY, argv))
+
+    def test_build_run_messages_argv_rejects_dangerous_task_id(self):
+        for task_id in ("", "t1;rm", "t1 && cmd", "t 1"):
+            with self.subTest(task_id=task_id):
+                with self.assertRaises(ValueError):
+                    build_run_messages_argv(task_id=task_id)
+
+    def test_build_run_messages_argv_allows_safe_task_id(self):
+        argv = build_run_messages_argv(task_id="t1")
+        self.assertEqual(argv, ("multica", "issue", "run-messages", "t1", "--output", "json"))
+        self.assertTrue(is_allowed_confirmed_argv(CONFIRMED_RUN_MESSAGES_KEY, argv))
+
+    def test_runs_argv_not_allowed_as_assign(self):
+        runs_argv = build_issue_runs_argv(issue_id="4e344c98")
+        self.assertFalse(is_allowed_confirmed_argv(CONFIRMED_ISSUE_ASSIGN_KEY, runs_argv))
+
+    def test_safe_task_id_same_as_safe_issue_id_for_hex(self):
+        self.assertTrue(is_safe_task_id("78480e61"))
+        self.assertTrue(is_safe_task_id("HHH-19"))
+        self.assertTrue(is_safe_task_id("t1-a2b3c4d5"))
+        self.assertFalse(is_safe_task_id(""))
+        self.assertFalse(is_safe_task_id("t1;whoami"))
+
+    def test_runs_argv_not_shell_true(self):
+        argv = build_issue_runs_argv(issue_id="HHH-19")
+        self.assertIsInstance(argv, tuple)
+        self.assertNotIn("shell", argv)
+
+    def test_run_messages_argv_not_rerun(self):
+        argv = build_run_messages_argv(task_id="t1")
+        self.assertNotIn("rerun", argv)
+        self.assertNotIn("assign", argv)
+        self.assertNotIn("create", argv)
 
 
 if __name__ == "__main__":

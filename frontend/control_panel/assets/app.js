@@ -1395,6 +1395,25 @@
         var visible = panel.style.display !== 'none';
         panel.style.display = visible ? 'none' : '';
         toggleBtn.textContent = visible ? '分配已有 Multica Issue' : '收起 Multica Issue 分配';
+        var rrPanel = $('rr-panel');
+        if (rrPanel) rrPanel.style.display = 'none';
+        var rrToggle = $('btn-toggle-rr');
+        if (rrToggle) rrToggle.textContent = '查看 Multica 运行记录';
+      });
+    }
+
+    var rrToggleBtn = $('btn-toggle-rr');
+    if (rrToggleBtn) {
+      rrToggleBtn.addEventListener('click', function () {
+        var panel = $('rr-panel');
+        if (!panel) return;
+        var visible = panel.style.display !== 'none';
+        panel.style.display = visible ? 'none' : '';
+        rrToggleBtn.textContent = visible ? '查看 Multica 运行记录' : '收起 Multica 运行记录';
+        var saPanel = $('sa-panel');
+        if (saPanel) saPanel.style.display = 'none';
+        var saToggle = $('btn-toggle-sa');
+        if (saToggle) saToggle.textContent = '分配已有 Multica Issue';
       });
     }
 
@@ -1414,6 +1433,128 @@
         if (confirmBtn) confirmBtn.disabled = phraseInput.value.trim() !== expected;
       });
     }
+
+    /* run reader listeners */
+    block.addEventListener('click', function (event) {
+      var btn = event.target.closest('[data-rr-action]');
+      if (!btn) return;
+      event.preventDefault();
+      var action = btn.getAttribute('data-rr-action') || '';
+      if (action === 'read-runs') readRunsForPanel();
+    });
+    var rrPanel = $('rr-panel');
+    if (rrPanel) {
+      rrPanel.addEventListener('click', function (event) {
+        var msgBtn = event.target.closest('[data-rr-read-msgs]');
+        if (!msgBtn) return;
+        event.preventDefault();
+        var taskId = msgBtn.getAttribute('data-rr-read-msgs') || '';
+        if (taskId) readRunMessagesForTask(taskId);
+      });
+    }
+  }
+
+  /* ─── Run reader helpers ─── */
+
+  function getRunReaderIssueId() {
+    var input = document.querySelector('[data-rr-issue-id]');
+    return input ? String(input.value || '').trim() : '';
+  }
+
+  function readRunsForPanel() {
+    var issueId = getRunReaderIssueId();
+    var status = document.querySelector('[data-rr-status]');
+    if (!issueId) {
+      if (status) status.textContent = '请先输入 Issue ID / Identifier。';
+      toast('请先输入 Issue ID / Identifier', 'err');
+      return;
+    }
+    if (status) status.textContent = '正在读取 runs...';
+    var runsDiv = document.querySelector('[data-rr-runs]');
+    if (runsDiv) runsDiv.hidden = true;
+    var msgsDiv = document.querySelector('[data-rr-messages]');
+    if (msgsDiv) msgsDiv.hidden = true;
+
+    apiCall('read_multica_issue_runs', { issue_id: issueId }).then(function (resp) {
+      if (!resp || !resp.ok || !resp.data) {
+        throw new Error((resp && (resp.error || resp.message)) || '读取 runs 失败');
+      }
+      renderRunsList(resp.data);
+      if (status) status.textContent = resp.message || 'runs 读取完成';
+    }).catch(function (err) {
+      if (status) status.textContent = '读取失败：' + ((err && err.message) || err);
+      toast('读取 Multica runs 失败', 'err');
+    });
+  }
+
+  function renderRunsList(data) {
+    var runs = (data && data.runs) ? data.runs : [];
+    var runsDiv = document.querySelector('[data-rr-runs]');
+    var list = document.querySelector('[data-rr-runs-list]');
+    if (!runsDiv || !list) return;
+    runsDiv.hidden = false;
+    if (!runs.length) {
+      list.innerHTML = '<p style="font-size:11px;color:var(--text-muted)">未找到运行记录。</p>';
+      return;
+    }
+    var html = '';
+    runs.forEach(function (run) {
+      var taskId = run.task_id || run.run_id || '';
+      var title = run.title || taskId || '--';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--rim,rgba(255,255,255,0.06));gap:8px">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:11px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(title) + '</div>' +
+          '<div style="font-size:10px;color:var(--text-muted)">' +
+            escapeHtml(run.task_id || '') + ' · ' + escapeHtml(run.status || '--') + ' · ' + escapeHtml(run.agent || '--') +
+          '</div>' +
+        '</div>' +
+        (taskId ? '<button type="button" data-rr-read-msgs="' + escapeHtml(taskId) + '" class="glass-pill" style="font-size:10px;padding:3px 8px;flex-shrink:0">读取消息</button>' : '') +
+      '</div>';
+    });
+    list.innerHTML = html;
+  }
+
+  function readRunMessagesForTask(taskId) {
+    var status = document.querySelector('[data-rr-status]');
+    if (status) status.textContent = '正在读取消息...';
+    var msgsDiv = document.querySelector('[data-rr-messages]');
+    if (msgsDiv) msgsDiv.hidden = true;
+
+    apiCall('read_multica_run_messages', { task_id: taskId }).then(function (resp) {
+      if (!resp || !resp.ok || !resp.data) {
+        throw new Error((resp && (resp.error || resp.message)) || '读取 run-messages 失败');
+      }
+      renderRunMessages(resp.data);
+      if (status) status.textContent = resp.message || 'run-messages 读取完成';
+    }).catch(function (err) {
+      if (status) status.textContent = '读取失败：' + ((err && err.message) || err);
+      toast('读取 Multica run-messages 失败', 'err');
+    });
+  }
+
+  function renderRunMessages(data) {
+    var msgsDiv = document.querySelector('[data-rr-messages]');
+    var list = document.querySelector('[data-rr-messages-list]');
+    var review = document.querySelector('[data-rr-review]');
+    if (!msgsDiv || !list) return;
+    msgsDiv.hidden = false;
+    var messages = (data && data.messages) ? data.messages : [];
+    if (!messages.length) {
+      list.innerHTML = '<p style="font-size:11px;color:var(--text-muted)">未找到运行消息。</p>';
+    } else {
+      var html = '';
+      messages.forEach(function (m) {
+        html += '<div style="padding:6px 8px;margin-bottom:4px;border-radius:6px;background:var(--fill-card-secondary,rgba(255,255,255,0.04));font-size:10px">' +
+          '<div style="display:flex;gap:8px;margin-bottom:3px">' +
+            '<span style="font-weight:600;color:var(--text-muted)">' + escapeHtml(m.role || m.author || '--') + '</span>' +
+            '<span style="color:var(--text-muted)">' + escapeHtml(m.created_at || '') + '</span>' +
+          '</div>' +
+          '<div style="color:var(--text-secondary);line-height:1.45;white-space:pre-wrap;word-break:break-word">' + escapeHtml(m.content || '') + '</div>' +
+        '</div>';
+      });
+      list.innerHTML = html;
+    }
+    if (review) review.textContent = data.review_summary || '';
   }
 
   function splitCommaList(text) {

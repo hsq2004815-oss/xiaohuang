@@ -330,6 +330,36 @@ class ControlPanelWebApi:
         except Exception:
             return _fail("分配 Multica issue 失败", "multica_issue_assign_error")
 
+    def read_multica_issue_runs(self, payload: dict | None = None) -> dict:
+        try:
+            data = payload if isinstance(payload, dict) else {}
+            issue_id = str(data.get("issue_id") or "")
+            from xiaohuang.multica_integration.run_reader_service import read_issue_runs
+            result = read_issue_runs(issue_id=issue_id)
+            if not result.ok:
+                return _fail(
+                    result.message or "读取 Multica runs 失败。",
+                    result.error_code or "multica_runs_error",
+                )
+            return _ok(data=result.to_dict(), message=result.message or "Multica runs 读取完成")
+        except Exception:
+            return _fail("读取 Multica runs 失败", "multica_runs_error")
+
+    def read_multica_run_messages(self, payload: dict | None = None) -> dict:
+        try:
+            data = payload if isinstance(payload, dict) else {}
+            task_id = str(data.get("task_id") or "")
+            from xiaohuang.multica_integration.run_reader_service import read_run_messages
+            result = read_run_messages(task_id=task_id)
+            if not result.ok:
+                return _fail(
+                    result.message or "读取 Multica run-messages 失败。",
+                    result.error_code or "multica_run_messages_error",
+                )
+            return _ok(data=result.to_dict(), message=result.message or "Multica run-messages 读取完成")
+        except Exception:
+            return _fail("读取 Multica run-messages 失败", "multica_run_messages_error")
+
     def open_text_chat_window(self) -> dict:
         return _ok(
             data={"view": "text-chat", "same_window": True},
