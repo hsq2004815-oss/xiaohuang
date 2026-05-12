@@ -102,6 +102,30 @@ class MulticaIssueAssignServiceTests(unittest.TestCase):
         self.assertNotIn("run-messages", argv)
         self.assertNotIn("rerun", argv)
 
+    def test_confirmed_assign_accepts_identifier_issue_id(self):
+        calls = []
+
+        def fake_run(argv, **kwargs):
+            calls.append(argv)
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='{"identifier":"HHH-19","assignee":"claude","status":"todo"}',
+                stderr="",
+            )
+
+        result = assign_issue_to_agent(
+            issue_id="HHH-19",
+            agent="claude",
+            confirmed=True,
+            confirmation_text="ASSIGN HHH-19 TO claude",
+            runner=fake_run,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertTrue(result.assigned)
+        self.assertEqual(calls[0], ["multica", "issue", "assign", "HHH-19", "--to", "claude", "--output", "json"])
+
     def test_non_json_stdout_returns_raw_summary_without_crashing(self):
         def fake_run(argv, **kwargs):
             return subprocess.CompletedProcess(argv, 0, stdout="assigned HHH-18 to codex", stderr="")

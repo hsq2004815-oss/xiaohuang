@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-12）— V1.5-C5F.1 Issue ID Fallback and Assign Existing Issue
+
+- Purpose: Fix C5F acceptance blocker where Multica create succeeded but XiaoHuang could not recover an assignable issue id.
+- Key files: `src/xiaohuang/multica_integration/issue_create_service.py`, `models.py`, `safety.py`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_multica_integration_issue_create_service.py`, related assign/safety/control-panel tests.
+- Last completed:
+  1. `MulticaIssueCreateResult` now carries `identifier`.
+  2. Create parsing handles JSON `id` / `identifier`, nested `issue` / `data` / `result`, table/text hex ids like `78480e61`, and identifiers like `HHH-19`.
+  3. If create succeeds but no id can be parsed, the result stays `created=True` with a warning telling the user to manually enter an existing issue id.
+  4. Control panel assign UI now exposes an `Issue ID / Identifier` fallback input and still requires exact `ASSIGN <issue_id> TO <agent>` confirmation through backend safety.
+  5. No automatic assign, no runs/run-messages, no local Agent startup, and no external project or `E:\DataBase` writes were added.
+- Verification: focused Multica create/assign/safety/CLI/control-panel tests, full `compileall`, full unittest discovery, help commands, and `git diff --check`.
+- Known traps: Manual issue ids are UI input only; backend `issue_assign_service` and `safety.py` remain the enforcement boundary.
+
 ## Current Snapshot（2026-05-12）— V1.5-C5F Confirmed Multica Assign Agent
 
 - Purpose: Add confirmed Multica issue assignment after real issue creation, without auto-running or reading execution records.

@@ -602,6 +602,7 @@ select.glass-input{cursor:pointer}
 .multica-assign-panel{
   margin-top:9px;padding-top:8px;border-top:1px solid rgba(22,101,52,0.14);display:grid;gap:8px
 }
+.multica-assign-panel>p{margin:0;color:#92400e;font-weight:800;line-height:1.45}
 .multica-assign-panel label{display:grid;gap:5px;font-weight:900;color:var(--text-muted)}
 .multica-assign-panel select,.multica-assign-panel input{
   min-height:34px;border-radius:9px;border:1px solid rgba(79,110,246,0.18);padding:6px 9px;

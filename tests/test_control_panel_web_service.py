@@ -297,6 +297,7 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
             ok=True,
             created=True,
             issue_id="iss_123",
+            identifier="HHH-19",
             title="C5E test",
             status="todo",
             warnings=("未分配 Agent",),
@@ -317,6 +318,7 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["data"]["created"])
         self.assertEqual(result["data"]["issue_id"], "iss_123")
+        self.assertEqual(result["data"]["identifier"], "HHH-19")
         self.assertEqual(mock_create.call_args.kwargs["confirmation_text"], "CREATE_MULTICA_ISSUE")
 
     def test_assign_multica_issue_to_agent_requires_confirmation(self):
@@ -1393,6 +1395,11 @@ class V13UIFrontendStructureTests(unittest.TestCase):
             "create_multica_issue_from_draft",
             "准备分配 Agent",
             "确认分配 Agent",
+            "未自动返回 Issue ID",
+            "手动输入已有 Multica issue id",
+            "Issue ID / Identifier",
+            "例如：78480e61 或 HHH-19",
+            "Identifier",
             "ASSIGN",
             "claude",
             "codex",

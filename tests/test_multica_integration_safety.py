@@ -109,9 +109,19 @@ class MulticaIntegrationSafetyTests(unittest.TestCase):
         self.assertTrue(can_assign_issue(issue_id="4e344c98", agent="claude", confirmed=True, confirmation_text="ASSIGN 4e344c98 TO claude"))
 
     def test_build_issue_assign_argv_rejects_dangerous_values(self):
-        for issue_id in ("", "4e344c98;whoami", "E:\\Projects\\x", "https://example.com", "HHH 18"):
+        for issue_id in (
+            "",
+            "78480e61;rm",
+            "4e344c98;whoami",
+            "HHH-19 && cmd",
+            "E:\\Projects\\xiaohuang",
+            "http://example.com",
+            "https://example.com",
+            "HHH 18",
+            "带空格",
+        ):
             self.assertFalse(is_safe_issue_id(issue_id), issue_id)
-        for issue_id in ("4e344c98", "HHH-18"):
+        for issue_id in ("4e344c98", "78480e61", "HHH-18", "HHH-19"):
             self.assertTrue(is_safe_issue_id(issue_id), issue_id)
         with self.assertRaises(ValueError):
             build_issue_assign_argv(

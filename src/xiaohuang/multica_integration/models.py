@@ -111,6 +111,7 @@ class MulticaIssueCreateResult:
     ok: bool
     created: bool = False
     issue_id: str = ""
+    identifier: str = ""
     title: str = ""
     status: str = ""
     assignee: str = ""
@@ -124,6 +125,7 @@ class MulticaIssueCreateResult:
             "ok": self.ok,
             "created": self.created,
             "issue_id": self.issue_id,
+            "identifier": self.identifier,
             "title": self.title,
             "status": self.status,
             "assignee": self.assignee,

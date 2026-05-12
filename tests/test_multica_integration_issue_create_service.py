@@ -99,8 +99,175 @@ class MulticaIssueCreateServiceTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertTrue(result.created)
+        self.assertEqual(result.issue_id, "ISS-1")
+        self.assertEqual(result.identifier, "ISS-1")
         self.assertEqual(result.raw_summary, "created issue ISS-1")
         self.assertIn("非 JSON", " ".join(result.warnings))
+
+    def test_json_top_level_id_and_identifier_are_parsed(self):
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='{"id":"78480e61","identifier":"HHH-19","title":"C5F","status":"todo"}',
+                stderr="",
+            )
+
+        result = create_issue_from_draft(
+            title="C5F",
+            description="desc",
+            confirmed=True,
+            confirmation_text="CREATE_MULTICA_ISSUE",
+            runner=fake_run,
+        )
+
+        self.assertEqual(result.issue_id, "78480e61")
+        self.assertEqual(result.identifier, "HHH-19")
+        self.assertEqual(result.status, "todo")
+
+    def test_json_issue_payload_id_is_parsed(self):
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='{"issue":{"id":"78480e61","identifier":"HHH-19","title":"C5F"}}',
+                stderr="",
+            )
+
+        result = create_issue_from_draft(
+            title="fallback",
+            description="desc",
+            confirmed=True,
+            confirmation_text="CREATE_MULTICA_ISSUE",
+            runner=fake_run,
+        )
+
+        self.assertEqual(result.issue_id, "78480e61")
+        self.assertEqual(result.identifier, "HHH-19")
+        self.assertEqual(result.title, "C5F")
+
+    def test_json_data_payload_id_is_parsed(self):
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='{"data":{"id":"78480e61","identifier":"HHH-19"}}',
+                stderr="",
+            )
+
+        result = create_issue_from_draft(
+            title="C5F",
+            description="desc",
+            confirmed=True,
+            confirmation_text="CREATE_MULTICA_ISSUE",
+            runner=fake_run,
+        )
+
+        self.assertEqual(result.issue_id, "78480e61")
+        self.assertEqual(result.identifier, "HHH-19")
+
+    def test_json_result_payload_id_is_parsed(self):
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='{"result":{"id":"78480e61","identifier":"HHH-19"}}',
+                stderr="",
+            )
+
+        result = create_issue_from_draft(
+            title="C5F",
+            description="desc",
+            confirmed=True,
+            confirmation_text="CREATE_MULTICA_ISSUE",
+            runner=fake_run,
+        )
+
+        self.assertEqual(result.issue_id, "78480e61")
+        self.assertEqual(result.identifier, "HHH-19")
+
+    def test_json_identifier_only_can_be_used_as_issue_id(self):
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout='{"identifier":"HHH-19","title":"C5F","status":"todo"}',
+                stderr="",
+            )
+
+        result = create_issue_from_draft(
+            title="fallback",
+            description="desc",
+            confirmed=True,
+            confirmation_text="CREATE_MULTICA_ISSUE",
+            runner=fake_run,
+        )
+
+        self.assertEqual(result.issue_id, "HHH-19")
+        self.assertEqual(result.identifier, "HHH-19")
+
+    def test_non_json_table_prefers_hex_id_and_keeps_identifier(self):
+        stdout = "ID        IDENTIFIER  TITLE  STATUS\n78480e61  HHH-19      C5F    todo"
+
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+        result = create_issue_from_draft(
+            title="C5F",
+            description="desc",
+            confirmed=True,
+            confirmation_text="CREATE_MULTICA_ISSUE",
+            runner=fake_run,
+        )
+
+        self.assertEqual(result.issue_id, "78480e61")
+        self.assertEqual(result.identifier, "HHH-19")
+
+    def test_non_json_created_issue_hex_id_is_parsed(self):
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 0, stdout="Created issue 78480e61", stderr="")
+
+        result = create_issue_from_draft(
+            title="C5F",
+            description="desc",
+            confirmed=True,
+            confirmation_text="CREATE_MULTICA_ISSUE",
+            runner=fake_run,
+        )
+
+        self.assertEqual(result.issue_id, "78480e61")
+
+    def test_non_json_identifier_only_can_be_used_as_issue_id(self):
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 0, stdout="Created HHH-19", stderr="")
+
+        result = create_issue_from_draft(
+            title="C5F",
+            description="desc",
+            confirmed=True,
+            confirmation_text="CREATE_MULTICA_ISSUE",
+            runner=fake_run,
+        )
+
+        self.assertEqual(result.issue_id, "HHH-19")
+        self.assertEqual(result.identifier, "HHH-19")
+
+    def test_unparseable_stdout_warns_for_manual_issue_id_entry(self):
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 0, stdout="Created successfully", stderr="")
+
+        result = create_issue_from_draft(
+            title="C5F",
+            description="desc",
+            confirmed=True,
+            confirmation_text="CREATE_MULTICA_ISSUE",
+            runner=fake_run,
+        )
+
+        self.assertTrue(result.ok)
+        self.assertTrue(result.created)
+        self.assertEqual(result.issue_id, "")
+        self.assertIn("手动输入已有 issue id", " ".join(result.warnings))
 
     def test_nonzero_returncode_returns_structured_error(self):
         def fake_run(argv, **kwargs):

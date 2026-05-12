@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from xiaohuang.multica_integration.cli_client import Runner, run_multica_argv
@@ -17,6 +18,9 @@ from xiaohuang.multica_integration.safety import (
 
 _MAX_RAW_SUMMARY_CHARS = 1200
 _UNASSIGNED_WARNING = "已创建 issue，但未分配 Agent；C5F 才会在二次确认后执行 assign。"
+_MANUAL_ISSUE_ID_WARNING = "未能自动解析 Issue ID，请手动输入已有 issue id 后再分配 Agent。"
+_HEX_ISSUE_ID_RE = re.compile(r"\b[0-9a-fA-F]{7,12}\b")
+_IDENTIFIER_RE = re.compile(r"\b[A-Z][A-Z0-9]{1,15}-\d+\b", re.IGNORECASE)
 
 
 def create_issue_from_draft(
@@ -81,9 +85,14 @@ def _parse_create_result(stdout: str, *, fallback_title: str) -> MulticaIssueCre
     try:
         data = json.loads(str(stdout or "{}"))
     except json.JSONDecodeError:
+        issue_id, identifier = _parse_issue_refs(stdout)
+        if not issue_id:
+            warnings = warnings + (_MANUAL_ISSUE_ID_WARNING,)
         return MulticaIssueCreateResult(
             ok=True,
             created=True,
+            issue_id=issue_id,
+            identifier=identifier,
             title=fallback_title,
             raw_summary=raw_summary,
             warnings=warnings + ("Multica 返回非 JSON；已保留原始摘要。",),
@@ -92,16 +101,23 @@ def _parse_create_result(stdout: str, *, fallback_title: str) -> MulticaIssueCre
 
     issue = _issue_payload(data)
     issue_id = _first_text(issue, ("id", "issue_id", "uuid", "key"))
+    identifier = _first_text(issue, ("identifier",))
+    fallback_issue_id, fallback_identifier = _parse_issue_refs(stdout)
+    issue_id = issue_id or identifier or fallback_issue_id or fallback_identifier
+    identifier = identifier or fallback_identifier
     title = _first_text(issue, ("title", "name", "summary")) or fallback_title
     status = _first_text(issue, ("status", "state"))
     assignee = _first_text(issue, ("assignee", "assigned_to"))
     if isinstance(issue.get("assignee"), dict):
         assignee = _first_text(issue["assignee"], ("name", "id"))
+    if not issue_id:
+        warnings = warnings + (_MANUAL_ISSUE_ID_WARNING,)
 
     return MulticaIssueCreateResult(
         ok=True,
         created=True,
         issue_id=issue_id,
+        identifier=identifier,
         title=title,
         status=status,
         assignee=assignee,
@@ -130,6 +146,17 @@ def _first_text(data: dict[str, Any], keys: tuple[str, ...]) -> str:
         if text:
             return text
     return ""
+
+
+def _parse_issue_refs(text: str) -> tuple[str, str]:
+    value = str(text or "")
+    hex_match = _HEX_ISSUE_ID_RE.search(value)
+    identifier_match = _IDENTIFIER_RE.search(value)
+    issue_id = hex_match.group(0) if hex_match else ""
+    identifier = identifier_match.group(0) if identifier_match else ""
+    if not issue_id and identifier:
+        issue_id = identifier
+    return issue_id, identifier
 
 
 def _compact_raw(text: str) -> str:

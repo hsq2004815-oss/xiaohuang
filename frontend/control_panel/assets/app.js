@@ -1156,6 +1156,7 @@
     box.hidden = false;
     box.innerHTML = '<strong>Multica issue 已创建</strong>' +
       '<div>Issue ID: <code>' + escapeHtml(result.issue_id || '未返回') + '</code></div>' +
+      '<div>Identifier: <code>' + escapeHtml(result.identifier || '--') + '</code></div>' +
       '<div>标题: ' + escapeHtml(result.title || '--') + '</div>' +
       '<div>状态: ' + escapeHtml(result.status || '--') + '</div>' +
       '<div>未分配 Agent</div>' +
@@ -1166,8 +1167,16 @@
 
   function renderMulticaIssueAssignPanel(result) {
     var issueId = result && result.issue_id ? String(result.issue_id) : '';
-    if (!issueId) return '<p>未返回 Issue ID，不能分配 Agent。</p>';
+    var identifier = result && result.identifier ? String(result.identifier) : '';
+    var suggestedIssueId = issueId || identifier;
+    var fallbackHint = issueId ? '' :
+      '<p>未自动返回 Issue ID。你可以手动输入已有 Multica issue id 或 identifier 后继续分配。</p>';
     return '<div class="multica-assign-panel" data-multica-assign-panel>' +
+      fallbackHint +
+      '<label>Issue ID / Identifier' +
+        '<input type="text" data-multica-assign-issue-id autocomplete="off" spellcheck="false"' +
+          ' placeholder="例如：78480e61 或 HHH-19" value="' + escapeHtml(suggestedIssueId) + '">' +
+      '</label>' +
       '<label>Agent' +
         '<select data-multica-assign-agent>' +
           '<option value="claude">claude</option>' +
@@ -1191,8 +1200,8 @@
   }
 
   function prepareMulticaIssueAssign(panel) {
-    var created = getPanelCreateResult(panel);
-    var issueId = created && created.issue_id ? String(created.issue_id) : '';
+    var issueId = getAssignIssueId(panel);
+    var issueInput = panel.querySelector('[data-multica-assign-issue-id]');
     var agentSelect = panel.querySelector('[data-multica-assign-agent]');
     var agent = agentSelect ? agentSelect.value : '';
     var confirmBox = panel.querySelector('[data-multica-assign-confirm]');
@@ -1201,26 +1210,28 @@
     var confirmButton = panel.querySelector('[data-multica-draft="confirm-assign"]');
     var status = panel.querySelector('[data-multica-assign-status]');
     if (!issueId) {
-      toast('缺少 Issue ID，不能分配 Agent', 'err');
+      if (status) status.textContent = '请先输入已有 Multica issue id 或 identifier。';
+      toast('请先输入 Issue ID / Identifier', 'err');
       return Promise.resolve();
     }
     var expected = buildAssignConfirmation(issueId, agent);
     if (confirmBox) confirmBox.hidden = false;
     if (expectedEl) expectedEl.textContent = expected;
-    if (agentSelect) {
-      agentSelect.onchange = function () {
-        expected = buildAssignConfirmation(issueId, agentSelect.value);
-        if (expectedEl) expectedEl.textContent = expected;
-        if (phrase) phrase.value = '';
-        if (confirmButton) confirmButton.disabled = true;
-        if (status) status.textContent = 'Agent 已变更，请重新输入精确确认短语。';
-      };
-    }
+    var resetExpected = function (reason) {
+      issueId = getAssignIssueId(panel);
+      expected = buildAssignConfirmation(issueId, agentSelect ? agentSelect.value : '');
+      if (expectedEl) expectedEl.textContent = expected;
+      if (phrase) phrase.value = '';
+      if (confirmButton) confirmButton.disabled = true;
+      if (status) status.textContent = reason || '请重新输入精确确认短语。';
+    };
+    if (agentSelect) agentSelect.onchange = function () { resetExpected('Agent 已变更，请重新输入精确确认短语。'); };
+    if (issueInput) issueInput.oninput = function () { resetExpected('Issue ID / Identifier 已变更，请重新输入精确确认短语。'); };
     if (phrase) {
       phrase.value = '';
       phrase.focus();
       phrase.oninput = function () {
-        if (confirmButton) confirmButton.disabled = phrase.value.trim() !== expected;
+        if (confirmButton) confirmButton.disabled = !getAssignIssueId(panel) || phrase.value.trim() !== expected;
       };
     }
     if (confirmButton) confirmButton.disabled = true;
@@ -1230,8 +1241,7 @@
   }
 
   function confirmMulticaIssueAssign(btn, panel) {
-    var created = getPanelCreateResult(panel);
-    var issueId = created && created.issue_id ? String(created.issue_id) : '';
+    var issueId = getAssignIssueId(panel);
     var agentSelect = panel.querySelector('[data-multica-assign-agent]');
     var agent = agentSelect ? agentSelect.value : '';
     var phrase = panel.querySelector('[data-multica-assign-phrase]');
@@ -1279,6 +1289,13 @@
 
   function buildAssignConfirmation(issueId, agent) {
     return 'ASSIGN ' + String(issueId || '').trim() + ' TO ' + String(agent || '').trim();
+  }
+
+  function getAssignIssueId(panel) {
+    var input = panel ? panel.querySelector('[data-multica-assign-issue-id]') : null;
+    if (input) return String(input.value || '').trim();
+    var created = getPanelCreateResult(panel);
+    return created && created.issue_id ? String(created.issue_id).trim() : '';
   }
 
   function splitCommaList(text) {
