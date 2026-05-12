@@ -93,3 +93,42 @@ class MulticaIssueDraft:
             "error_code": self.error_code,
             "message": self.message,
         }
+
+
+@dataclass(frozen=True)
+class MulticaIssueCreateRequest:
+    title: str
+    description: str
+    assignee: str = ""
+    priority: str = ""
+    project: str = ""
+    confirmed: bool = False
+    confirmation_text: str = ""
+
+
+@dataclass(frozen=True)
+class MulticaIssueCreateResult:
+    ok: bool
+    created: bool = False
+    issue_id: str = ""
+    title: str = ""
+    status: str = ""
+    assignee: str = ""
+    raw_summary: str = ""
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+    error_code: str = ""
+    message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "created": self.created,
+            "issue_id": self.issue_id,
+            "title": self.title,
+            "status": self.status,
+            "assignee": self.assignee,
+            "raw_summary": self.raw_summary,
+            "warnings": list(self.warnings),
+            "error_code": self.error_code,
+            "message": self.message,
+        }

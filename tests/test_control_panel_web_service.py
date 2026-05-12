@@ -277,6 +277,48 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "missing_handoff_prompt")
 
+    def test_create_multica_issue_from_draft_requires_confirmation(self):
+        api = ControlPanelWebApi(config_path=self.config_path)
+        result = api.create_multica_issue_from_draft({
+            "title": "C5E test",
+            "description": "desc",
+            "confirmed": False,
+            "confirmation_text": "",
+        })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "confirmation_required")
+        self.assertIn("二次确认", result["error"])
+
+    def test_create_multica_issue_from_draft_success_returns_data(self):
+        from xiaohuang.multica_integration.models import MulticaIssueCreateResult
+
+        create_result = MulticaIssueCreateResult(
+            ok=True,
+            created=True,
+            issue_id="iss_123",
+            title="C5E test",
+            status="todo",
+            warnings=("未分配 Agent",),
+            message="Multica issue 已创建；未分配 Agent。",
+        )
+        with patch(
+            "xiaohuang.multica_integration.issue_create_service.create_issue_from_draft",
+            return_value=create_result,
+        ) as mock_create:
+            api = ControlPanelWebApi(config_path=self.config_path)
+            result = api.create_multica_issue_from_draft({
+                "title": "C5E test",
+                "description": "desc",
+                "confirmed": True,
+                "confirmation_text": "CREATE_MULTICA_ISSUE",
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["data"]["created"])
+        self.assertEqual(result["data"]["issue_id"], "iss_123")
+        self.assertEqual(mock_create.call_args.kwargs["confirmation_text"], "CREATE_MULTICA_ISSUE")
+
     def test_send_text_message_returns_data(self):
         fake = TextInteractionResult(
             ok=True,
@@ -1240,6 +1282,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
     def test_control_panel_web_service_has_no_direct_subprocess_use_for_multica(self):
         source = self._read("src/xiaohuang/control_panel_web_service.py")
         self.assertIn("xiaohuang.multica_integration.status_service", source)
+        self.assertIn("xiaohuang.multica_integration.issue_create_service", source)
         self.assertNotIn("subprocess", source)
         self.assertNotIn("cli_client", source)
         self.assertNotIn("multica issue", source)
@@ -1256,12 +1299,20 @@ class V13UIFrontendStructureTests(unittest.TestCase):
             "下载草稿 .md",
             "仅草稿，未创建 issue，未分配 Agent",
             "build_multica_issue_draft",
+            "准备创建 Issue",
+            "CREATE_MULTICA_ISSUE",
+            "确认创建 Issue",
+            "将创建真实 Multica issue",
+            "不会分配 Agent",
+            "不会启动 Claude/Codex/opencode/OpenClaw",
+            "create_multica_issue_from_draft",
         ):
             self.assertIn(text, js)
         self.assertIn(".multica-draft-panel", css)
-        self.assertNotIn("创建 Issue", js)
         self.assertNotIn("分配给 Claude", js)
-        self.assertNotIn("运行 Agent", js)
+        self.assertNotIn("创建并运行", js)
+        self.assertNotIn("创建并分配 Claude", js)
+        self.assertNotIn("自动派发", js)
 
     def test_js_has_chinese_status_text(self):
         js = self._read("frontend/control_panel/assets/app.js")

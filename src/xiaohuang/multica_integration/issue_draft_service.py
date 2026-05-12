@@ -81,7 +81,6 @@ def build_issue_draft_from_handoff(
     command_preview = _build_command_preview(
         title=title,
         description=description,
-        default_assignee=default_assignee,
         warnings=warnings,
     )
     markdown = _build_markdown(
@@ -186,7 +185,6 @@ def _build_command_preview(
     *,
     title: str,
     description: str,
-    default_assignee: str,
     warnings: list[str],
 ) -> str:
     description_arg = description
@@ -197,7 +195,6 @@ def _build_command_preview(
         "multica issue create",
         "--title", _ps_quote(title),
         "--description", _ps_quote(description_arg),
-        "--assignee", _ps_quote(default_assignee),
         "--output json",
     ])
 

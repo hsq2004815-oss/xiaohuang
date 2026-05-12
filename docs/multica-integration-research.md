@@ -190,22 +190,29 @@ C5D.1 不新增 `issue_create_service.py` 的真实创建逻辑，不新增 assi
 
 ### C5E: Multica Issue Create with Explicit Confirmation
 
-在用户二次确认后执行：
+在用户查看 draft 后，必须输入确认短语 `CREATE_MULTICA_ISSUE` 并触发二次确认，才允许执行真实创建：
 
 ```powershell
 multica issue create --title <title> --description <handoff_prompt> --output json
 ```
 
-如果用户已明确选择 assignee，可以同一次带 `--assignee <agent>`，否则只创建 issue。
+C5E 默认不传 `--assignee`。创建 issue 不等于 assign Agent，也不启动 Claude/Codex/opencode/OpenClaw；C5F 再通过独立二次确认处理 assign。
+
+模块边界：
+
+- `issue_create_service.py` 只负责 confirmed issue create。
+- `safety.py` 保持普通 `issue_create` blocked，只允许 `confirmed_issue_create` 通过专用 confirmation gate 和结构化 argv builder。
+- `cli_client.py` 只执行由安全层构造并校验过的参数列表，继续使用 `shell=False`、timeout、stdout/stderr 限长和 secret redaction。
+- `control_panel_web_service.py` 只做薄 API 包装，不直接调用 subprocess，不拼 Multica 命令。
+- 前端只收集用户确认短语并传 title/description，不允许传 argv。
 
 创建成功后只记录：
 
 - issue id
 - title
-- assignee
-- created_at
-- source handoff path
-- target project path
+- status
+- raw summary
+- 未分配 Agent warning
 
 ### C5F: Multica Assign Agent with Explicit Confirmation
 

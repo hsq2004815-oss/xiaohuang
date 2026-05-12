@@ -286,6 +286,29 @@ class ControlPanelWebApi:
         except Exception:
             return _fail("生成 Multica issue 草稿失败", "multica_issue_draft_error")
 
+    def create_multica_issue_from_draft(self, payload: dict | None = None) -> dict:
+        try:
+            data = payload if isinstance(payload, dict) else {}
+            from xiaohuang.multica_integration.issue_create_service import (
+                create_issue_from_draft,
+            )
+            result = create_issue_from_draft(
+                title=str(data.get("title") or ""),
+                description=str(data.get("description") or ""),
+                confirmed=bool(data.get("confirmed", False)),
+                confirmation_text=str(data.get("confirmation_text") or ""),
+                priority=str(data.get("priority") or ""),
+                project=str(data.get("project") or ""),
+            )
+            if not result.ok:
+                return _fail(
+                    result.message or "Multica issue 创建失败。",
+                    result.error_code or "multica_issue_create_error",
+                )
+            return _ok(data=result.to_dict(), message=result.message or "Multica issue 已创建")
+        except Exception:
+            return _fail("创建 Multica issue 失败", "multica_issue_create_error")
+
     def open_text_chat_window(self) -> dict:
         return _ok(
             data={"view": "text-chat", "same_window": True},

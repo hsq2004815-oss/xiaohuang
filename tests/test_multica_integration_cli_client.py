@@ -5,6 +5,8 @@ import unittest
 
 from xiaohuang.multica_integration.cli_client import MAX_STREAM_CHARS
 from xiaohuang.multica_integration.cli_client import run_multica_command
+from xiaohuang.multica_integration.cli_client import run_multica_argv
+from xiaohuang.multica_integration.safety import CONFIRMED_ISSUE_CREATE_KEY
 
 
 class MulticaIntegrationCliClientTests(unittest.TestCase):
@@ -89,7 +91,46 @@ class MulticaIntegrationCliClientTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.error_code, "rejected_command")
 
+    def test_runs_confirmed_issue_create_argv_with_safe_subprocess_options(self):
+        calls = []
+        argv = (
+            "multica",
+            "issue",
+            "create",
+            "--title",
+            "C5E test",
+            "--description",
+            "desc",
+            "--output",
+            "json",
+        )
+
+        def fake_run(run_argv, **kwargs):
+            calls.append((run_argv, kwargs))
+            return subprocess.CompletedProcess(run_argv, 0, stdout='{"id":"iss_1"}', stderr="")
+
+        result = run_multica_argv(CONFIRMED_ISSUE_CREATE_KEY, argv, timeout=5, runner=fake_run)
+
+        self.assertTrue(result.ok)
+        run_argv, kwargs = calls[0]
+        self.assertEqual(run_argv, list(argv))
+        self.assertFalse(kwargs["shell"])
+        self.assertEqual(kwargs["timeout"], 5)
+        self.assertTrue(kwargs["capture_output"])
+
+    def test_rejects_unknown_confirmed_argv_before_runner(self):
+        def fake_run(argv, **kwargs):
+            raise AssertionError("runner should not be called")
+
+        result = run_multica_argv(
+            CONFIRMED_ISSUE_CREATE_KEY,
+            ("multica", "issue", "assign", "iss_1", "--to", "claude"),
+            runner=fake_run,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error_code, "rejected_command")
+
 
 if __name__ == "__main__":
     unittest.main()
-

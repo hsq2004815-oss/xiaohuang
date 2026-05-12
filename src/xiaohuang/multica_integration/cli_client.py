@@ -1,4 +1,4 @@
-"""Safe readonly Multica CLI client."""
+"""Safe Multica CLI client with readonly and confirmed command paths."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from typing import Callable, Sequence
 
 from xiaohuang.multica_integration.models import MulticaCommandResult
 from xiaohuang.multica_integration.safety import get_command_argv
+from xiaohuang.multica_integration.safety import is_allowed_confirmed_argv
 from xiaohuang.multica_integration.safety import is_allowed_command
 
 DEFAULT_TIMEOUT_SECONDS = 8.0
@@ -91,6 +92,76 @@ def run_multica_command(
     )
 
 
+def run_multica_argv(
+    command_key: str,
+    argv: Sequence[str],
+    *,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    runner: Runner | None = None,
+) -> MulticaCommandResult:
+    key = str(command_key or "")
+    command_argv = tuple(str(item or "") for item in argv)
+    if not is_allowed_confirmed_argv(key, command_argv):
+        return MulticaCommandResult(
+            ok=False,
+            command_key=key,
+            returncode=-1,
+            error_code="rejected_command",
+            message="Multica command argv is not allowed.",
+        )
+
+    run = runner or subprocess.run
+    try:
+        completed = run(
+            list(command_argv),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            shell=False,
+        )
+    except FileNotFoundError:
+        return MulticaCommandResult(
+            ok=False,
+            command_key=key,
+            returncode=-1,
+            error_code="multica_not_found",
+            message="未找到 multica CLI。",
+        )
+    except subprocess.TimeoutExpired as exc:
+        return MulticaCommandResult(
+            ok=False,
+            command_key=key,
+            returncode=-1,
+            stdout=_sanitize_stream(exc.stdout),
+            stderr=_sanitize_stream(exc.stderr),
+            error_code="multica_timeout",
+            message="Multica command timed out.",
+        )
+    except OSError as exc:
+        return MulticaCommandResult(
+            ok=False,
+            command_key=key,
+            returncode=-1,
+            error_code="multica_command_failed",
+            message=str(exc),
+        )
+
+    stdout = _sanitize_stream(completed.stdout)
+    stderr = _sanitize_stream(completed.stderr)
+    ok = int(completed.returncode) == 0
+    return MulticaCommandResult(
+        ok=ok,
+        command_key=key,
+        returncode=int(completed.returncode),
+        stdout=stdout,
+        stderr=stderr,
+        error_code="" if ok else "multica_nonzero_exit",
+        message="ok" if ok else _compact_message(stderr or stdout or "Multica command failed."),
+    )
+
+
 def _sanitize_stream(value: object, *, limit: int = MAX_STREAM_CHARS) -> str:
     if isinstance(value, bytes):
         text = value.decode("utf-8", errors="replace")
@@ -112,4 +183,3 @@ def _redact_sensitive_text(text: str) -> str:
 
 def _compact_message(text: str) -> str:
     return " ".join(str(text or "").split())[:240]
-

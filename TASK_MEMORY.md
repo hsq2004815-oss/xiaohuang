@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-12）— V1.5-C5E Confirmed Multica Issue Create
+
+- Purpose: Add the first state-changing Multica action: create a real issue only after explicit user confirmation from an existing draft.
+- Key files: `src/xiaohuang/multica_integration/issue_create_service.py`, `models.py`, `safety.py`, `cli_client.py`, `src/xiaohuang/control_panel_web_service.py`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_multica_integration_issue_create_service.py`, related safety/cli/control-panel tests.
+- Last completed:
+  1. Added `MulticaIssueCreateRequest` / `MulticaIssueCreateResult`.
+  2. Added `CREATE_MULTICA_ISSUE` confirmation gate and `confirmed_issue_create` argv validation outside ordinary readonly `ALLOWED_COMMANDS`.
+  3. Added confirmed issue create service that redacts secrets, rejects missing confirmation/title/description, runs `multica issue create --title ... --description ... --output json`, parses JSON or preserves raw summary, and returns “未分配 Agent” warnings.
+  4. Control panel gained a thin `create_multica_issue_from_draft()` API plus frontend prepare/confirm UI requiring manual confirmation phrase entry.
+  5. C5E does not pass `--assignee`, does not assign Agent, does not start Agent, does not call runs/run-messages, does not modify external projects, and does not touch `E:\DataBase`.
+- Verification: run issue create, safety, CLI, control panel tests plus full compileall/unittest/help/diff check before reporting.
+- Known traps: Do not add `issue_create` to normal readonly `ALLOWED_COMMANDS`; do not let frontend pass argv; keep assign for C5F.
+
 ## Current Snapshot（2026-05-12）— V1.5-C5D.1 Issue Draft Polish
 
 - Purpose: Polish Multica issue draft export so quoted/punctuated Windows target paths are normalized and vague task descriptions are warned before real issue creation.

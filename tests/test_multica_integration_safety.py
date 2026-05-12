@@ -4,7 +4,12 @@ import unittest
 
 from xiaohuang.multica_integration.safety import (
     BLOCKED_COMMAND_KEYS,
+    CONFIRMED_ISSUE_CREATE_KEY,
+    ISSUE_CREATE_CONFIRMATION_TEXT,
+    build_issue_create_argv,
+    can_create_issue,
     get_command_argv,
+    is_allowed_confirmed_argv,
     is_allowed_command,
     is_blocked_command,
 )
@@ -43,7 +48,47 @@ class MulticaIntegrationSafetyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             get_command_argv("unknown")
 
+    def test_confirmed_issue_create_uses_separate_gate(self):
+        self.assertFalse(is_allowed_command("issue_create"))
+        self.assertFalse(can_create_issue(confirmed=False, confirmation_text=ISSUE_CREATE_CONFIRMATION_TEXT))
+        self.assertFalse(can_create_issue(confirmed=True, confirmation_text="CREATE"))
+        self.assertTrue(can_create_issue(confirmed=True, confirmation_text=ISSUE_CREATE_CONFIRMATION_TEXT))
+
+    def test_build_issue_create_argv_requires_confirmation_and_omits_assignee(self):
+        with self.assertRaises(ValueError):
+            build_issue_create_argv(
+                title="C5E test",
+                description="desc",
+                confirmed=False,
+                confirmation_text=ISSUE_CREATE_CONFIRMATION_TEXT,
+            )
+
+        argv = build_issue_create_argv(
+            title="C5E test",
+            description="desc",
+            confirmed=True,
+            confirmation_text=ISSUE_CREATE_CONFIRMATION_TEXT,
+            priority="normal",
+            project="sample",
+        )
+
+        self.assertEqual(argv[:3], ("multica", "issue", "create"))
+        self.assertIn("--title", argv)
+        self.assertIn("--description", argv)
+        self.assertIn("--priority", argv)
+        self.assertIn("--project", argv)
+        self.assertIn("--output", argv)
+        self.assertNotIn("--assignee", argv)
+        self.assertTrue(is_allowed_confirmed_argv(CONFIRMED_ISSUE_CREATE_KEY, argv))
+
+    def test_confirmed_argv_rejects_unknown_or_dangerous_commands(self):
+        self.assertFalse(is_allowed_confirmed_argv("unknown", ("multica", "issue", "create")))
+        self.assertFalse(is_allowed_confirmed_argv(CONFIRMED_ISSUE_CREATE_KEY, ("multica", "issue", "assign", "123")))
+        self.assertFalse(is_allowed_confirmed_argv(
+            CONFIRMED_ISSUE_CREATE_KEY,
+            ("multica", "issue", "create", "--title", "t", "--description", "d", "--assignee", "claude", "--output", "json"),
+        ))
+
 
 if __name__ == "__main__":
     unittest.main()
-

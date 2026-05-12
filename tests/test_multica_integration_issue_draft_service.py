@@ -87,6 +87,7 @@ class MulticaIssueDraftServiceTests(unittest.TestCase):
         self.assertIsInstance(draft.create_command_preview, str)
         self.assertIn("multica issue create", draft.create_command_preview)
         self.assertIn("--output json", draft.create_command_preview)
+        self.assertNotIn("--assignee", draft.create_command_preview)
         self.assertIn("description too long", draft.create_command_preview)
         self.assertIn("仅草稿", " ".join(draft.warnings))
 

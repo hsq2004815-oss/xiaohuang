@@ -924,7 +924,19 @@
         '<button type="button" data-multica-draft="copy-description" disabled>复制 Issue 描述</button>' +
         '<button type="button" data-multica-draft="copy-command" disabled>复制命令草稿</button>' +
         '<button type="button" data-multica-draft="download-md" disabled>下载草稿 .md</button>' +
+        '<button type="button" data-multica-draft="prepare-create" disabled>准备创建 Issue</button>' +
       '</div>' +
+      '<div class="multica-create-confirm" data-multica-create-confirm hidden>' +
+        '<p>将创建真实 Multica issue，但不会分配 Agent，也不会启动 Claude/Codex/opencode/OpenClaw。确认前请检查 title、description、target project 和 warnings。</p>' +
+        '<label>确认短语 <code>CREATE_MULTICA_ISSUE</code>' +
+          '<input type="text" data-multica-create-phrase autocomplete="off" spellcheck="false">' +
+        '</label>' +
+        '<div class="multica-create-actions">' +
+          '<button type="button" data-multica-draft="confirm-create">确认创建 Issue</button>' +
+          '<span data-multica-create-status></span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="multica-create-result" data-multica-create-result hidden></div>' +
       '<pre class="multica-draft-preview" data-multica-draft-preview></pre>' +
     '</div>';
   }
@@ -991,6 +1003,8 @@
     if (action === 'copy-title') return copyTextToClipboard(draft.title).then(function () { toast('已复制 Issue 标题', 'ok'); });
     if (action === 'copy-description') return copyTextToClipboard(draft.description).then(function () { toast('已复制 Issue 描述', 'ok'); });
     if (action === 'copy-command') return copyTextToClipboard(draft.create_command_preview).then(function () { toast('已复制命令草稿', 'ok'); });
+    if (action === 'prepare-create') return prepareMulticaIssueCreate(panel);
+    if (action === 'confirm-create') return confirmMulticaIssueCreate(btn, panel, draft);
     if (action === 'download-md') {
       downloadTextFile(draft.markdown, buildDraftFilename(draft.title));
       toast('已下载草稿 .md', 'ok');
@@ -1036,10 +1050,19 @@
 
   function setPanelDraft(panel, draft) {
     panel.dataset.issueDraftJson = JSON.stringify(draft || {});
+    panel.dataset.issueCreateResultJson = '';
     panel.querySelectorAll('[data-multica-draft]').forEach(function (button) {
       var action = button.getAttribute('data-multica-draft') || '';
-      if (action !== 'generate') button.disabled = false;
+      if (action !== 'generate' && action !== 'confirm-create') button.disabled = false;
     });
+    var confirmBox = panel.querySelector('[data-multica-create-confirm]');
+    var resultBox = panel.querySelector('[data-multica-create-result]');
+    var phrase = panel.querySelector('[data-multica-create-phrase]');
+    var status = panel.querySelector('[data-multica-create-status]');
+    if (confirmBox) confirmBox.hidden = true;
+    if (resultBox) { resultBox.hidden = true; resultBox.innerHTML = ''; }
+    if (phrase) phrase.value = '';
+    if (status) status.textContent = '';
   }
 
   function getPanelDraft(panel) {
@@ -1063,6 +1086,71 @@
         (warnings.length ? '<p>' + escapeHtml(warnings.join('；')) + '</p>' : '');
     }
     if (preview) preview.textContent = draft.create_command_preview || '';
+  }
+
+  function prepareMulticaIssueCreate(panel) {
+    var confirmBox = panel.querySelector('[data-multica-create-confirm]');
+    var phrase = panel.querySelector('[data-multica-create-phrase]');
+    var confirmButton = panel.querySelector('[data-multica-draft="confirm-create"]');
+    var status = panel.querySelector('[data-multica-create-status]');
+    if (confirmBox) confirmBox.hidden = false;
+    if (phrase) {
+      phrase.value = '';
+      phrase.focus();
+      phrase.oninput = function () {
+        if (confirmButton) confirmButton.disabled = phrase.value.trim() !== 'CREATE_MULTICA_ISSUE';
+      };
+    }
+    if (confirmButton) confirmButton.disabled = true;
+    if (status) status.textContent = '输入确认短语后才能创建真实 issue。';
+    toast('请检查草稿并输入确认短语', 'info');
+    return Promise.resolve();
+  }
+
+  function confirmMulticaIssueCreate(btn, panel, draft) {
+    var phrase = panel.querySelector('[data-multica-create-phrase]');
+    var status = panel.querySelector('[data-multica-create-status]');
+    var text = phrase ? phrase.value.trim() : '';
+    if (text !== 'CREATE_MULTICA_ISSUE') {
+      if (status) status.textContent = '确认短语不匹配。';
+      toast('确认短语不匹配', 'err');
+      return Promise.resolve();
+    }
+    btn.disabled = true;
+    if (status) status.textContent = '正在创建 Multica issue...';
+    return apiCall('create_multica_issue_from_draft', {
+      title: draft.title || '',
+      description: draft.description || '',
+      confirmed: true,
+      confirmation_text: text
+    }).then(function (resp) {
+      if (!resp || !resp.ok || !resp.data) {
+        throw new Error((resp && (resp.error || resp.message || resp.code)) || '创建 Issue 失败');
+      }
+      panel.dataset.issueCreateResultJson = JSON.stringify(resp.data || {});
+      renderMulticaIssueCreateResult(panel, resp.data);
+      if (status) status.textContent = 'Multica issue 已创建。';
+      toast('Multica issue 已创建', 'ok');
+    }).catch(function (err) {
+      if (status) status.textContent = '创建失败：' + ((err && err.message) || err);
+      toast('创建 Multica issue 失败', 'err');
+    }).finally(function () {
+      btn.disabled = false;
+    });
+  }
+
+  function renderMulticaIssueCreateResult(panel, result) {
+    var box = panel.querySelector('[data-multica-create-result]');
+    if (!box) return;
+    var warnings = Array.isArray(result.warnings) ? result.warnings : [];
+    box.hidden = false;
+    box.innerHTML = '<strong>Multica issue 已创建</strong>' +
+      '<div>Issue ID: <code>' + escapeHtml(result.issue_id || '未返回') + '</code></div>' +
+      '<div>标题: ' + escapeHtml(result.title || '--') + '</div>' +
+      '<div>状态: ' + escapeHtml(result.status || '--') + '</div>' +
+      '<div>未分配 Agent</div>' +
+      '<div>下一步可在 C5F 中确认分配 Agent</div>' +
+      (warnings.length ? '<p>' + escapeHtml(warnings.join('；')) + '</p>' : '');
   }
 
   function splitCommaList(text) {
