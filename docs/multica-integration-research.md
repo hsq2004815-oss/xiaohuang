@@ -177,6 +177,17 @@ draft 字段：
 - candidate assignee：只作为候选值展示。
 - project / priority / status：默认空或用户选择，不猜测。
 
+### C5D.1: Issue Draft Polish
+
+C5D.1 继续保持 draft-only，不创建 issue、不 assign、不启动任何 Agent。修复范围只覆盖草稿质量：
+
+- 目标项目路径在进入 handoff prompt 和 issue draft 前统一规范化，去掉包裹或尾随的引号、中文/英文标点和多余空白，例如 `"E:\Projects\target-app"`、`“E:\Projects\target-app”`、`E:\Projects\target-app。`、`E:\Projects\target-app，后续文字` 都应得到 `E:\Projects\target-app`。
+- prompt 正文里的 Windows 路径片段也会做同样清洗，避免 “用户原始需求” 或 issue description 中继续携带错误引号。
+- 对 `实现用户请求的功能`、`完成用户请求`、`按用户要求修改`、`处理这个任务`、`执行任务`、`做一下这个` 等过泛任务描述，不阻断 draft 生成，但必须在 warnings 中提示：`任务描述过于泛，建议在创建 Multica issue 前补充具体需求。`
+- Markdown / description 中必须附加英文质量提示：`This draft may be too vague for agent execution. Add concrete acceptance criteria before creating a real Multica issue.`
+
+C5D.1 不新增 `issue_create_service.py` 的真实创建逻辑，不新增 assign/run/runs/run-messages 入口，不修改外部项目，也不读取或写入 `E:\DataBase`。
+
 ### C5E: Multica Issue Create with Explicit Confirmation
 
 在用户二次确认后执行：

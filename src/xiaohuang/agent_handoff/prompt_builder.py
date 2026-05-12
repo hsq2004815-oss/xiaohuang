@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from xiaohuang.agent_handoff.intent_parser import normalize_windows_paths_in_text, normalize_windows_target_path
 from xiaohuang.agent_handoff.models import AgentHandoffRequest, DatabaseBriefResult
 
 _AGENT_LABELS = {
@@ -48,6 +49,7 @@ def build_agent_handoff_prompt(
     target_project_kind = _resolve_target_project_kind(request)
     project_relation = _resolve_project_relation(request, target_project_kind)
     target_project_path = _resolve_target_project_path(request, root, target_project_kind)
+    user_request_display = normalize_windows_paths_in_text(request.user_request)
     brief_text = database_brief.brief.strip() if database_brief.database_used else "未使用；本地数据库 /brief 不可用或未返回内容，请按项目文件自行读取上下文。"
     suggested_files = suggest_relevant_files(
         actual_task,
@@ -67,7 +69,7 @@ def build_agent_handoff_prompt(
         f"- 目标项目路径：{target_project_path or '未指定'}",
         f"- 目标项目类型：{target_project_kind}",
         f"- 与小黄项目关系：{project_relation}",
-        f"- 用户原始需求：{request.user_request}",
+        f"- 用户原始需求：{user_request_display}",
         f"- 实际工程任务：{actual_task}",
         f"- 相关数据库领域：{', '.join(domains) if domains else 'agent_workflow'}",
         f"- 数据库 brief 状态：{database_brief.database_status}",
@@ -433,8 +435,8 @@ def _resolve_target_project_path(
     target_project_kind: str,
 ) -> str:
     if target_project_kind == "xiaohuang":
-        return str(request.target_project_path or request.project_hint or xiaohuang_project_root)
-    return str(request.target_project_path or request.project_hint or "未指定")
+        return str(normalize_windows_target_path(request.target_project_path or request.project_hint or "") or xiaohuang_project_root)
+    return str(normalize_windows_target_path(request.target_project_path or request.project_hint or "") or "未指定")
 
 
 def _is_brand_product_site_task(text: str) -> bool:

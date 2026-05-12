@@ -16,6 +16,7 @@ from xiaohuang.agent_handoff.intent_parser import detect_project_relation
 from xiaohuang.agent_handoff.intent_parser import detect_target_project_kind
 from xiaohuang.agent_handoff.intent_parser import extract_actual_task
 from xiaohuang.agent_handoff.intent_parser import extract_target_project_path
+from xiaohuang.agent_handoff.intent_parser import normalize_windows_target_path
 from xiaohuang.agent_handoff.models import (
     AgentHandoffRequest,
     AgentHandoffResult,
@@ -55,7 +56,7 @@ def create_agent_handoff(
 
     target_agent = request.target_agent if request.target_agent and request.target_agent != "generic" else detect_target_agent(user_request)
     actual_task = str(request.actual_task or "").strip() or extract_actual_task(user_request, target_agent=target_agent) or user_request
-    target_project_path = request.target_project_path or extract_target_project_path(user_request)
+    target_project_path = normalize_windows_target_path(request.target_project_path or "") or extract_target_project_path(user_request)
     project_relation = (
         request.project_relation
         if request.project_relation and request.project_relation != "auto"

@@ -128,6 +128,25 @@ class AgentHandoffPromptBuilderTests(unittest.TestCase):
         self.assertNotIn("src/xiaohuang/task_result_history_service.py", prompt)
         self.assertNotIn("frontend/control_panel/assets/app.js", prompt)
 
+    def test_external_project_prompt_normalizes_quoted_target_path(self):
+        prompt = build_agent_handoff_prompt(
+            AgentHandoffRequest(
+                user_request='给 Claude Code 生成提示词，让它在 "E:\\Projects\\target-app" 里实现某功能。',
+                target_agent="claude_code",
+                actual_task="实现某功能",
+                target_project_path='E:\\Projects\\target-app"',
+                target_project_kind="external_existing",
+                project_relation="unrelated_to_xiaohuang",
+            ),
+            project_root="E:\\Projects\\xiaohuang",
+            domains=["agent_workflow"],
+            database_brief=DatabaseBriefResult(database_used=False, database_status="unavailable"),
+        )
+
+        self.assertIn("目标项目路径：E:\\Projects\\target-app", prompt)
+        self.assertIn("cd E:\\Projects\\target-app", prompt)
+        self.assertNotIn('E:\\Projects\\target-app"', prompt)
+
     def test_xiaohuang_project_prompt_regression(self):
         prompt = build_agent_handoff_prompt(
             AgentHandoffRequest(

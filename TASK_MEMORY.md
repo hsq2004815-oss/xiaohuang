@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-12）— V1.5-C5D.1 Issue Draft Polish
+
+- Purpose: Polish Multica issue draft export so quoted/punctuated Windows target paths are normalized and vague task descriptions are warned before real issue creation.
+- Key files: `src/xiaohuang/agent_handoff/intent_parser.py`, `prompt_builder.py`, `service.py`, `src/xiaohuang/multica_integration/issue_draft_service.py`, `tests/test_agent_handoff_intent_parser.py`, `tests/test_agent_handoff_prompt_builder.py`, `tests/test_multica_integration_issue_draft_service.py`, `docs/multica-integration-research.md`.
+- Last completed:
+  1. Added shared Windows path normalization for target path fields and prompt text path fragments.
+  2. Handoff prompt output no longer leaks quoted target paths such as `"E:\Projects\target-app"` into target path fields, verification commands, or user-request display.
+  3. Multica issue draft output normalizes target paths in description, Markdown, and command preview before display/copy.
+  4. Vague task text still generates a draft, but warnings now tell the user to add concrete requirements before creating a real Multica issue.
+  5. C5D.1 remains draft-only: no `multica issue create`, no assign, no runs/run-messages, no Agent startup, no external project writes, and no `E:\DataBase` access.
+- Verification: run focused handoff and issue-draft tests, then full compileall/unittest/help/diff check before reporting.
+- Known traps: Do not turn the vague-task warning into a hard block; do not add real issue creation or Agent assignment in C5D.1.
+
 ## Current Snapshot（2026-05-11）— V1.5-C5D Multica Issue Draft Export
 
 - Purpose: Convert any XiaoHuang Agent Handoff into a generic Multica Issue Draft without creating an issue or assigning an Agent.

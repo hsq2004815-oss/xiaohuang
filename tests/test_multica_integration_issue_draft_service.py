@@ -37,6 +37,17 @@ class MulticaIssueDraftServiceTests(unittest.TestCase):
         self.assertTrue(draft.ok)
         self.assertIn("目标项目路径为空", " ".join(draft.warnings))
 
+    def test_target_path_is_normalized_in_issue_draft_outputs(self):
+        draft = _draft(
+            handoff_prompt='请在 "E:\\Projects\\target-app" 里实现某功能。',
+            target_project_path='E:\\Projects\\target-app"',
+        )
+        combined = "\n".join([draft.description, draft.markdown, draft.create_command_preview])
+
+        self.assertEqual(draft.target_project_path, "E:\\Projects\\target-app")
+        self.assertIn("Path: E:\\Projects\\target-app", combined)
+        self.assertNotIn('E:\\Projects\\target-app"', combined)
+
     def test_missing_prompt_returns_error(self):
         draft = build_issue_draft_from_handoff(
             handoff_title="",
@@ -78,6 +89,17 @@ class MulticaIssueDraftServiceTests(unittest.TestCase):
         self.assertIn("--output json", draft.create_command_preview)
         self.assertIn("description too long", draft.create_command_preview)
         self.assertIn("仅草稿", " ".join(draft.warnings))
+
+    def test_vague_task_adds_warning_and_markdown_note(self):
+        draft = _draft(
+            handoff_title="在目标项目中实现用户请求的功能",
+            handoff_prompt="在目标项目中实现用户请求的功能",
+        )
+
+        self.assertTrue(draft.ok)
+        self.assertIn("任务描述过于泛", " ".join(draft.warnings))
+        self.assertIn("This draft may be too vague", draft.markdown)
+        self.assertIn("concrete acceptance criteria", draft.description)
 
 
 def _draft(**overrides):

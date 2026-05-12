@@ -40,7 +40,9 @@ _TARGET_ACTION_TERMS = (
     "做",
 )
 
-_PROJECT_PATH_RE = re.compile(r"[A-Za-z]:[\\/][^\s，。；;、]+")
+_PROJECT_PATH_RE = re.compile(r"[A-Za-z]:[\\/][^\s，。；;、,]+")
+_PROJECT_PATH_TEXT_RE = re.compile(r"[\"'“”‘’`]?[A-Za-z]:[\\/][^\s，。；;、,]+")
+_PATH_BOUNDARY_CHARS = " \t\r\n\"'“”‘’`，。；;、,."
 
 _UNRELATED_XIAOHUANG_TERMS = (
     "和小黄无关",
@@ -181,7 +183,23 @@ def extract_target_project_path(text: str) -> str | None:
     match = _PROJECT_PATH_RE.search(str(text or ""))
     if not match:
         return None
-    return match.group(0).strip(" ，。；;、")
+    return normalize_windows_target_path(match.group(0)) or None
+
+
+def normalize_windows_target_path(raw: str) -> str:
+    value = str(raw or "").strip(_PATH_BOUNDARY_CHARS)
+    while value and value[-1] in _PATH_BOUNDARY_CHARS:
+        value = value[:-1].rstrip(_PATH_BOUNDARY_CHARS)
+    while value and value[0] in _PATH_BOUNDARY_CHARS:
+        value = value[1:].lstrip(_PATH_BOUNDARY_CHARS)
+    return value
+
+
+def normalize_windows_paths_in_text(text: str) -> str:
+    return _PROJECT_PATH_TEXT_RE.sub(
+        lambda match: normalize_windows_target_path(match.group(0)),
+        str(text or ""),
+    )
 
 
 def detect_project_relation(text: str, actual_task: str = "") -> str:
@@ -248,8 +266,9 @@ def _agent_name_patterns(target_agent: str) -> tuple[str, ...]:
 def _polish_actual_task(text: str) -> str:
     value = str(text or "").strip(" ，。；;：:")
     value = re.sub(r"^(?:根据我的数据库|根据数据库)[，,、\s]*", "", value)
-    value = re.sub(r"在\s*[A-Za-z]:[\\/][^\s，。；;、]+\s*(?:里|中)?[，,、\s]*", "", value)
-    value = re.sub(r"项目放在\s*[A-Za-z]:[\\/][^\s，。；;、]+[，,、\s]*", "", value)
+    quoted_path = r"[\"'“”‘’`]?[A-Za-z]:[\\/][^\s，。；;、,]+[\"'“”‘’`]?"
+    value = re.sub(rf"在\s*{quoted_path}\s*[，,。；;、]?\s*(?:里|中)?[，,、\s]*", "", value)
+    value = re.sub(rf"项目放在\s*{quoted_path}\s*[，,。；;、]?\s*", "", value)
     value = re.sub(r"(?:这个任务)?(?:和|跟)小黄项目?无关[，,。；;\s]*", "", value)
     value = re.sub(r"不是小黄项目[，,。；;\s]*", "", value)
     value = re.sub(r"不要(?:修改|改)\s*(?:小黄项目|小黄|[A-Za-z]:[\\/][^\s，。；;、]+)[，,。；;\s]*", "", value)

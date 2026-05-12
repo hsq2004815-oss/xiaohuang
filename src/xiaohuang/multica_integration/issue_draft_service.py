@@ -4,12 +4,25 @@ from __future__ import annotations
 
 import re
 
+from xiaohuang.agent_handoff.intent_parser import normalize_windows_paths_in_text, normalize_windows_target_path
 from xiaohuang.multica_integration.models import MulticaIssueDraft
 
 SUGGESTED_ASSIGNEES = ("claude", "codex", "opencode", "openclaw")
 _DEFAULT_ASSIGNEE = "claude"
 _MAX_TITLE_CHARS = 80
 _MAX_COMMAND_DESCRIPTION_CHARS = 1200
+_VAGUE_TASK_WARNING = "任务描述过于泛，建议在创建 Multica issue 前补充具体需求。"
+_VAGUE_TASK_MARKDOWN_NOTE = "This draft may be too vague for agent execution. Add concrete acceptance criteria before creating a real Multica issue."
+_VAGUE_TASK_TERMS = (
+    "实现用户请求的功能",
+    "完成用户请求",
+    "按用户要求修改",
+    "处理这个任务",
+    "执行任务",
+    "做一下这个",
+    "requested task",
+    "requested changes",
+)
 
 _SENSITIVE_PATTERNS = (
     re.compile(r"(?i)\b(api[_-]?key|apikey|token|password|secret)\b\s*[:=]\s*([^\s,;]+)"),
@@ -30,7 +43,7 @@ def build_issue_draft_from_handoff(
     related_domains: tuple[str, ...] = (),
     preferred_agent: str = "",
 ) -> MulticaIssueDraft:
-    prompt = redact_sensitive_text(handoff_prompt).strip()
+    prompt = normalize_windows_paths_in_text(redact_sensitive_text(handoff_prompt)).strip()
     if not prompt:
         return MulticaIssueDraft(
             ok=False,
@@ -38,8 +51,8 @@ def build_issue_draft_from_handoff(
             message="缺少 Agent Handoff prompt，无法生成 Multica issue 草稿。",
         )
 
-    target_path = redact_sensitive_text(target_project_path).strip()
-    title_source = redact_sensitive_text(handoff_title or _extract_prompt_title(prompt) or "Agent Handoff")
+    target_path = normalize_windows_target_path(redact_sensitive_text(target_project_path))
+    title_source = normalize_windows_paths_in_text(redact_sensitive_text(handoff_title or _extract_prompt_title(prompt) or "Agent Handoff"))
     title = _build_issue_title(title_source, target_path)
     default_assignee = _select_default_assignee(preferred_agent, title_source + "\n" + prompt)
     relation = _compact_inline(project_relation or "unknown")
@@ -51,6 +64,9 @@ def build_issue_draft_from_handoff(
     ]
     if not target_path:
         warnings.append("目标项目路径为空；创建 issue 前请先确认 target_project_path。")
+    is_vague = _is_vague_task_text(title_source + "\n" + prompt)
+    if is_vague:
+        warnings.append(_VAGUE_TASK_WARNING)
 
     description = _build_description(
         title=title,
@@ -60,6 +76,7 @@ def build_issue_draft_from_handoff(
         project_relation=relation,
         database_brief_status=_compact_inline(database_brief_status or "unknown"),
         related_domains=domains,
+        vague_task=is_vague,
     )
     command_preview = _build_command_preview(
         title=title,
@@ -76,6 +93,7 @@ def build_issue_draft_from_handoff(
         command_preview=command_preview,
         description=description,
         warnings=warnings,
+        vague_task=is_vague,
     )
     return MulticaIssueDraft(
         ok=True,
@@ -125,12 +143,21 @@ def _build_description(
     project_relation: str,
     database_brief_status: str,
     related_domains: tuple[str, ...],
+    vague_task: bool,
 ) -> str:
-    return "\n".join([
+    lines = [
         "# XiaoHuang Agent Handoff",
         "",
         "## Task",
         title,
+    ]
+    if vague_task:
+        lines.extend([
+            "",
+            "## Draft Quality Warning",
+            _VAGUE_TASK_MARKDOWN_NOTE,
+        ])
+    lines.extend([
         "",
         "## Target Project",
         f"- Path: {target_project_path or '未指定'}",
@@ -152,6 +179,7 @@ def _build_description(
         "- Preserve existing user changes.",
         "- Do not save API keys, tokens, passwords, or secrets.",
     ])
+    return "\n".join(lines)
 
 
 def _build_command_preview(
@@ -184,8 +212,9 @@ def _build_markdown(
     command_preview: str,
     description: str,
     warnings: list[str],
+    vague_task: bool,
 ) -> str:
-    return "\n".join([
+    lines = [
         "# Multica Issue Draft",
         "",
         "## Title",
@@ -207,10 +236,19 @@ def _build_markdown(
         "## Description",
         description,
         "",
+    ]
+    if vague_task:
+        lines.extend([
+            "## Draft Quality Warning",
+            _VAGUE_TASK_MARKDOWN_NOTE,
+            "",
+        ])
+    lines.extend([
         "## Safety Notes",
         *[f"- {item}" for item in warnings],
         "",
     ])
+    return "\n".join(lines)
 
 
 def _select_default_assignee(preferred_agent: str, text: str) -> str:
@@ -251,7 +289,7 @@ def _extract_prompt_title(prompt: str) -> str:
 
 
 def _target_name(path: str) -> str:
-    value = str(path or "").rstrip("\\/")
+    value = normalize_windows_target_path(path).rstrip("\\/")
     if not value:
         return ""
     return re.split(r"[\\/]", value)[-1].strip()
@@ -259,3 +297,8 @@ def _target_name(path: str) -> str:
 
 def _compact_inline(text: str) -> str:
     return " ".join(str(text or "").replace("\r", " ").replace("\n", " ").split())
+
+
+def _is_vague_task_text(text: str) -> bool:
+    normalized = _compact_inline(text).lower()
+    return any(term.lower() in normalized for term in _VAGUE_TASK_TERMS)

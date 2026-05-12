@@ -6,6 +6,8 @@ from xiaohuang.agent_handoff.intent_parser import (
     detect_project_relation,
     detect_target_project_kind,
     extract_target_project_path,
+    normalize_windows_paths_in_text,
+    normalize_windows_target_path,
     parse_agent_handoff_intent,
 )
 
@@ -55,6 +57,35 @@ class AgentHandoffIntentParserTests(unittest.TestCase):
             "E:/Projects/sample-project",
         )
 
+    def test_extract_target_project_path_strips_quotes_and_trailing_punctuation(self):
+        cases = (
+            ('请在 "E:\\Projects\\target-app" 里实现某功能', "E:\\Projects\\target-app"),
+            ("请在 “E:\\Projects\\target-app” 里实现某功能", "E:\\Projects\\target-app"),
+            ("请在 'E:\\Projects\\target-app' 里实现某功能", "E:\\Projects\\target-app"),
+            ('请在 E:\\Projects\\target-app" 里实现某功能', "E:\\Projects\\target-app"),
+            ("请在 E:\\Projects\\target-app” 里实现某功能", "E:\\Projects\\target-app"),
+            ("请在 E:\\Projects\\target-app。里实现某功能", "E:\\Projects\\target-app"),
+            ("请在 E:\\Projects\\target-app. 里实现某功能", "E:\\Projects\\target-app"),
+            ("请在 E:\\Projects\\target-app，后续文字", "E:\\Projects\\target-app"),
+        )
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(extract_target_project_path(text), expected)
+
+    def test_normalize_windows_target_path(self):
+        for raw in ('"E:\\Projects\\target-app"', "“E:\\Projects\\target-app”", "E:\\Projects\\target-app。"):
+            with self.subTest(raw=raw):
+                self.assertEqual(normalize_windows_target_path(raw), "E:\\Projects\\target-app")
+
+    def test_normalize_windows_paths_in_text(self):
+        text = '请在 "E:\\Projects\\target-app" 里执行；另一个路径 E:\\Projects\\sample-project，后续文字'
+
+        result = normalize_windows_paths_in_text(text)
+
+        self.assertIn("E:\\Projects\\target-app 里执行", result)
+        self.assertIn("E:\\Projects\\sample-project，后续文字", result)
+        self.assertNotIn('E:\\Projects\\target-app"', result)
+
     def test_project_relation_detects_unrelated_to_xiaohuang(self):
         text = "这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
         self.assertEqual(detect_project_relation(text), "unrelated_to_xiaohuang")
@@ -101,6 +132,17 @@ class AgentHandoffIntentParserTests(unittest.TestCase):
         self.assertEqual(result.target_project_path, "E:\\Projects\\sample-project")
         self.assertEqual(result.target_project_kind, "external_new")
         self.assertEqual(result.project_relation, "unrelated_to_xiaohuang")
+
+    def test_quoted_target_path_does_not_leak_into_actual_task(self):
+        result = parse_agent_handoff_intent(
+            '给 Claude Code 生成一个提示词，让它在 "E:\\Projects\\target-app" 里实现某功能。'
+            "这个任务和小黄项目无关，不要修改 E:\\Projects\\xiaohuang。"
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.target_project_path, "E:\\Projects\\target-app")
+        self.assertNotIn('E:\\Projects\\target-app"', result.actual_task)
+        self.assertIn("实现某功能", result.actual_task)
 
     def test_xiaohuang_project_request_sets_project_fields(self):
         result = parse_agent_handoff_intent("给 Claude Code 生成一个提示词，让它继续优化小黄任务历史页面")
