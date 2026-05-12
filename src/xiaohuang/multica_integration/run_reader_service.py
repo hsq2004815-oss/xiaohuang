@@ -123,7 +123,29 @@ def read_run_messages(
             message=result.message,
         )
 
-    messages, warnings = _parse_run_messages_json(result.stdout, clean)
+    stdout_text = str(result.stdout or "")
+    stderr_text = str(result.stderr or "")
+    all_warnings: list[str] = []
+
+    messages, parse_warnings = _parse_run_messages_json(stdout_text, clean)
+    all_warnings.extend(parse_warnings)
+
+    if not messages and stderr_text.strip():
+        stderr_msgs, stderr_warnings = _parse_run_messages_json(stderr_text, clean)
+        if stderr_msgs:
+            messages = stderr_msgs
+        all_warnings.extend(stderr_warnings)
+
+    raw_debug: dict = {}
+    if not messages:
+        raw_debug = {
+            "stdout_len": len(stdout_text),
+            "stderr_len": len(stderr_text),
+            "stdout_head": stdout_text[:1000],
+            "stderr_head": stderr_text[:1000],
+            "parse_warnings": list(all_warnings),
+        }
+
     review = _build_review_summary(messages, clean)
     return MulticaRunMessagesResult(
         ok=True,
@@ -131,7 +153,8 @@ def read_run_messages(
         messages=tuple(messages),
         raw_summary=result.stdout,
         review_summary=review,
-        warnings=tuple(warnings),
+        warnings=tuple(all_warnings),
+        raw_debug=raw_debug,
         message=f"读取到 {len(messages)} 条消息。",
     )
 
@@ -180,10 +203,10 @@ def _parse_runs_json(stdout: str, issue_id: str) -> tuple[list[MulticaRunSummary
     return runs, warnings
 
 
-def _parse_run_messages_json(stdout: str, task_id: str) -> tuple[list[MulticaRunMessage], list[str]]:
+def _parse_run_messages_json(raw_text: str, task_id: str) -> tuple[list[MulticaRunMessage], list[str]]:
     warnings: list[str] = []
     messages: list[MulticaRunMessage] = []
-    raw = str(stdout or "").strip()
+    raw = str(raw_text or "").strip()
     if not raw:
         warnings.append("run-messages 输出为空")
         return messages, warnings
@@ -191,8 +214,16 @@ def _parse_run_messages_json(stdout: str, task_id: str) -> tuple[list[MulticaRun
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        warnings.append("run-messages 输出非 JSON 格式，保留原文")
-        return messages, warnings
+        extracted = _extract_json_from_text(raw)
+        if extracted is not None:
+            try:
+                data = json.loads(extracted)
+            except json.JSONDecodeError:
+                warnings.append("run-messages 输出非 JSON 格式，保留原文")
+                return messages, warnings
+        else:
+            warnings.append("run-messages 输出非 JSON 格式，保留原文")
+            return messages, warnings
 
     items: list[dict] = []
     if isinstance(data, list):
@@ -299,6 +330,26 @@ def _format_input(inp) -> str:
             return "\n".join(parts)
         return _compact_dict_text(inp)
     return str(inp)
+
+
+def _extract_json_from_text(text: str) -> str | None:
+    """Try to extract the first JSON array or object from mixed text.
+
+    Returns the substring from the first '[' to the last ']',
+    or first '{' to the last '}' if no array is found.
+    """
+    s = str(text or "")
+    if not s:
+        return None
+    first_bracket = s.find("[")
+    last_bracket = s.rfind("]")
+    if first_bracket >= 0 and last_bracket > first_bracket:
+        return s[first_bracket:last_bracket + 1]
+    first_brace = s.find("{")
+    last_brace = s.rfind("}")
+    if first_brace >= 0 and last_brace > first_brace:
+        return s[first_brace:last_brace + 1]
+    return None
 
 
 def _build_review_summary(messages: list[MulticaRunMessage], task_id: str) -> str:

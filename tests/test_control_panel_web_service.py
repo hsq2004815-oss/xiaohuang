@@ -1964,3 +1964,10 @@ class V15C6RunReaderUITests(unittest.TestCase):
         self.assertIn("escapeHtml(runs[0].task_id", js)
         self.assertIn("escapeHtml(runs[0].status", js)
         self.assertIn("escapeHtml(", js)
+
+    def test_js_no_inline_onclick_handlers(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        self.assertNotIn('onclick="readMulticaRunMessagesFromPanel', js,
+                         "dynamic HTML must not use onclick to call closure functions")
+        self.assertNotIn('onclick="openMulticaTaskPanel', js,
+                         "dynamic HTML must not use onclick to call closure functions")

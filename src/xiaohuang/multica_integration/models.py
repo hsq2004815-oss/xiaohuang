@@ -205,6 +205,7 @@ class MulticaRunMessagesResult:
     raw_summary: str = ""
     review_summary: str = ""
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    raw_debug: dict = field(default_factory=dict)
     error_code: str = ""
     message: str = ""
 
@@ -229,6 +230,7 @@ class MulticaRunMessagesResult:
             "raw_summary": self.raw_summary,
             "review_summary": self.review_summary,
             "warnings": list(self.warnings),
+            "raw_debug": self.raw_debug,
             "error_code": self.error_code,
             "message": self.message,
         }

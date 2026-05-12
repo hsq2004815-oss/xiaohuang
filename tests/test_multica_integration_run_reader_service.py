@@ -6,6 +6,7 @@ import unittest
 
 from xiaohuang.multica_integration.run_reader_service import (
     _build_review_summary,
+    _extract_json_from_text,
     _parse_run_messages_json,
     _parse_runs_json,
     read_issue_runs,
@@ -165,6 +166,56 @@ class MulticaRunReaderIntegrationTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertIn("HHH-19", calls[0])
 
+    def test_read_run_messages_stderr_fallback(self):
+        """stdout empty, stderr has valid JSON — should parse messages from stderr."""
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(
+                argv, 0,
+                stdout="",
+                stderr='[{"seq":1,"type":"tool_use","tool":"Bash","input":{"command":"ls"}}]',
+            )
+
+        result = read_run_messages(task_id="t1", runner=fake_run)
+        self.assertTrue(result.ok)
+        self.assertEqual(len(result.messages), 1)
+        self.assertEqual(result.messages[0].tool, "Bash")
+
+    def test_read_run_messages_zero_results_has_raw_debug(self):
+        """When no messages found, to_dict must include raw_debug."""
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(
+                argv, 0,
+                stdout="not json at all",
+                stderr="some stderr text",
+            )
+
+        result = read_run_messages(task_id="t1", runner=fake_run)
+        self.assertTrue(result.ok)
+        self.assertEqual(len(result.messages), 0)
+        d = result.to_dict()
+        self.assertIn("raw_debug", d)
+        rd = d["raw_debug"]
+        self.assertIn("stdout_len", rd)
+        self.assertIn("stderr_len", rd)
+        self.assertIn("stdout_head", rd)
+        self.assertIn("stderr_head", rd)
+        self.assertIn("parse_warnings", rd)
+        self.assertGreater(len(rd["parse_warnings"]), 0)
+
+    def test_read_run_messages_prefers_more_json_like_source(self):
+        """stdout has garbage, stderr has valid JSON — prefer stderr."""
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(
+                argv, 0,
+                stdout="",
+                stderr='[{"seq":2,"type":"tool_result","tool":"Bash","output":"done"}]',
+            )
+
+        result = read_run_messages(task_id="t1", runner=fake_run)
+        self.assertTrue(result.ok)
+        self.assertEqual(len(result.messages), 1)
+        self.assertEqual(result.messages[0].seq, "2")
+
 
 class RunMessagesToolEventParseTests(unittest.TestCase):
     """Tests for real tool_use / tool_result format."""
@@ -297,6 +348,46 @@ class RunMessagesToolEventParseTests(unittest.TestCase):
         stdout = json.dumps({"unknown_key": [{"output": "auto found"}]})
         msgs, _ = _parse_run_messages_json(stdout, "t1")
         self.assertEqual(len(msgs), 1)
+
+    def test_json_mixed_with_plain_text(self):
+        stdout = 'Some log prefix\n[{"seq":1,"type":"tool_use","tool":"Bash","input":{"command":"ls"}}]\nDone.'
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+        self.assertEqual(msgs[0].tool, "Bash")
+
+    def test_json_object_mixed_with_plain_text(self):
+        stdout = 'prefix text {"messages":[{"output":"hello","seq":1}]} suffix'
+        msgs, _ = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 1)
+
+    def test_json_mixed_no_valid_brackets(self):
+        stdout = 'plain text with no json brackets at all'
+        msgs, warnings = _parse_run_messages_json(stdout, "t1")
+        self.assertEqual(len(msgs), 0)
+        self.assertGreater(len(warnings), 0)
+
+
+class ExtractJsonFromTextTests(unittest.TestCase):
+    def test_extract_array_from_mixed_text(self):
+        result = _extract_json_from_text('prefix [{"a":1}] suffix')
+        self.assertEqual(result, '[{"a":1}]')
+
+    def test_extract_object_from_mixed_text(self):
+        result = _extract_json_from_text('before {"key":"value"} after')
+        self.assertEqual(result, '{"key":"value"}')
+
+    def test_extract_json_array_preferred_over_object(self):
+        text = 'log [1,2,3] more {"k":"v"} end'
+        result = _extract_json_from_text(text)
+        self.assertEqual(result, '[1,2,3]')
+
+    def test_extract_json_no_match(self):
+        result = _extract_json_from_text('no brackets here')
+        self.assertIsNone(result)
+
+    def test_extract_json_empty_string(self):
+        result = _extract_json_from_text('')
+        self.assertIsNone(result)
 
 
 class ReviewSummaryToolEventTests(unittest.TestCase):

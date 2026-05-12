@@ -1352,6 +1352,24 @@
       toggle.textContent = expanded ? '展开' : '折叠';
     });
 
+    var runsList = $('mp-runs-list');
+    if (runsList) runsList.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-mp-read-messages]');
+      if (!btn) return;
+      var taskId = btn.getAttribute('data-mp-read-messages') || '';
+      if (taskId) readMulticaRunMessagesFromPanel(taskId);
+    });
+
+    var assignResult = $('mp-assign-result');
+    if (assignResult) assignResult.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-mp-open-progress]');
+      if (!btn) return;
+      var issueId = btn.getAttribute('data-mp-open-progress') || '';
+      openMulticaTaskPanel('progress');
+      var progressInput = $('mp-progress-issue-id');
+      if (progressInput && issueId) progressInput.value = issueId;
+    });
+
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && !$('multica-panel-backdrop').hidden) closeMulticaTaskPanel();
     });
@@ -1474,7 +1492,7 @@
     box.innerHTML = '<strong>Multica issue 已分配给 ' + escapeHtml(result.agent || '--') + '</strong>' +
       '<div>Issue ID: <code>' + escapeHtml(issueId) + '</code></div>' +
       '<div>状态: ' + escapeHtml(result.status || '--') + '</div>' +
-      '<button type="button" class="glass-pill" style="margin-top:8px;font-size:11px" onclick="openMulticaTaskPanel(\'progress\');$(\'mp-progress-issue-id\').value=\'' + escapeHtml(issueId) + '\'">查看该 Issue 进度</button>';
+      '<button type="button" class="glass-pill" style="margin-top:8px;font-size:11px" data-mp-open-progress="' + escapeHtml(issueId) + '">查看该 Issue 进度</button>';
   }
 
   /* ─── Progress tab ─── */
@@ -1532,7 +1550,7 @@
           '<div class="multica-run-row-title">#' + (i + 1) + ' ' + escapeHtml(taskId.length > 20 ? taskId.substring(0, 20) + '...' : taskId) + ' ' + escapeHtml(run.status || '--') + '</div>' +
           '<div class="multica-run-row-detail">' + escapeHtml(run.agent || '') + ' · ' + escapeHtml(run.started_at || '') + '</div>' +
         '</div>' +
-        (taskId ? '<button type="button" class="glass-pill" onclick="readMulticaRunMessagesFromPanel(\'' + escapeHtml(taskId) + '\')">读取消息</button>' : '') +
+        (taskId ? '<button type="button" class="glass-pill" data-mp-read-messages="' + escapeHtml(taskId) + '">读取消息</button>' : '') +
       '</div>';
     });
     list.innerHTML = html;
@@ -1566,7 +1584,18 @@
 
     var messages = (data && data.messages) ? data.messages : [];
     if (!messages.length) {
-      list.innerHTML = '<p style="font-size:11px;color:var(--text-muted)">未找到运行消息。</p>';
+      var html = '<p style="font-size:11px;color:var(--text-muted)">未找到运行消息。</p>';
+      var rd = (data && data.raw_debug) ? data.raw_debug : null;
+      if (rd && (rd.stdout_head || rd.stderr_head || rd.parse_warnings)) {
+        html += '<div style="margin-top:10px;padding:10px;border-radius:10px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);font-size:11px">' +
+          '<div style="font-weight:700;margin-bottom:6px;color:#92400e">调试信息 (raw_debug)</div>' +
+          '<div>stdout_len: ' + (rd.stdout_len || 0) + ' / stderr_len: ' + (rd.stderr_len || 0) + '</div>' +
+          (rd.parse_warnings ? '<div style="margin-top:4px">parse_warnings: ' + escapeHtml(String(rd.parse_warnings)) + '</div>' : '') +
+          (rd.stdout_head ? '<div style="margin-top:6px;font-weight:600">stdout_head:</div><pre style="margin:4px 0 0;max-height:160px;overflow:auto;font-size:10px;line-height:1.4;white-space:pre-wrap;word-break:break-word">' + escapeHtml(rd.stdout_head) + '</pre>' : '') +
+          (rd.stderr_head ? '<div style="margin-top:6px;font-weight:600">stderr_head:</div><pre style="margin:4px 0 0;max-height:160px;overflow:auto;font-size:10px;line-height:1.4;white-space:pre-wrap;word-break:break-word">' + escapeHtml(rd.stderr_head) + '</pre>' : '') +
+        '</div>';
+      }
+      list.innerHTML = html;
       return;
     }
     var html = '';
