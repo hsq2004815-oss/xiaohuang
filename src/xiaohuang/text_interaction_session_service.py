@@ -26,6 +26,9 @@ class TextInteractionSessionStore:
         if sid in self._sessions:
             self._sessions[sid].memory.clear()
 
+    def clear_all(self) -> None:
+        self._sessions.clear()
+
     def build_context_text(self, session_id: str = "default") -> str:
         return self.get_or_create(session_id).memory.build_context_text()
 

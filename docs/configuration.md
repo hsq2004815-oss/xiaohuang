@@ -6,6 +6,7 @@
 |------|------|---------|
 | config.json | `%USERPROFILE%\.xiaohuang\config.json` | All runtime settings (no API key) |
 | secrets.ps1 | `%USERPROFILE%\.xiaohuang\secrets.ps1` | API key only (never committed to Git) |
+| conversations.sqlite3 | `data\conversations\conversations.sqlite3` | Local control-panel text conversation history and Multica bindings |
 
 ## Priority
 
@@ -205,6 +206,29 @@ $env:OPENAI_API_KEY = "sk-..."
 ```
 
 Never commit real keys to Git.
+
+`scripts\control_panel_web.py` loads `%USERPROFILE%\.xiaohuang\secrets.ps1`
+into the control panel process before creating the webview. It only imports
+environment variables declared as `$env:NAME = "value"` and never prints key
+values. If text chat shows `source=rule_fallback_no_key`, use the control
+panel "配置摘要" quick action to check `config_path`, provider/model,
+`api_key_present`, `env_key_name`, and `env_key_present`.
+
+## Text Conversation History
+
+The single-window web control panel stores text chat history locally in
+`data\conversations\conversations.sqlite3`.
+
+- The frontend sends both `session_id` and `conversation_id` for text chat.
+- Normal UI use sets both values to the selected conversation id.
+- The LLM turn still uses the legacy `session_id` flow.
+- Persistence uses `conversation_id` only.
+- The "清空会话" button clears messages for the current conversation and
+  preserves bound Multica task records.
+- The "清除全部" button deletes all conversations, messages, and bound task
+  records after a browser confirmation, then creates a new blank conversation.
+
+The history database and its WAL/SHM files are ignored by Git.
 
 ## PowerShell Notes
 

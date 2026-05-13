@@ -1,8 +1,8 @@
 # LLM Provider Configuration — V1.1.3B
 
 > 版本：V1.1.3B
-> 最后更新：2026-05-02
-> 对应 commit：`ab4d058` feat: add LLM provider router
+> 最后更新：2026-05-13
+> 对应能力：LLM provider router + 控制面板安全配置摘要
 
 ## 1. 目标
 
@@ -205,7 +205,32 @@ LLM enabled: provider=deepseek model=deepseek-v4-flash max_tokens=256 timeout=20
 
 注意：debug 输出包含 `provider` / `model` / `max_tokens` / `timeout`，**不包含 API key**。
 
-## 9. 真实验证命令
+## 9. 控制面板安全配置摘要
+
+Web 控制面板的文本对话区提供"配置摘要"快捷按钮。该入口不走普通
+LLM 回复链路，而是调用安全摘要 API，输出：
+
+- `config_path`
+- `llm_configured`
+- `provider`
+- `model`
+- `api_key_present`
+- `env_key_name`
+- `env_key_present`
+- `key_source`
+
+它不会输出真实 API key。`source=rule_fallback_no_key` 时，优先检查：
+
+1. `config_path` 是否是当前预期的 `%USERPROFILE%\.xiaohuang\config.json`。
+2. `provider` / `model` 是否符合配置。
+3. `env_key_name` 是否是当前 provider 对应的变量名。
+4. `env_key_present` 是否为 `true`。
+
+`scripts\control_panel_web.py` 启动时会静默读取
+`%USERPROFILE%\.xiaohuang\secrets.ps1` 中形如 `$env:NAME = "value"` 的变量，
+并写入当前 webview 进程环境。它不会打印 key 值。
+
+## 10. 真实验证命令
 
 ```powershell
 # 停止现有进程

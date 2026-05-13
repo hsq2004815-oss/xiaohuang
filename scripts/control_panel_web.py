@@ -7,12 +7,17 @@ Falls back to Tkinter control_panel.py if pywebview is not available.
 from __future__ import annotations
 
 import argparse
+import os
+import re
 import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 FRONTEND_DIR = PROJECT_ROOT / "frontend" / "control_panel"
+_SECRET_ENV_RE = re.compile(
+    r"^\s*\$env:([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s#]+))"
+)
 
 sys.path.insert(0, str(SRC_DIR))
 
@@ -47,8 +52,29 @@ def _try_import_webview():
         return False
 
 
+def _load_local_secrets_into_env() -> None:
+    secret_path = Path.home() / ".xiaohuang" / "secrets.ps1"
+    if not secret_path.exists():
+        return
+    try:
+        lines = secret_path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return
+    for line in lines:
+        match = _SECRET_ENV_RE.match(line)
+        if not match:
+            continue
+        name = match.group(1)
+        if os.environ.get(name):
+            continue
+        value = next((part for part in match.groups()[1:] if part is not None), "")
+        if value:
+            os.environ[name] = value
+
+
 def main() -> int:
     args = _parse_args()
+    _load_local_secrets_into_env()
 
     if not _try_import_webview():
         print("pywebview is not installed.")

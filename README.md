@@ -9,13 +9,13 @@
 - 大模型回复：DeepSeek API，可回退本地规则回复
 - 语音播报：edge-tts
 - 桌面浮窗：PySide6 透明音波状态 UI
-- Web 控制面板：启动、停止、重启、状态查看
+- Web 控制面板：启动、停止、重启、状态查看、文本对话历史
 - 诊断能力：日志目录打开、诊断 TXT 导出、启动失败诊断、启动前检查
 - Runtime Event Stream：记录关键运行事件，辅助排查问题
 
 ## 当前阶段
 
-当前项目已经不是 V0.1 音频链路 Demo，而是 V1.3 系列 Windows 桌面 AI 助手原型。
+当前项目已经不是 V0.1 音频链路 Demo，而是 V1.5 系列 Windows 桌面 AI 助手原型。
 
 近期关键能力包括：
 
@@ -25,10 +25,15 @@
 - Runtime Event Stream
 - 启动失败诊断
 - 启动前检查
+- 文本对话历史持久化：当前选中对话通过 `conversation_id` 明确传给后端，普通 LLM 会话仍沿用旧 `session_id` 逻辑
+- LLM 配置安全摘要：控制面板可显示 `config_path`、provider/model、key 是否存在，不显示真实 API key
+- 对话清理：支持清空单个对话消息，也支持一键清除所有本地对话历史和绑定任务记录
 
 ## 下一步方向
 
-下一阶段建议进入：
+下一阶段建议继续收敛控制面板代码边界，避免把对话历史、Multica 绑定、LLM 配置诊断继续塞进单个 web service。
+
+此前 V1.4-A Local Command Router MVP 的方向仍成立：
 
 V1.4-A Local Command Router MVP
 
@@ -48,7 +53,8 @@ V1.4-A Local Command Router MVP
 
 常用路径示例：
 
-```powershellcd E:\Projects\xiaohuang
+```powershell
+cd E:\Projects\xiaohuang
 $env:PYTHONPATH="E:\Projects\xiaohuang\src"
 $env:PYTHONDONTWRITEBYTECODE="1"
 ```
@@ -65,3 +71,5 @@ $env:PYTHONDONTWRITEBYTECODE="1"
 ## 注意
 
 不要提交本地运行文件、日志、录音、TTS 输出、模型缓存和密钥文件。
+
+本地对话历史数据库位于 `data/conversations/`，属于运行数据，不提交。

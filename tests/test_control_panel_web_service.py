@@ -386,10 +386,61 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         )
         with patch("xiaohuang.control_panel_web_service.run_text_interaction_turn", return_value=fake) as mock_run:
             api = ControlPanelWebApi(config_path=self.config_path)
-            result = api.send_text_message({"text": "介绍一下你自己"})
+            result = api.send_text_message({"text": "介绍一下你自己", "session_id": "test-session"})
         self.assertTrue(result["ok"])
         self.assertEqual(result["data"]["reply_text"], "我是小黄")
+        self.assertTrue(mock_run.call_args.kwargs["session_id"])
+
+    def test_send_text_message_persists_with_explicit_conversation_id(self):
+        from xiaohuang.conversation_history_service import ConversationHistoryStore
+
+        store = ConversationHistoryStore(Path(self.tmp.name) / "history.sqlite3")
+        llm_session = store.create_conversation("LLM session")
+        selected_conv = store.create_conversation("Selected")
+        fake = TextInteractionResult(
+            ok=True,
+            session_id=llm_session.id,
+            user_text="你是谁",
+            reply_text="我是小黄",
+            reply_source="llm",
+            llm_configured=True,
+        )
+        with patch("xiaohuang.control_panel_web_service.run_text_interaction_turn", return_value=fake) as mock_run:
+            api = ControlPanelWebApi(config_path=self.config_path)
+            api._history_store = store
+            result = api.send_text_message({
+                "text": "你是谁",
+                "session_id": llm_session.id,
+                "conversation_id": selected_conv.id,
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(mock_run.call_args.kwargs["session_id"], llm_session.id)
+        self.assertEqual(result["data"]["conversation_id"], selected_conv.id)
+        self.assertEqual([m.role for m in store.get_messages(selected_conv.id)], ["user", "assistant"])
+        self.assertEqual(store.get_messages(llm_session.id), [])
+
+    def test_send_text_message_keeps_legacy_session_fallback_when_session_id_empty(self):
+        from xiaohuang.conversation_history_service import ConversationHistoryStore
+
+        store = ConversationHistoryStore(Path(self.tmp.name) / "history_fallback.sqlite3")
+        selected_conv = store.create_conversation("Selected")
+        fake = TextInteractionResult(
+            ok=True,
+            session_id="control_panel",
+            user_text="你是谁",
+            reply_text="我是小黄",
+            reply_source="llm",
+        )
+        with patch("xiaohuang.control_panel_web_service.run_text_interaction_turn", return_value=fake) as mock_run:
+            api = ControlPanelWebApi(config_path=self.config_path)
+            api._history_store = store
+            result = api.send_text_message({"text": "你是谁", "conversation_id": selected_conv.id})
+
+        self.assertTrue(result["ok"])
         self.assertEqual(mock_run.call_args.kwargs["session_id"], "control_panel")
+        self.assertEqual(result["data"]["conversation_id"], selected_conv.id)
+        self.assertEqual([m.role for m in store.get_messages(selected_conv.id)], ["user", "assistant"])
 
     def test_send_text_message_returns_pending_task_fields(self):
         fake = TextInteractionResult(
@@ -413,6 +464,34 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertIn("expires_at", result["data"]["pending_task"])
         self.assertIn("expires_in_seconds", result["data"]["pending_task"])
         json.dumps(result)
+
+    def test_get_llm_debug_summary_reports_env_presence_without_secret(self):
+        self.config_path.write_text(
+            json.dumps({
+                "llm": {
+                    "enabled": True,
+                    "provider": "deepseek",
+                    "model": "deepseek-v4-flash",
+                    "api_key_env": "TEST_XIAOHUANG_API_KEY",
+                }
+            }),
+            encoding="utf-8",
+        )
+        with patch.dict("os.environ", {"TEST_XIAOHUANG_API_KEY": "sk-test-secret"}, clear=True):
+            api = ControlPanelWebApi(config_path=self.config_path)
+            result = api.get_llm_debug_summary()
+
+        self.assertTrue(result["ok"])
+        data = result["data"]
+        self.assertEqual(data["config_path"], str(self.config_path))
+        self.assertTrue(data["llm_configured"])
+        self.assertEqual(data["provider"], "deepseek")
+        self.assertEqual(data["model"], "deepseek-v4-flash")
+        self.assertTrue(data["api_key_present"])
+        self.assertEqual(data["env_key_name"], "TEST_XIAOHUANG_API_KEY")
+        self.assertTrue(data["env_key_present"])
+        self.assertEqual(data["key_source"], "env:TEST_XIAOHUANG_API_KEY")
+        self.assertNotIn("sk-test-secret", json.dumps(data))
 
     def test_confirm_text_task_exists_and_completes_readonly_log_analysis(self):
         logs = Path(self.tmp.name) / "logs"
@@ -570,6 +649,28 @@ class V13UAControlPanelWebApiTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["data"]["session_id"], "control_panel")
         self.assertEqual(len(api._text_interaction_sessions.get_or_create("control_panel").memory), 0)
+
+    def test_clear_all_text_conversations_removes_history_and_sessions(self):
+        from xiaohuang.conversation_history_service import ConversationHistoryStore
+
+        store = ConversationHistoryStore(Path(self.tmp.name) / "clear_all.sqlite3")
+        conv1 = store.create_conversation("对话1")
+        conv2 = store.create_conversation("对话2")
+        store.save_user_message(conv1.id, "hello")
+        store.save_assistant_message(conv2.id, "reply")
+        store.bind_multica_task(conversation_id=conv1.id, issue_id="HHH-19", task_id="task-clear-api")
+        api = ControlPanelWebApi(config_path=self.config_path)
+        api._history_store = store
+        api._text_interaction_sessions.get_or_create(conv1.id).memory.add_user("缓存")
+
+        result = api.clear_all_text_conversations({})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["data"]["deleted_conversations"], 2)
+        self.assertEqual(result["data"]["deleted_messages"], 2)
+        self.assertEqual(result["data"]["deleted_bound_tasks"], 1)
+        self.assertEqual(store.list_conversations(), [])
+        self.assertEqual(len(api._text_interaction_sessions.get_or_create(conv1.id).memory), 0)
 
     def test_new_task_type_runtime_events_review_full_flow(self):
         from xiaohuang.capabilities.runtime_events import service as es
@@ -1208,7 +1309,8 @@ class V13UIFrontendStructureTests(unittest.TestCase):
     def test_html_has_chat_page(self):
         html = self._read("frontend/control_panel/index.html")
         for text in ("control-shell", "section-chat", "text-chat-messages",
-                     "text-chat-input", "text-chat-send", "text-chat-workspace"):
+                     "text-chat-input", "text-chat-send", "text-chat-workspace",
+                     "text-chat-clear-all", "清除全部"):
             self.assertIn(text, html, f"Missing chat page element: {text}")
         self.assertNotIn('id="section-text-chat"', html)
         self.assertNotIn('id="text-chat-shell"', html)
@@ -1431,8 +1533,26 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("handleButtonClick", js)
         self.assertIn("switchSection('chat')", js)
         self.assertIn("send_text_message", js)
-        self.assertIn("clear_text_session", js)
+        self.assertIn("conversation_id: textChatSessionId", js)
+        self.assertIn("clear_text_conversation", js)
+        self.assertIn("clear_all_text_conversations", js)
+        self.assertIn("function clearAllTextConversations", js)
         self.assertNotIn("apiCall('open_text_chat_window'", js)
+
+    def test_js_config_summary_button_uses_safe_llm_debug_summary(self):
+        js = self._read("frontend/control_panel/assets/app.js")
+        for text in (
+            "showLlmDebugSummary",
+            "get_llm_debug_summary",
+            "config_path: ",
+            "llm_configured: ",
+            "api_key_present: ",
+            "env_key_name: ",
+            "env_key_present: ",
+            "key_source: ",
+            "llm_config_debug",
+        ):
+            self.assertIn(text, js, f"Missing safe LLM debug summary UI: {text}")
 
     def test_js_renders_text_task_confirmation_cards_without_execution_api(self):
         js = self._read("frontend/control_panel/assets/app.js")

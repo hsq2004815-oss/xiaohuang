@@ -16,6 +16,7 @@ data/tts/*.mp3
 .env.*
 secrets.ps1
 .xiaohuang/
+MagicMock/
 
 # Local AI agent runtime / private context
 .claude/
@@ -27,6 +28,9 @@ runtime/
 data/recordings/
 data/task_history/
 data/tts/
+data/conversations/*.sqlite3
+data/conversations/*.sqlite3-shm
+data/conversations/*.sqlite3-wal
 models/
 
 # Secrets / env

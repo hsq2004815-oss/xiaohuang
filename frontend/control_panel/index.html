@@ -143,27 +143,34 @@
 
           <aside class="text-chat-sessions glass-card">
             <button class="text-chat-new" id="text-chat-new" type="button">+ 新对话</button>
+            <button class="text-chat-clear-all" id="text-chat-clear-all" type="button">清除全部</button>
             <input class="glass-input text-chat-search" type="text" placeholder="搜索对话..." disabled>
-            <div class="text-chat-label">今天</div>
-            <button class="text-chat-session active" type="button">
-              <span>默认对话</span>
-              <small>当前窗口</small>
-            </button>
+            <div class="text-chat-label">对话列表</div>
+            <div class="text-chat-session-list" id="conv-list"></div>
           </aside>
 
-          <aside class="text-chat-workspace glass-card">
-            <div class="workspace-block">
-              <h3>会话状态</h3>
-              <dl>
-                <div><dt>入口</dt><dd>文本输入，复用安全任务确认链路</dd></div>
-                <div><dt>任务</dt><dd>pending / executing / completed / blocked / failed</dd></div>
+          <aside class="text-chat-workspace glass-card" id="text-chat-workspace">
+            <div class="workspace-block" id="workspace-conv-info">
+              <h3>会话信息</h3>
+              <dl id="workspace-conv-meta">
+                <div><dt>标题</dt><dd id="ws-conv-title">--</dd></div>
+                <div><dt>消息数</dt><dd id="ws-conv-msgs">0</dd></div>
+                <div><dt>更新时间</dt><dd id="ws-conv-updated">--</dd></div>
               </dl>
             </div>
-            <div class="workspace-block">
-              <h3>快捷指令</h3>
-              <button type="button" data-text-prompt="帮我做一次健康检查">健康检查</button>
-              <button type="button" data-text-prompt="帮我看看最近错误">最近错误</button>
-              <button type="button" data-text-prompt="总结最近运行事件">运行事件总结</button>
+            <div class="workspace-block" id="workspace-bound-tasks">
+              <h3>绑定任务 <span id="ws-task-count">(0)</span></h3>
+              <div id="ws-task-status-badges" class="task-status-badges"></div>
+              <div id="ws-task-list" class="bound-task-list">
+                <p class="bound-task-empty">当前对话还没有绑定任务</p>
+              </div>
+            </div>
+            <div class="workspace-block" id="workspace-project-info">
+              <h3>项目 / 路径信息</h3>
+              <dl>
+                <div><dt>项目路径</dt><dd id="ws-project-path">--</dd></div>
+                <div><dt>Git 分支</dt><dd id="ws-git-branch">--</dd></div>
+              </dl>
             </div>
           </aside>
         </div>

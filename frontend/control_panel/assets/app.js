@@ -17,7 +17,7 @@
   var SIDEBAR_STORAGE_KEY = 'xiaohuang.controlPanel.sidebarCollapsed';
   var currentShell = 'control';
   var currentSection = 'home';
-  var textChatSessionId = 'control_panel';
+  var textChatSessionId = '';
   var textChatMessages = [];
   var textChatSending = false;
   var textChatInitialized = false;
@@ -25,6 +25,9 @@
   var taskHistoryItems = [];
   var taskHistoryLoading = false;
   var taskHistorySelectedId = null;
+  var conversationList = [];
+  var boundTasks = [];
+  var boundTaskCounts = {};
 
   /* ─── API ─── */
   function getApi() {
@@ -556,15 +559,16 @@
   function initTextChat() {
     if (textChatInitialized) return;
     textChatInitialized = true;
-    resetTextChatMessages();
 
     var send = $('text-chat-send');
     var clear = $('text-chat-clear');
     var input = $('text-chat-input');
     var newChat = $('text-chat-new');
+    var clearAll = $('text-chat-clear-all');
     if (send) send.addEventListener('click', sendTextChatMessage);
     if (clear) clear.addEventListener('click', clearTextChatSession);
-    if (newChat) newChat.addEventListener('click', clearTextChatSession);
+    if (newChat) newChat.addEventListener('click', createNewConversation);
+    if (clearAll) clearAll.addEventListener('click', clearAllTextConversations);
     var messages = $('text-chat-messages');
     if (messages) {
       messages.addEventListener('click', function (event) {
@@ -604,9 +608,245 @@
     }
     document.querySelectorAll('[data-text-prompt]').forEach(function (button) {
       button.addEventListener('click', function () {
-        fillTextChatPrompt(button.getAttribute('data-text-prompt') || '');
+        var prompt = button.getAttribute('data-text-prompt') || '';
+        if (prompt === '总结当前配置') {
+          showLlmDebugSummary();
+          return;
+        }
+        fillTextChatPrompt(prompt);
       });
     });
+
+    // Load initial conversation on first open
+    loadConversationList().then(function () {
+      if (!textChatSessionId) {
+        getOrCreateDefaultConversation();
+      } else {
+        loadConversationMessages(textChatSessionId);
+      }
+    });
+  }
+
+  /* ─── Conversation list ─── */
+
+  function loadConversationList() {
+    return apiCall('list_text_conversations').then(function (resp) {
+      if (resp && resp.ok && resp.data && resp.data.conversations) {
+        conversationList = resp.data.conversations;
+        renderConversationList();
+        return conversationList;
+      }
+      return [];
+    }).catch(function () { return []; });
+  }
+
+  function renderConversationList() {
+    var el = $('conv-list');
+    if (!el) return;
+    if (!conversationList.length) {
+      el.innerHTML = '<p class="bound-task-empty">暂无对话</p>';
+      return;
+    }
+    el.innerHTML = conversationList.map(function (c) {
+      var activeClass = c.id === textChatSessionId ? ' active' : '';
+      var taskBadge = c.task_count ? '<small>' + c.task_count + ' 个任务</small>' : '';
+      var preview = (c.last_preview || '').substring(0, 40);
+      return '<button class="text-chat-session' + activeClass + '" type="button" data-conv-id="' + escapeHtml(c.id) + '">' +
+        '<span>' + escapeHtml(c.title || '新对话') + '</span>' +
+        (preview ? '<small>' + escapeHtml(preview) + '</small>' : '') +
+        taskBadge +
+        '</button>';
+    }).join('');
+
+    el.querySelectorAll('.text-chat-session').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var convId = btn.getAttribute('data-conv-id') || '';
+        if (convId && convId !== textChatSessionId) switchConversation(convId);
+      });
+    });
+  }
+
+  function getOrCreateDefaultConversation() {
+    return apiCall('list_text_conversations').then(function (resp) {
+      var convs = (resp && resp.data && resp.data.conversations) || [];
+      if (convs.length) {
+        switchConversation(convs[0].id);
+      } else {
+        createNewConversation();
+      }
+    }).catch(function () {
+      createNewConversation();
+    });
+  }
+
+  function createNewConversation() {
+    apiCall('create_text_conversation', {}).then(function (resp) {
+      if (resp && resp.ok && resp.data && resp.data.id) {
+        switchConversation(resp.data.id);
+        loadConversationList();
+      }
+    }).catch(function () {});
+  }
+
+  function switchConversation(convId) {
+    textChatSessionId = convId;
+    resetTextChatMessages();
+    loadConversationMessages(convId);
+    loadBoundTasks(convId);
+    loadConversationList();
+  }
+
+  function clearAllTextConversations() {
+    if (!window.confirm('清除所有对话记录？')) return;
+    apiCall('clear_all_text_conversations', {}).then(function (resp) {
+      if (!resp || !resp.ok) {
+        toast((resp && resp.error) || '清除所有对话失败', 'err');
+        return;
+      }
+      textChatSessionId = '';
+      conversationList = [];
+      boundTasks = [];
+      boundTaskCounts = {};
+      resetTextChatMessages();
+      renderConversationList();
+      renderBoundTasks();
+      updateWorkspaceInfo(null);
+      createNewConversation();
+      toast('所有对话已清除', 'ok');
+    }).catch(function (e) {
+      toast('清除所有对话出错: ' + e, 'err');
+    });
+  }
+
+  function loadConversationMessages(convId) {
+    apiCall('get_text_conversation', { conversation_id: convId }).then(function (resp) {
+      if (!resp || !resp.ok || !resp.data) return;
+      var msgs = resp.data.messages || [];
+      var conv = resp.data.conversation;
+      // Restore messages from backend (sole source of truth)
+      textChatMessages = msgs.map(function (m) {
+        return {
+          role: m.role,
+          text: m.text,
+          meta: m.meta || {},
+          pendingTask: m.pending_task_snapshot || null,
+          executionResult: m.execution_result_snapshot || null,
+          fromHistory: true
+        };
+      });
+      renderTextChatMessages();
+      // Update workspace
+      updateWorkspaceInfo(conv);
+      boundTasks = resp.data.bound_tasks || [];
+      boundTaskCounts = resp.data.task_counts || {};
+      renderBoundTasks();
+      renderConversationList();
+    }).catch(function () {});
+  }
+
+  function updateWorkspaceInfo(conv) {
+    var title = $('ws-conv-title');
+    var msgs = $('ws-conv-msgs');
+    var updated = $('ws-conv-updated');
+    if (!conv) {
+      if (title) title.textContent = '--';
+      if (msgs) msgs.textContent = '0';
+      if (updated) updated.textContent = '--';
+      return;
+    }
+    if (title) title.textContent = conv.title || '--';
+    if (msgs) msgs.textContent = String(conv.message_count || 0);
+    if (updated) updated.textContent = (conv.updated_at || '').substring(0, 16);
+  }
+
+  function loadBoundTasks(convId) {
+    apiCall('list_conversation_multica_tasks', { conversation_id: convId }).then(function (resp) {
+      if (resp && resp.ok && resp.data) {
+        boundTasks = resp.data.tasks || [];
+        boundTaskCounts = resp.data.task_counts || {};
+        renderBoundTasks();
+      }
+    }).catch(function () {});
+  }
+
+  function renderBoundTasks() {
+    var countEl = $('ws-task-count');
+    var badgesEl = $('ws-task-status-badges');
+    var listEl = $('ws-task-list');
+    if (countEl) countEl.textContent = '(' + boundTasks.length + ')';
+
+    if (badgesEl) {
+      var labels = {
+        'running': '进行中', 'in_progress': '进行中',
+        'completed': '已完成', 'done': '已完成',
+        'in_review': '待验收', 'review': '待验收',
+        'failed': '失败', 'error': '失败',
+        'cancelled': '已取消'
+      };
+      var badgeHtml = Object.keys(boundTaskCounts).map(function (st) {
+        var label = labels[st] || st;
+        return '<span class="task-status-badge task-status-' + escapeHtml(st) + '">' +
+          escapeHtml(label) + ' ' + boundTaskCounts[st] + '</span>';
+      }).join('');
+      badgesEl.innerHTML = badgeHtml || '<span class="task-status-badge">暂无</span>';
+    }
+
+    if (listEl) {
+      if (!boundTasks.length) {
+        listEl.innerHTML = '<p class="bound-task-empty">当前对话还没有绑定任务</p>';
+        return;
+      }
+      listEl.innerHTML = boundTasks.map(function (t) {
+        var statusLabels = {
+          'running': '进行中', 'in_progress': '进行中',
+          'completed': '已完成', 'done': '已完成',
+          'in_review': '待验收', 'review': '待验收',
+          'failed': '失败', 'error': '失败',
+          'cancelled': '已取消'
+        };
+        var statusLabel = statusLabels[t.run_status] || t.run_status || '未知';
+        return '<div class="bound-task-card">' +
+          '<div class="bound-task-card-header">' +
+            '<strong>' + escapeHtml(t.issue_id || t.title || '--') + '</strong>' +
+            '<span class="task-status-badge task-status-' + escapeHtml(t.run_status) + '">' + escapeHtml(statusLabel) + '</span>' +
+          '</div>' +
+          '<div class="bound-task-card-body">' +
+            (t.task_id ? '<div><span>Run:</span> ' + escapeHtml(t.task_id) + '</div>' : '') +
+            (t.review_summary ? '<div class="bound-task-summary">' + escapeHtml(t.review_summary.substring(0, 120)) + '</div>' : '') +
+            '<div class="bound-task-meta">' +
+              '<span>消息: ' + t.messages_count + '</span>' +
+              '<span>工具调用: ' + t.tool_use_count + '</span>' +
+              '<span>工具结果: ' + t.tool_result_count + '</span>' +
+              '<span>读取于: ' + (t.last_read_at || '').substring(0, 16) + '</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="bound-task-card-actions">' +
+            (t.task_id ? '<button type="button" class="glass-pill" data-bound-read-msgs="' + escapeHtml(t.task_id) + '" data-bound-issue="' + escapeHtml(t.issue_id || '') + '">读取消息</button>' : '') +
+            '<button type="button" class="glass-pill" data-bound-open-panel="' + escapeHtml(t.issue_id || '') + '">打开面板</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      // Wire task card buttons
+      listEl.querySelectorAll('[data-bound-read-msgs]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var taskId = btn.getAttribute('data-bound-read-msgs') || '';
+          var issueId = btn.getAttribute('data-bound-issue') || '';
+          openMulticaTaskPanel('progress');
+          var progressInput = $('mp-progress-issue-id');
+          if (progressInput && issueId) progressInput.value = issueId;
+          if (taskId) readMulticaRunMessagesFromPanel(taskId);
+        });
+      });
+      listEl.querySelectorAll('[data-bound-open-panel]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var issueId = btn.getAttribute('data-bound-open-panel') || '';
+          openMulticaTaskPanel('progress');
+          var progressInput = $('mp-progress-issue-id');
+          if (progressInput && issueId) progressInput.value = issueId;
+        });
+      });
+    }
   }
 
   function focusTextChatInput() {
@@ -618,11 +858,6 @@
   function resetTextChatMessages() {
     textChatMessages = [];
     renderTextChatMessages();
-    appendTextChatMessage(
-      'assistant',
-      '你好，我是小黄。直接输入消息，我会在这里回复。',
-      { source: 'welcome' }
-    );
   }
 
   function fillTextChatPrompt(text) {
@@ -630,6 +865,32 @@
     if (!input) return;
     input.value = text;
     input.focus();
+  }
+
+  function formatLlmDebugSummary(data) {
+    var d = data || {};
+    return [
+      'config_path: ' + fmtVal(d.config_path),
+      'llm_configured: ' + (d.llm_configured ? 'yes' : 'no'),
+      'provider: ' + fmtVal(d.provider),
+      'model: ' + fmtVal(d.model),
+      'api_key_present: ' + (d.api_key_present ? 'true' : 'false'),
+      'env_key_name: ' + fmtVal(d.env_key_name),
+      'env_key_present: ' + (d.env_key_present ? 'true' : 'false'),
+      'key_source: ' + fmtVal(d.key_source)
+    ].join('\n');
+  }
+
+  function showLlmDebugSummary() {
+    apiCall('get_llm_debug_summary', {}).then(function (resp) {
+      if (resp && resp.ok) {
+        appendTextChatMessage('assistant', formatLlmDebugSummary(resp.data || {}), { source: 'llm_config_debug' });
+      } else {
+        appendTextChatMessage('assistant', (resp && resp.error) || 'LLM 配置摘要读取失败', { source: 'llm_config_debug_error' });
+      }
+    }).catch(function (e) {
+      appendTextChatMessage('assistant', 'LLM 配置摘要读取出错：' + e, { source: 'llm_config_debug_error' });
+    });
   }
 
   function appendTextChatMessage(role, text, meta, pendingTask, executionResult) {
@@ -678,6 +939,10 @@
   function renderTextChatMessages() {
     var el = $('text-chat-messages');
     if (!el) return;
+    if (!textChatMessages.length) {
+      el.innerHTML = '<div class="text-chat-empty-state">你好，我是小黄。直接输入消息，我会在这里回复。</div>';
+      return;
+    }
     el.innerHTML = textChatMessages.map(function (msg, index) {
       var meta = msg.meta || {};
       var parts = [];
@@ -1509,7 +1774,7 @@
     $('mp-runs-section').hidden = true;
     $('mp-messages-section').hidden = true;
 
-    apiCall('read_multica_issue_runs', { issue_id: issueId }).then(function (resp) {
+    apiCall('read_multica_issue_runs', { issue_id: issueId, conversation_id: textChatSessionId }).then(function (resp) {
       if (!resp || !resp.ok || !resp.data) {
         throw new Error((resp && (resp.error || resp.message)) || '读取 runs 失败');
       }
@@ -1558,15 +1823,25 @@
 
   function readMulticaRunMessagesFromPanel(taskId) {
     var status = $('mp-progress-status');
+    var issueId = getPanelIssueId();
     if (status) status.textContent = '正在读取消息...';
     $('mp-messages-section').hidden = true;
 
-    apiCall('read_multica_run_messages', { task_id: taskId }).then(function (resp) {
+    apiCall('read_multica_run_messages', {
+      task_id: taskId,
+      issue_id: issueId,
+      conversation_id: textChatSessionId
+    }).then(function (resp) {
       if (!resp || !resp.ok || !resp.data) {
         throw new Error((resp && (resp.error || resp.message)) || '读取 run-messages 失败');
       }
+      if (resp.data.binding_error) {
+        toast(resp.data.binding_error === 'task already bound to another conversation' ? '该任务已绑定到其他对话' : resp.data.binding_error, 'warn');
+      }
       renderMulticaRunMessages(resp.data);
       if (status) status.textContent = resp.message || 'run-messages 读取完成';
+      // Refresh bound tasks in workspace
+      if (textChatSessionId) loadBoundTasks(textChatSessionId);
     }).catch(function (err) {
       if (status) status.textContent = '读取失败：' + ((err && err.message) || err);
       toast('读取 Multica run-messages 失败', 'err');
@@ -1834,19 +2109,23 @@
 
     apiCall('send_text_message', {
       text: text,
-      session_id: textChatSessionId
+      session_id: textChatSessionId,
+      conversation_id: textChatSessionId
     }).then(function (resp) {
       if (!resp || !resp.ok) {
         appendTextChatMessage('assistant', (resp && resp.error) || '文本消息处理失败', { source: 'error' });
         return;
       }
       var data = resp.data || {};
+      if (data.conversation_id) {
+        textChatSessionId = data.conversation_id;
+      }
       appendTextChatMessage('assistant', data.reply_text || data.error || '没有返回内容', {
         source: data.reply_source,
         latency_ms: data.latency_ms,
         blocked_panel_command: data.blocked_panel_command,
         llm_configured: data.llm_configured
-      }, data.requires_confirmation ? data.pending_task : null);
+      }, data.requires_confirmation ? data.pending_task : null, data.execution_result || null);
     }).catch(function (e) {
       appendTextChatMessage('assistant', '文本消息处理出错：' + e, { source: 'js_error' });
     }).finally(function () {
@@ -1856,10 +2135,13 @@
   }
 
   function clearTextChatSession() {
+    if (!textChatSessionId) return;
     resetTextChatMessages();
-    apiCall('clear_text_session', { session_id: textChatSessionId }).then(function (resp) {
+    apiCall('clear_text_conversation', { session_id: textChatSessionId }).then(function (resp) {
       if (resp && resp.ok) {
         drawerLog('清空文本会话', true, resp.message || '');
+        loadConversationList();
+        loadBoundTasks(textChatSessionId);
       }
     }).catch(function () {});
     focusTextChatInput();

@@ -451,6 +451,12 @@ select.glass-input{cursor:pointer}
   background:linear-gradient(135deg,rgba(79,110,246,0.92),rgba(139,92,246,0.92));color:#fff;
   font-size:13px;font-weight:800;box-shadow:0 10px 24px rgba(79,110,246,0.18)
 }
+.text-chat-clear-all{
+  width:100%;min-height:34px;margin-top:8px;border-radius:var(--radius-pill);cursor:pointer;
+  border:1px solid rgba(248,113,113,0.28);background:rgba(255,255,255,0.58);
+  color:#b91c1c;font-size:12px;font-weight:800
+}
+.text-chat-clear-all:hover{background:rgba(248,113,113,0.12)}
 .text-chat-search{width:100%;margin:14px 0 18px}
 .text-chat-label{font-size:11px;font-weight:800;color:var(--text-muted);margin:0 0 8px 4px}
 .text-chat-session{
@@ -460,6 +466,30 @@ select.glass-input{cursor:pointer}
 }
 .text-chat-session span{font-size:13px;font-weight:800}
 .text-chat-session small{font-size:11px;color:var(--text-muted)}
+.text-chat-session.active{border-color:rgba(79,110,246,0.45);background:rgba(79,110,246,0.08)}
+.text-chat-session-list{display:flex;flex-direction:column;gap:6px}
+.text-chat-empty-state{padding:40px 22px;color:var(--text-muted);font-size:14px;text-align:center}
+/* bound task cards */
+.bound-task-list{display:flex;flex-direction:column;gap:10px}
+.bound-task-empty{color:var(--text-muted);font-size:12px;text-align:center;padding:20px 0}
+.bound-task-card{border:1px solid rgba(79,110,246,0.15);border-radius:14px;padding:12px;background:rgba(255,255,255,0.45)}
+.bound-task-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.bound-task-card-header strong{font-size:13px;color:var(--text-primary)}
+.bound-task-card-body{font-size:11px;color:var(--text-secondary)}
+.bound-task-card-body>div{margin-bottom:3px}
+.bound-task-summary{color:var(--text-muted);margin:4px 0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bound-task-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.bound-task-meta span{background:rgba(79,110,246,0.06);padding:2px 6px;border-radius:6px;font-size:10px}
+.bound-task-card-actions{display:flex;gap:6px;margin-top:8px}
+.bound-task-card-actions .glass-pill{padding:4px 10px;font-size:11px}
+/* task status badges */
+.task-status-badges{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.task-status-badge{font-size:10px;padding:3px 8px;border-radius:10px;background:rgba(79,110,246,0.08);color:var(--text-secondary)}
+.task-status-badge.task-status-completed,.task-status-badge.task-status-done{background:rgba(0,214,143,0.12);color:#00b87a}
+.task-status-badge.task-status-running,.task-status-badge.task-status-in_progress{background:rgba(0,180,255,0.12);color:#0080cc}
+.task-status-badge.task-status-in_review,.task-status-badge.task-status-review{background:rgba(156,109,255,0.12);color:#7b4dff}
+.task-status-badge.task-status-failed,.task-status-badge.task-status-error{background:rgba(255,71,87,0.12);color:#e8414d}
+.task-status-badge.task-status-cancelled{background:rgba(100,100,100,0.10);color:#777}
 .text-chat-main{
   display:grid;grid-template-rows:minmax(0,1fr) auto;padding:0!important;overflow:hidden;min-height:0
 }
@@ -1149,6 +1179,7 @@ body.chat-page .main-workspace{padding-top:clamp(12px,1.8vh,18px)}
   box-shadow:0 10px 28px rgba(31,38,135,0.06),inset 0 1px 1px rgba(255,255,255,.62);
 }
 #section-chat .text-chat-new{min-height:34px;box-shadow:0 8px 18px rgba(79,110,246,0.12)}
+#section-chat .text-chat-clear-all{min-height:32px}
 #section-chat .text-chat-search{margin:12px 0 14px}
 #section-chat .text-chat-session{padding:10px;border-radius:15px;background:rgba(255,255,255,0.50)}
 #section-chat .text-chat-message{max-width:74%;margin-bottom:18px}
@@ -1204,6 +1235,7 @@ body.chat-page .main-workspace{padding-top:clamp(12px,1.8vh,18px)}
   #section-chat .text-chat-layout{grid-template-columns:1fr}
   #section-chat .text-chat-sessions{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center}
   #section-chat .text-chat-search,#section-chat .text-chat-label{display:none}
+  #section-chat .text-chat-clear-all{margin-top:0}
 }
 
 @media(max-width:960px){
@@ -1243,6 +1275,7 @@ body.chat-page .main-workspace{padding-top:clamp(12px,1.8vh,18px)}
   .text-chat-layout{grid-template-columns:1fr;min-height:auto}
   .text-chat-sessions{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:center}
   .text-chat-search,.text-chat-label{display:none}
+  .text-chat-clear-all{margin-top:0}
   .text-chat-input-row{grid-template-columns:minmax(0,1fr) auto}
   .text-chat-model{display:none}
   .text-chat-message{max-width:92%}

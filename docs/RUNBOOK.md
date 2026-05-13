@@ -22,7 +22,7 @@
    & "F:\for_xiaohuang\conda310\python.exe" .\scripts\control_panel_web.py
    ```
 7. Start XiaoHuang from the control panel.
-8. Wake with "hey jarvis".
+8. Use the control panel text chat or wake with "hey jarvis".
 
 ## Commands
 
@@ -54,6 +54,20 @@ $env:PYTHONDONTWRITEBYTECODE = "1"
 & "F:\for_xiaohuang\conda310\python.exe" .\scripts\control_panel_web.py
 ```
 
+`control_panel_web.py` loads `%USERPROFILE%\.xiaohuang\secrets.ps1` into the
+webview process before the UI starts. It does not print real API keys.
+
+### Text chat history
+
+The control panel text chat stores local history in
+`data\conversations\conversations.sqlite3`.
+
+- `+ 新对话` creates a new conversation.
+- `清空会话` clears messages for the selected conversation only.
+- `清除全部` deletes all local conversations, messages, and Multica bindings
+  after browser confirmation, then creates a new blank conversation.
+- History database files are ignored by Git.
+
 ### Start voice overlay directly
 
 ```powershell
@@ -73,6 +87,11 @@ $env:DEEPSEEK_API_KEY = "sk-..."
 ```
 
 Do not commit real keys to config files or Git.
+
+If the control panel text chat falls back with `source=rule_fallback_no_key`,
+click the "配置摘要" quick action in text chat. It prints only safe fields:
+`config_path`, `llm_configured`, `provider`, `model`, `api_key_present`,
+`env_key_name`, `env_key_present`, and `key_source`.
 
 ## GPU STT Check
 
@@ -103,7 +122,8 @@ $env:PYTHONDONTWRITEBYTECODE = "1"
 ## Common Problems
 
 - **STT server unavailable**: start `stt_server.py` first.
-- **LLM API key missing**: set `DEEPSEEK_API_KEY` in the same process/session that launches XiaoHuang.
+- **LLM API key missing**: set `DEEPSEEK_API_KEY` in the same process/session that launches XiaoHuang, or put it in `%USERPROFILE%\.xiaohuang\secrets.ps1` before starting `control_panel_web.py`.
+- **Text chat shows `rule_fallback_no_key`**: open the text chat "配置摘要" quick action and check `env_key_present`. If it is false, the launch process did not receive the configured key environment variable.
 - **resident_hidden=true**: idle overlay may be hidden until wake.
 - **Old voice_overlay.py process remains**: kill XiaoHuang Python processes.
 - **stt.device=cuda:0 but CUDA unavailable**: STT server should fallback to cpu.
