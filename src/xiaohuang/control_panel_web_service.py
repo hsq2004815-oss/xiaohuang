@@ -26,6 +26,13 @@ from xiaohuang.status_control_service import (
     run_stop_operation,
     save_wake_engine_config,
 )
+from xiaohuang.control_panel_conversation_api import ControlPanelConversationApi
+from xiaohuang.control_panel_text_task_api import (
+    ControlPanelTextTaskApi,
+    _registry_blocked_result,
+    _registry_failed_result,
+    _registry_reason_text,
+)
 from xiaohuang.conversation_history_service import ConversationHistoryStore
 from xiaohuang.llm_config_debug_service import build_llm_debug_summary
 from xiaohuang.text_interaction_service import run_text_interaction_turn
@@ -80,6 +87,24 @@ class ControlPanelWebApi:
             return self._config_path
         from xiaohuang.app_config_service import get_default_config_path
         return get_default_config_path()
+
+    def _conversation_api(self) -> ControlPanelConversationApi:
+        return ControlPanelConversationApi(
+            history_store=self._history_store,
+            session_store=self._text_interaction_sessions,
+            task_registry=self._text_task_registry,
+            resolve_config_path=self._resolve_config_path,
+            run_text_turn=run_text_interaction_turn,
+        )
+
+    def _text_task_api(self) -> ControlPanelTextTaskApi:
+        return ControlPanelTextTaskApi(
+            project_root=self._project_root,
+            task_registry=self._text_task_registry,
+            resolve_config_path=self._resolve_config_path,
+            execute_text_task=execute_confirmed_text_task,
+            record_event=_record_cp_event,
+        )
 
     def get_status(self) -> dict:
         try:
@@ -400,128 +425,25 @@ class ControlPanelWebApi:
     # ── Conversation history API ──────────────────────────────────────
 
     def list_text_conversations(self, payload: dict | None = None) -> dict:
-        try:
-            conversations = self._history_store.list_conversations()
-            result = []
-            for c in conversations:
-                task_counts = self._history_store.get_bound_task_counts(c.id)
-                result.append({
-                    **c.to_dict(),
-                    "task_count": sum(task_counts.values()),
-                    "task_counts": task_counts,
-                })
-            return _ok(data={"conversations": result}, message="会话列表已加载")
-        except Exception:
-            return _fail("加载会话列表失败", "conversation_list_error")
+        return self._conversation_api().list_text_conversations(payload)
 
     def create_text_conversation(self, payload: dict | None = None) -> dict:
-        try:
-            title = ""
-            if isinstance(payload, dict):
-                title = str(payload.get("title") or "")
-            conv = self._history_store.create_conversation(title=title)
-            return _ok(data=conv.to_dict(), message="新对话已创建")
-        except Exception:
-            return _fail("创建对话失败", "conversation_create_error")
+        return self._conversation_api().create_text_conversation(payload)
 
     def get_text_conversation(self, payload: dict | None = None) -> dict:
-        try:
-            conversation_id = ""
-            if isinstance(payload, dict):
-                conversation_id = str(payload.get("conversation_id") or "")
-            if not conversation_id:
-                conv = self._history_store.get_or_create_default()
-                conversation_id = conv.id
-            conv = self._history_store.get_conversation(conversation_id)
-            if conv is None:
-                return _fail("会话不存在", "conversation_not_found")
-            messages = self._history_store.get_messages(conversation_id)
-            tasks = self._history_store.get_bound_tasks(conversation_id)
-            task_counts = self._history_store.get_bound_task_counts(conversation_id)
-            return _ok(data={
-                "conversation": conv.to_dict(),
-                "messages": [m.to_dict() for m in messages],
-                "bound_tasks": [t.to_dict() for t in tasks],
-                "task_counts": task_counts,
-            }, message="会话已加载")
-        except ValueError:
-            return _fail("会话 ID 格式无效", "invalid_conversation_id")
-        except Exception:
-            return _fail("加载会话失败", "conversation_get_error")
+        return self._conversation_api().get_text_conversation(payload)
 
     def clear_text_conversation(self, payload: dict | None = None) -> dict:
-        try:
-            conversation_id = ""
-            if isinstance(payload, dict):
-                conversation_id = str(payload.get("session_id") or "")
-            if not conversation_id:
-                return _fail("会话 ID 不能为空", "missing_conversation_id")
-            conv = self._history_store.get_conversation(conversation_id)
-            if conv is None:
-                return _fail("会话不存在", "conversation_not_found")
-            # Only clear messages, preserve bound tasks
-            self._history_store.clear_conversation_messages(conversation_id)
-            self._text_interaction_sessions.clear(conversation_id)
-            return _ok(data={"conversation_id": conversation_id}, message="会话消息已清空")
-        except ValueError:
-            return _fail("会话 ID 格式无效", "invalid_conversation_id")
-        except Exception:
-            return _fail("清空会话失败", "clear_conversation_error")
+        return self._conversation_api().clear_text_conversation(payload)
 
     def clear_all_text_conversations(self, payload: dict | None = None) -> dict:
-        try:
-            result = self._history_store.clear_all_conversations()
-            self._text_interaction_sessions.clear_all()
-            return _ok(data=result, message="所有对话已清除")
-        except Exception:
-            return _fail("清除所有对话失败", "clear_all_conversations_error")
+        return self._conversation_api().clear_all_text_conversations(payload)
 
     def list_conversation_multica_tasks(self, payload: dict | None = None) -> dict:
-        try:
-            conversation_id = ""
-            if isinstance(payload, dict):
-                conversation_id = str(payload.get("conversation_id") or "")
-            if not conversation_id:
-                return _fail("会话 ID 不能为空", "missing_conversation_id")
-            tasks = self._history_store.get_bound_tasks(conversation_id)
-            task_counts = self._history_store.get_bound_task_counts(conversation_id)
-            return _ok(data={
-                "tasks": [t.to_dict() for t in tasks],
-                "task_counts": task_counts,
-            }, message="绑定任务已加载")
-        except ValueError:
-            return _fail("会话 ID 格式无效", "invalid_conversation_id")
-        except Exception:
-            return _fail("加载绑定任务失败", "multica_task_list_error")
+        return self._conversation_api().list_conversation_multica_tasks(payload)
 
     def bind_multica_run_to_conversation(self, payload: dict | None = None) -> dict:
-        try:
-            data = payload if isinstance(payload, dict) else {}
-            conversation_id = str(data.get("conversation_id") or "")
-            issue_id = str(data.get("issue_id") or "")
-            task_id = str(data.get("task_id") or "")
-            if not conversation_id:
-                return _fail("会话 ID 不能为空", "missing_conversation_id")
-            if not issue_id and not task_id:
-                return _fail("issue_id 或 task_id 至少提供一个", "missing_issue_task_id")
-            binding = self._history_store.bind_multica_task(
-                conversation_id=conversation_id,
-                issue_id=issue_id,
-                task_id=task_id,
-                run_status=str(data.get("run_status") or ""),
-                review_summary=str(data.get("review_summary") or ""),
-                messages_count=int(data.get("messages_count") or 0),
-                tool_use_count=int(data.get("tool_use_count") or 0),
-                tool_result_count=int(data.get("tool_result_count") or 0),
-                target_project_path=str(data.get("target_project_path") or ""),
-                agent=str(data.get("agent") or ""),
-                title=str(data.get("title") or ""),
-            )
-            return _ok(data=binding.to_dict(), message="任务已绑定")
-        except ValueError as e:
-            return _fail(str(e), "binding_conflict")
-        except Exception:
-            return _fail("绑定任务失败", "multica_bind_error")
+        return self._conversation_api().bind_multica_run_to_conversation(payload)
 
     def open_text_chat_window(self) -> dict:
         return _ok(
@@ -532,158 +454,19 @@ class ControlPanelWebApi:
     # ── Legacy LLM turn (100% identical to pre-C5G.1 send_text_message) ─
 
     def _run_legacy_text_message_turn(self, payload: dict) -> dict:
-        """Exact copy of pre-C5G.1 send_text_message LLM call path.
-
-        Must stay byte-for-byte identical to the old implementation.
-        Persistence happens separately in send_text_message.
-        """
-        try:
-            text = ""
-            session_id = "control_panel"
-            if isinstance(payload, dict):
-                text = str(payload.get("text") or "")
-                session_id = str(payload.get("session_id") or "control_panel")
-
-            result = run_text_interaction_turn(
-                text,
-                session_store=self._text_interaction_sessions,
-                session_id=session_id,
-                config_path=self._resolve_config_path(),
-            )
-            data = asdict(result)
-            if data.get("requires_confirmation") and isinstance(data.get("pending_task"), dict):
-                record = self._text_task_registry.register(data["pending_task"])
-                data["pending_task"] = dict(record.task)
-            return _ok(data=data, message="消息已回复" if result.ok else "消息处理失败")
-        except Exception:
-            return _fail("文本消息处理失败", "send_text_message_error")
+        return self._conversation_api().run_legacy_text_message_turn(payload)
 
     def send_text_message(self, payload: dict) -> dict:
-        """C5G.1: legacy LLM turn + conversation history persistence.
-
-        Calls the legacy LLM path first (100% unchanged).  Only after a
-        successful LLM reply does it persist the user + assistant messages.
-        Persistence failures never affect the chat reply.
-        """
-        response = self._run_legacy_text_message_turn(payload)
-
-        if not response.get("ok"):
-            return response
-
-        try:
-            data = response.get("data") or {}
-            user_text = str((payload or {}).get("text") or "")
-            raw_sid = str((payload or {}).get("session_id") or "").strip()
-            raw_cid = str((payload or {}).get("conversation_id") or "").strip()
-            session_id = raw_sid if raw_sid else "control_panel"
-            conversation_id = raw_cid or session_id
-
-            try:
-                default_conv = self._history_store.get_or_create_default()
-            except Exception:
-                default_conv = None
-
-            if not raw_cid and session_id == "control_panel" and default_conv is not None:
-                conversation_id = default_conv.id
-            data["conversation_id"] = conversation_id
-
-            try:
-                self._history_store.save_user_message(conversation_id, user_text)
-            except Exception:
-                response["persistence_warning"] = "failed to save user message"
-
-            try:
-                reply_text = data.get("reply_text", "")
-                meta = {
-                    "reply_source": data.get("reply_source", ""),
-                    "has_llm_key": data.get("has_llm_key", False),
-                    "llm_configured": data.get("llm_configured", False),
-                    "latency_ms": data.get("latency_ms", 0),
-                }
-                pending_snapshot = None
-                if data.get("requires_confirmation") and isinstance(data.get("pending_task"), dict):
-                    pending_snapshot = dict(data["pending_task"])
-                self._history_store.save_assistant_message(
-                    conversation_id,
-                    reply_text or "(空回复)",
-                    meta=meta,
-                    pending_task_snapshot=pending_snapshot,
-                )
-            except Exception:
-                if response.get("persistence_warning"):
-                    response["persistence_warning"] += "; failed to save assistant message"
-                else:
-                    response["persistence_warning"] = "failed to save assistant message"
-        except Exception:
-            pass
-
-        return response
+        return self._conversation_api().send_text_message(payload)
 
     def confirm_text_task(self, payload: dict | None = None) -> dict:
-        try:
-            task_id = _extract_task_id(payload)
-            if not task_id:
-                return _ok(
-                    data=_registry_blocked_result("", "missing_task_id"),
-                    message="文本任务已拦截",
-                )
-            record, reason = self._text_task_registry.claim_for_execution(task_id)
-            if record is None:
-                return _ok(
-                    data=_registry_blocked_result(task_id, reason),
-                    message="文本任务已拦截",
-                )
-            try:
-                result = execute_confirmed_text_task(
-                    record.task,
-                    project_root=self._project_root,
-                    config_path=self._resolve_config_path(),
-                )
-            except Exception:
-                self._text_task_registry.mark_failed(task_id, "confirm_text_task_error")
-                return _ok(
-                    data=_registry_failed_result(task_id, "confirm_text_task_error"),
-                    message="文本任务执行失败",
-                )
-            if result.ok and result.status == "completed":
-                self._text_task_registry.mark_completed(task_id)
-            elif result.status == "blocked":
-                self._text_task_registry.mark_blocked(task_id, result.error)
-            else:
-                self._text_task_registry.mark_failed(task_id, result.error)
-
-            if result.status in ("completed", "failed"):
-                try:
-                    from xiaohuang.task_result_history_service import append_task_result
-                    append_task_result(self._project_root, result, task=record.task)
-                except Exception:
-                    _record_cp_event("control_panel", "task_history_append_failed", "warning")
-
-            return _ok(data=asdict(result), message="文本任务执行完成" if result.ok else "文本任务已拦截")
-        except Exception:
-            return _fail("确认文本任务失败", "confirm_text_task_error")
+        return self._text_task_api().confirm_text_task(payload)
 
     def cancel_text_task(self, payload: dict | None = None) -> dict:
-        try:
-            task_id = _extract_task_id(payload)
-            record = self._text_task_registry.cancel(task_id) if task_id else None
-            status = record.status if record else "not_found"
-            return _ok(
-                data={"task_id": task_id, "status": status},
-                message="文本任务已取消" if record else "文本任务未找到",
-            )
-        except Exception:
-            return _fail("取消文本任务失败", "cancel_text_task_error")
+        return self._text_task_api().cancel_text_task(payload)
 
     def clear_text_session(self, payload: dict | None = None) -> dict:
-        try:
-            session_id = "control_panel"
-            if isinstance(payload, dict):
-                session_id = str(payload.get("session_id") or "control_panel")
-            self._text_interaction_sessions.clear(session_id)
-            return _ok(data={"session_id": session_id}, message="文本会话已清空")
-        except Exception:
-            return _fail("清空文本会话失败", "clear_text_session_error")
+        return self._conversation_api().clear_text_session(payload)
 
     def clear_runtime_events(self, payload: dict | None = None) -> dict:
         try:
@@ -752,88 +535,6 @@ def _record_cp_event(event_type: str, message: str, level: str = "info") -> None
         record_event("control_panel", event_type, message, level=level)
     except Exception:
         pass
-
-
-def _extract_task_id(payload: dict | None) -> str:
-    if not isinstance(payload, dict):
-        return ""
-    task_id = payload.get("task_id")
-    if task_id:
-        return str(task_id)
-    pending_task = payload.get("pending_task")
-    if isinstance(pending_task, dict) and pending_task.get("task_id"):
-        return str(pending_task.get("task_id"))
-    return ""
-
-
-def _registry_blocked_result(task_id: str, reason: str) -> dict:
-    summary, details = _registry_reason_text(reason)
-    return {
-        "ok": False,
-        "task_id": task_id,
-        "task_type": "registry",
-        "status": "blocked",
-        "title": "文本任务无法执行",
-        "summary": summary,
-        "details": details,
-        "risk_level": "medium",
-        "read_files": [],
-        "error": reason or "registry_blocked",
-    }
-
-
-def _registry_failed_result(task_id: str, reason: str) -> dict:
-    return {
-        "ok": False,
-        "task_id": task_id,
-        "task_type": "registry",
-        "status": "failed",
-        "title": "文本任务执行失败",
-        "summary": "任务执行过程中出现异常，已标记为失败。",
-        "details": "原因：confirm_text_task_error",
-        "risk_level": "medium",
-        "read_files": [],
-        "error": reason or "confirm_text_task_error",
-    }
-
-
-def _registry_reason_text(reason: str) -> tuple[str, str]:
-    mapping: dict[str, tuple[str, str]] = {
-        "missing_task_id": (
-            "没有找到要确认的任务。",
-            "前端没有提供有效 task_id，请重新发起任务。",
-        ),
-        "not_found": (
-            "这个任务不存在或已经被清理。",
-            "后端注册表中没有找到该 task_id，请重新发起任务。",
-        ),
-        "expired": (
-            "这个任务已过期。",
-            "为了安全，待确认任务只在短时间内有效，请重新发起任务。",
-        ),
-        "already_executing": (
-            "这个任务正在执行中。",
-            "请等待当前执行结果，不要重复点击确认。",
-        ),
-        "already_completed": (
-            "这个任务已经执行过。",
-            "为了避免重复操作，同一个任务不能再次执行。",
-        ),
-        "already_cancelled": (
-            "这个任务已经取消。",
-            "已取消的任务不能再执行，请重新发起任务。",
-        ),
-        "not_pending": (
-            "这个任务当前状态不允许执行。",
-            "只有 pending 状态的任务可以确认执行。",
-        ),
-    }
-    if reason in mapping:
-        return mapping[reason]
-    return (
-        "该任务无法执行。",
-        f"原因：{reason or 'registry_blocked'}",
-    )
 
 
 def _coerce_optional_int(value: Any) -> int | None:
