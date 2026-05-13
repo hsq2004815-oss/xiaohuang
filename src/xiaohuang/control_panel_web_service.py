@@ -27,6 +27,7 @@ from xiaohuang.status_control_service import (
     save_wake_engine_config,
 )
 from xiaohuang.control_panel_conversation_api import ControlPanelConversationApi
+from xiaohuang.control_panel_context_summary_api import ControlPanelContextSummaryApi
 from xiaohuang.control_panel_text_task_api import (
     ControlPanelTextTaskApi,
     _registry_blocked_result,
@@ -105,6 +106,9 @@ class ControlPanelWebApi:
             execute_text_task=execute_confirmed_text_task,
             record_event=_record_cp_event,
         )
+
+    def _context_summary_api(self) -> ControlPanelContextSummaryApi:
+        return ControlPanelContextSummaryApi(history_store=self._history_store)
 
     def get_status(self) -> dict:
         try:
@@ -444,6 +448,15 @@ class ControlPanelWebApi:
 
     def bind_multica_run_to_conversation(self, payload: dict | None = None) -> dict:
         return self._conversation_api().bind_multica_run_to_conversation(payload)
+
+    def get_conversation_context_summary(self, payload: dict | None = None) -> dict:
+        return self._context_summary_api().get_conversation_context_summary(payload)
+
+    def refresh_conversation_context_summary(self, payload: dict | None = None) -> dict:
+        return self._context_summary_api().refresh_conversation_context_summary(payload)
+
+    def update_conversation_context_summary(self, payload: dict | None = None) -> dict:
+        return self._context_summary_api().update_conversation_context_summary(payload)
 
     def open_text_chat_window(self) -> dict:
         return _ok(

@@ -158,6 +158,12 @@ def _json_loads(text: str | None):
         return None
 
 
+def _format_task_snapshot_item(task: ConversationMulticaTaskRecord) -> str:
+    ident = task.issue_id or task.task_id or task.title or "Multica task"
+    suffix = task.review_summary or task.run_status or ""
+    return f"{ident}: {suffix}" if suffix else ident
+
+
 # ---------------------------------------------------------------------------
 # Store
 # ---------------------------------------------------------------------------
@@ -241,9 +247,26 @@ class ConversationHistoryStore:
                         ON conversation_multica_tasks(task_id)
                         WHERE task_id != '' AND is_primary_binding = 1;
                 """)
+                self._ensure_conversation_context_columns(conn)
                 conn.commit()
             finally:
                 conn.close()
+
+    def _ensure_conversation_context_columns(self, conn: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(conversations)").fetchall()
+        }
+        context_columns = {
+            "context_summary": "TEXT NOT NULL DEFAULT ''",
+            "current_goal": "TEXT NOT NULL DEFAULT ''",
+            "current_status": "TEXT NOT NULL DEFAULT ''",
+            "next_step": "TEXT NOT NULL DEFAULT ''",
+            "important_constraints": "TEXT NOT NULL DEFAULT '[]'",
+        }
+        for name, definition in context_columns.items():
+            if name not in columns:
+                conn.execute(f"ALTER TABLE conversations ADD COLUMN {name} {definition}")
 
     # -- conversations -----------------------------------------------------
 
@@ -324,6 +347,98 @@ class ConversationHistoryStore:
                 conn.commit()
             finally:
                 conn.close()
+
+    def update_conversation_context(
+        self,
+        conversation_id: str,
+        *,
+        context_summary: str = "",
+        current_goal: str = "",
+        current_status: str = "",
+        next_step: str = "",
+        important_constraints: list[str] | None = None,
+    ) -> ConversationRecord:
+        _ensure_valid_id(conversation_id, "conversation_id")
+        now = _now_iso()
+        constraints = [str(item) for item in (important_constraints or []) if str(item).strip()]
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(
+                    """UPDATE conversations
+                       SET context_summary=?, current_goal=?, current_status=?,
+                           next_step=?, important_constraints=?, updated_at=?
+                       WHERE id=?""",
+                    (
+                        context_summary or "",
+                        current_goal or "",
+                        current_status or "",
+                        next_step or "",
+                        _json_dumps(constraints),
+                        now,
+                        conversation_id,
+                    ),
+                )
+                conn.commit()
+                row = conn.execute(
+                    "SELECT * FROM conversations WHERE id=?", (conversation_id,)
+                ).fetchone()
+                if row is None:
+                    raise ValueError(f"conversation not found: {conversation_id}")
+                return self._row_to_conversation(row)
+            finally:
+                conn.close()
+
+    def get_conversation_context(self, conversation_id: str) -> dict:
+        conv = self.get_conversation(conversation_id)
+        if conv is None:
+            raise ValueError(f"conversation not found: {conversation_id}")
+        return {
+            "conversation_id": conv.id,
+            "context_summary": conv.context_summary,
+            "current_goal": conv.current_goal,
+            "current_status": conv.current_status,
+            "next_step": conv.next_step,
+            "important_constraints": conv.important_constraints,
+            "updated_at": conv.updated_at,
+        }
+
+    def build_basic_context_snapshot(self, conversation_id: str) -> dict:
+        conv = self.get_conversation(conversation_id)
+        if conv is None:
+            raise ValueError(f"conversation not found: {conversation_id}")
+        messages = self.get_messages(conversation_id)
+        recent_messages = messages[-20:]
+        bound_tasks = self.get_bound_tasks(conversation_id)
+        task_counts = self.get_bound_task_counts(conversation_id)
+        first_user_message = ""
+        for msg in messages:
+            if msg.role == "user" and msg.text.strip():
+                first_user_message = msg.text.strip()
+                break
+        completed_statuses = {"completed", "done", "in_review", "review"}
+        failed_statuses = {"failed", "error"}
+        completed_items = [
+            _format_task_snapshot_item(task)
+            for task in bound_tasks
+            if (task.run_status or "").lower() in completed_statuses
+        ]
+        blockers = [
+            _format_task_snapshot_item(task)
+            for task in bound_tasks
+            if (task.run_status or "").lower() in failed_statuses
+        ]
+        return {
+            "conversation_id": conv.id,
+            "conversation": conv.to_dict(),
+            "message_count": conv.message_count,
+            "recent_messages": [m.to_dict() for m in recent_messages],
+            "first_user_message": first_user_message,
+            "bound_tasks": [t.to_dict() for t in bound_tasks],
+            "task_counts": task_counts,
+            "completed_items": completed_items,
+            "blockers": blockers,
+        }
 
     def clear_conversation_messages(self, conversation_id: str) -> None:
         """Clear only messages for this conversation. Bound tasks are preserved."""

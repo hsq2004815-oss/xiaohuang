@@ -440,11 +440,11 @@ select.glass-input{cursor:pointer}
   font-size:12px;font-weight:800;white-space:nowrap
 }
 .text-chat-layout{
-  display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,300px);
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(230px,280px) minmax(260px,320px);
   gap:16px;min-height:calc(100vh - 172px)
 }
 .text-chat-sessions,.text-chat-main,.text-chat-workspace{min-width:0}
-.text-chat-workspace{display:none}
+.text-chat-workspace{display:block}
 .text-chat-sessions{padding:16px!important;overflow:auto}
 .text-chat-new{
   width:100%;min-height:38px;border-radius:var(--radius-pill);cursor:pointer;border:1px solid rgba(79,110,246,0.34);
@@ -825,6 +825,18 @@ select.glass-input{cursor:pointer}
 .workspace-block dt{font-size:12px;color:var(--text-muted);font-weight:800}
 .workspace-block dd{margin:4px 0 0;font-size:13px;color:var(--text-secondary);line-height:1.55}
 .workspace-block button{width:100%;margin-bottom:8px;text-align:left}
+.workspace-block-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.workspace-block-head h3{margin:0}
+.workspace-block-head button{width:auto;margin:0;padding:5px 10px;font-size:11px;white-space:nowrap}
+.context-summary-empty{margin:0;color:var(--text-muted);font-size:12px;line-height:1.55}
+.context-summary-fields{display:none}
+.context-summary-fields dd{word-break:break-word}
+.context-summary-text{
+  display:none;white-space:pre-wrap;word-break:break-word;margin:10px 0 0;
+  padding:10px;border-radius:12px;border:1px solid rgba(79,110,246,0.12);
+  background:rgba(255,255,255,0.50);color:var(--text-secondary);
+  font:12px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
 
 /* ─── Toast ─── */
 .toast-container{position:fixed;bottom:28px;right:28px;display:flex;flex-direction:column;gap:10px;z-index:999}
@@ -1131,7 +1143,7 @@ body.no-drawer-page .app-shell.drawer-collapsed .drawer-rail{display:none!import
   flex:1;
   height:auto;
   min-height:0;
-  grid-template-columns:minmax(0,1fr) minmax(250px,300px);
+  grid-template-columns:minmax(0,1fr) minmax(230px,280px) minmax(260px,320px);
 }
 #section-chat .text-chat-header{
   align-items:center;
@@ -1170,7 +1182,7 @@ body.no-drawer-page .app-shell.drawer-collapsed .drawer-rail{display:none!import
   padding:28px 32px;
 }
 #section-chat .text-chat-composer{flex:0 0 auto}
-#section-chat .text-chat-workspace{display:none!important}
+#section-chat .text-chat-workspace{display:block!important}
 body.chat-page .main-workspace{padding-top:clamp(12px,1.8vh,18px)}
 #section-chat .text-chat-sessions{
   padding:14px!important;
@@ -1228,7 +1240,7 @@ body.chat-page .main-workspace{padding-top:clamp(12px,1.8vh,18px)}
   .status-badge{max-width:150px}
   .wake-badge{max-width:132px}
   .text-chat-layout{grid-template-columns:minmax(0,1fr) minmax(220px,260px)}
-  .text-chat-workspace{display:none}
+  .text-chat-workspace{grid-column:1 / -1;max-height:260px}
 }
 
 @media(max-width:1100px){

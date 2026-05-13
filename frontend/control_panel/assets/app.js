@@ -28,6 +28,8 @@
   var conversationList = [];
   var boundTasks = [];
   var boundTaskCounts = {};
+  var conversationContextSummary = null;
+  var contextSummaryLoading = false;
 
   /* ─── API ─── */
   function getApi() {
@@ -565,10 +567,12 @@
     var input = $('text-chat-input');
     var newChat = $('text-chat-new');
     var clearAll = $('text-chat-clear-all');
+    var refreshContext = $('btn-refresh-context-summary');
     if (send) send.addEventListener('click', sendTextChatMessage);
     if (clear) clear.addEventListener('click', clearTextChatSession);
     if (newChat) newChat.addEventListener('click', createNewConversation);
     if (clearAll) clearAll.addEventListener('click', clearAllTextConversations);
+    if (refreshContext) refreshContext.addEventListener('click', refreshConversationContextSummary);
     var messages = $('text-chat-messages');
     if (messages) {
       messages.addEventListener('click', function (event) {
@@ -623,6 +627,8 @@
         getOrCreateDefaultConversation();
       } else {
         loadConversationMessages(textChatSessionId);
+        loadBoundTasks(textChatSessionId);
+        loadConversationContextSummary(textChatSessionId);
       }
     });
   }
@@ -691,8 +697,11 @@
   function switchConversation(convId) {
     textChatSessionId = convId;
     resetTextChatMessages();
+    conversationContextSummary = null;
+    renderConversationContextSummary(null);
     loadConversationMessages(convId);
     loadBoundTasks(convId);
+    loadConversationContextSummary(convId);
     loadConversationList();
   }
 
@@ -707,9 +716,11 @@
       conversationList = [];
       boundTasks = [];
       boundTaskCounts = {};
+      conversationContextSummary = null;
       resetTextChatMessages();
       renderConversationList();
       renderBoundTasks();
+      renderConversationContextSummary(null);
       updateWorkspaceInfo(null);
       createNewConversation();
       toast('所有对话已清除', 'ok');
@@ -740,6 +751,17 @@
       boundTasks = resp.data.bound_tasks || [];
       boundTaskCounts = resp.data.task_counts || {};
       renderBoundTasks();
+      if (conv) {
+        renderConversationContextSummary({
+          conversation_id: conv.id,
+          context_summary: conv.context_summary || '',
+          current_goal: conv.current_goal || '',
+          current_status: conv.current_status || '',
+          next_step: conv.next_step || '',
+          important_constraints: conv.important_constraints || [],
+          updated_at: conv.updated_at || ''
+        });
+      }
       renderConversationList();
     }).catch(function () {});
   }
@@ -767,6 +789,75 @@
         renderBoundTasks();
       }
     }).catch(function () {});
+  }
+
+  function loadConversationContextSummary(convId) {
+    if (!convId) {
+      conversationContextSummary = null;
+      renderConversationContextSummary(null);
+      return;
+    }
+    apiCall('get_conversation_context_summary', { conversation_id: convId }).then(function (resp) {
+      if (resp && resp.ok && resp.data && resp.data.conversation_id === textChatSessionId) {
+        conversationContextSummary = resp.data;
+        renderConversationContextSummary(resp.data);
+      }
+    }).catch(function () {});
+  }
+
+  function refreshConversationContextSummary() {
+    if (!textChatSessionId || contextSummaryLoading) return;
+    contextSummaryLoading = true;
+    renderContextSummaryButton();
+    apiCall('refresh_conversation_context_summary', { conversation_id: textChatSessionId }).then(function (resp) {
+      if (!resp || !resp.ok) {
+        toast((resp && resp.error) || '刷新摘要失败', 'err');
+        return;
+      }
+      conversationContextSummary = resp.data || null;
+      renderConversationContextSummary(conversationContextSummary);
+      toast('上下文摘要已刷新', 'ok');
+    }).catch(function (e) {
+      toast('刷新摘要出错: ' + e, 'err');
+    }).finally(function () {
+      contextSummaryLoading = false;
+      renderContextSummaryButton();
+    });
+  }
+
+  function renderContextSummaryButton() {
+    var btn = $('btn-refresh-context-summary');
+    if (!btn) return;
+    btn.disabled = contextSummaryLoading || !textChatSessionId;
+    btn.textContent = contextSummaryLoading ? '刷新中...' : '刷新摘要';
+  }
+
+  function renderConversationContextSummary(data) {
+    var empty = $('ws-context-empty');
+    var fields = $('ws-context-fields');
+    var summaryText = $('ws-context-summary-text');
+    var goal = $('ws-context-goal');
+    var status = $('ws-context-status');
+    var next = $('ws-context-next');
+    var constraints = $('ws-context-constraints');
+    var hasSummary = !!(data && (
+      data.context_summary || data.current_goal || data.current_status ||
+      data.next_step || (data.important_constraints && data.important_constraints.length)
+    ));
+    if (empty) empty.style.display = hasSummary ? 'none' : 'block';
+    if (fields) fields.style.display = hasSummary ? 'block' : 'none';
+    if (summaryText) {
+      summaryText.style.display = data && data.context_summary ? 'block' : 'none';
+      summaryText.textContent = data && data.context_summary ? data.context_summary : '';
+    }
+    if (goal) goal.textContent = data && data.current_goal ? data.current_goal : '--';
+    if (status) status.textContent = data && data.current_status ? data.current_status : '--';
+    if (next) next.textContent = data && data.next_step ? data.next_step : '--';
+    if (constraints) {
+      var items = data && data.important_constraints ? data.important_constraints : [];
+      constraints.textContent = items.length ? items.join('；') : '--';
+    }
+    renderContextSummaryButton();
   }
 
   function renderBoundTasks() {

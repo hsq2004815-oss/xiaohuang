@@ -218,6 +218,48 @@ class TestConversationHistoryStore(unittest.TestCase):
     # ensuring test_multica_integration_safety.py and
     # test_multica_integration_run_reader_service.py still pass.
 
+    def test_update_conversation_context_saves_and_reads_fields(self):
+        conv = self.store.create_conversation(title="上下文")
+
+        updated = self.store.update_conversation_context(
+            conv.id,
+            context_summary="摘要",
+            current_goal="完成 C5G.2",
+            current_status="进行中",
+            next_step="继续测试",
+            important_constraints=["不自动启动 Agent", "不泄露 API Key"],
+        )
+        context = self.store.get_conversation_context(conv.id)
+
+        self.assertEqual(updated.current_goal, "完成 C5G.2")
+        self.assertEqual(context["context_summary"], "摘要")
+        self.assertEqual(context["current_status"], "进行中")
+        self.assertEqual(context["next_step"], "继续测试")
+        self.assertEqual(context["important_constraints"], ["不自动启动 Agent", "不泄露 API Key"])
+
+    def test_build_basic_context_snapshot_reads_messages_and_bound_tasks(self):
+        conv = self.store.create_conversation(title="Snapshot")
+        self.store.save_user_message(conv.id, "实现上下文摘要")
+        self.store.save_assistant_message(conv.id, "收到")
+        self.store.bind_multica_task(
+            conversation_id=conv.id,
+            issue_id="HHH-19",
+            task_id="task-snapshot",
+            run_status="completed",
+            review_summary="验收通过",
+            messages_count=8,
+        )
+
+        snapshot = self.store.build_basic_context_snapshot(conv.id)
+
+        self.assertEqual(snapshot["conversation_id"], conv.id)
+        self.assertEqual(snapshot["message_count"], 2)
+        self.assertEqual(snapshot["first_user_message"], "实现上下文摘要")
+        self.assertEqual(len(snapshot["recent_messages"]), 2)
+        self.assertEqual(len(snapshot["bound_tasks"]), 1)
+        self.assertEqual(snapshot["task_counts"], {"completed": 1})
+        self.assertIn("HHH-19", snapshot["completed_items"][0])
+
 
 class TestIdValidation(unittest.TestCase):
     def test_valid_ids_pass(self):

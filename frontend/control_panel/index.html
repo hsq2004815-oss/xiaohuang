@@ -158,6 +158,20 @@
                 <div><dt>更新时间</dt><dd id="ws-conv-updated">--</dd></div>
               </dl>
             </div>
+            <div class="workspace-block context-summary-block" id="workspace-context-summary">
+              <div class="workspace-block-head">
+                <h3>上下文摘要</h3>
+                <button class="glass-pill" id="btn-refresh-context-summary" type="button">刷新摘要</button>
+              </div>
+              <p class="context-summary-empty" id="ws-context-empty">暂无上下文摘要，点击刷新摘要生成基础摘要。</p>
+              <dl class="context-summary-fields" id="ws-context-fields">
+                <div><dt>目标</dt><dd id="ws-context-goal">--</dd></div>
+                <div><dt>状态</dt><dd id="ws-context-status">--</dd></div>
+                <div><dt>下一步</dt><dd id="ws-context-next">--</dd></div>
+                <div><dt>约束</dt><dd id="ws-context-constraints">--</dd></div>
+              </dl>
+              <pre class="context-summary-text" id="ws-context-summary-text"></pre>
+            </div>
             <div class="workspace-block" id="workspace-bound-tasks">
               <h3>绑定任务 <span id="ws-task-count">(0)</span></h3>
               <div id="ws-task-status-badges" class="task-status-badges"></div>

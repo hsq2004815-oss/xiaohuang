@@ -1346,13 +1346,19 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("if (action === 'open-diagnostics') { doOpenDiagnostics(); return; }", js)
         self.assertIn("switchSection('diagnostics')", js)
 
-    def test_chat_layout_has_no_right_workspace_column(self):
+    def test_chat_layout_has_right_context_workspace_column(self):
         html = self._read("frontend/control_panel/index.html")
         css = self._read("frontend/control_panel/assets/style.css")
+        js = self._read("frontend/control_panel/assets/app.js")
         self.assertLess(html.index('class="text-chat-main'), html.index('class="text-chat-sessions'))
-        self.assertIn(".text-chat-workspace{display:none}", css)
-        self.assertIn("#section-chat .text-chat-workspace{display:none!important}", css)
-        self.assertIn("grid-template-columns:minmax(0,1fr) minmax(250px,300px)", css)
+        self.assertIn("workspace-context-summary", html)
+        self.assertIn("btn-refresh-context-summary", html)
+        self.assertIn("暂无上下文摘要，点击刷新摘要生成基础摘要。", html)
+        self.assertIn(".text-chat-workspace{display:block}", css)
+        self.assertIn("#section-chat .text-chat-workspace{display:block!important}", css)
+        self.assertIn("grid-template-columns:minmax(0,1fr) minmax(230px,280px) minmax(260px,320px)", css)
+        self.assertIn("get_conversation_context_summary", js)
+        self.assertIn("refresh_conversation_context_summary", js)
 
     def test_chat_layout_has_internal_scroll_container(self):
         css = self._read("frontend/control_panel/assets/style.css")
