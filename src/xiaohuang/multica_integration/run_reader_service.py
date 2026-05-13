@@ -70,7 +70,8 @@ def read_issue_runs(
             message=result.message,
         )
 
-    runs, warnings = _parse_runs_json(result.stdout, clean)
+    raw_stdout = str(result.raw_stdout or result.stdout or "")
+    runs, warnings = _parse_runs_json(raw_stdout, clean)
     return MulticaRunsResult(
         ok=True,
         issue_id=clean,
@@ -123,15 +124,15 @@ def read_run_messages(
             message=result.message,
         )
 
-    stdout_text = str(result.stdout or "")
-    stderr_text = str(result.stderr or "")
+    raw_stdout = str(result.raw_stdout or result.stdout or "")
+    raw_stderr = str(result.raw_stderr or result.stderr or "")
     all_warnings: list[str] = []
 
-    messages, parse_warnings = _parse_run_messages_json(stdout_text, clean)
+    messages, parse_warnings = _parse_run_messages_json(raw_stdout, clean)
     all_warnings.extend(parse_warnings)
 
-    if not messages and stderr_text.strip():
-        stderr_msgs, stderr_warnings = _parse_run_messages_json(stderr_text, clean)
+    if not messages and raw_stderr.strip():
+        stderr_msgs, stderr_warnings = _parse_run_messages_json(raw_stderr, clean)
         if stderr_msgs:
             messages = stderr_msgs
         all_warnings.extend(stderr_warnings)
@@ -139,10 +140,12 @@ def read_run_messages(
     raw_debug: dict = {}
     if not messages:
         raw_debug = {
-            "stdout_len": len(stdout_text),
-            "stderr_len": len(stderr_text),
-            "stdout_head": stdout_text[:1000],
-            "stderr_head": stderr_text[:1000],
+            "raw_stdout_len": len(raw_stdout),
+            "raw_stderr_len": len(raw_stderr),
+            "stdout_len": len(str(result.stdout or "")),
+            "stderr_len": len(str(result.stderr or "")),
+            "raw_stdout_head": raw_stdout[:1000],
+            "stderr_head": raw_stderr[:1000],
             "parse_warnings": list(all_warnings),
         }
 

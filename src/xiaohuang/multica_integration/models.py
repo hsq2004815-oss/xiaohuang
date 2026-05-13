@@ -11,6 +11,8 @@ class MulticaCommandResult:
     ok: bool
     command_key: str
     returncode: int = 0
+    raw_stdout: str = ""
+    raw_stderr: str = ""
     stdout: str = ""
     stderr: str = ""
     error_code: str = ""

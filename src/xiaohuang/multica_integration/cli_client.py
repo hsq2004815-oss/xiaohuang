@@ -17,9 +17,9 @@ MAX_STREAM_CHARS = 4000
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 _SENSITIVE_PATTERNS = (
-    re.compile(r"(?i)\b(api[_-]?key|apikey|token|password|secret)\b\s*[:=]\s*([^\s,;]+)"),
-    re.compile(r"(?i)\b(authorization)\b\s*[:=]\s*(bearer\s+)?([^\s,;]+)"),
-    re.compile(r"(?i)\bbearer\s+([^\s,;]+)"),
+    re.compile(r"(?i)\b(api[_-]?key|apikey|token|password|secret)\b\s*[:=]\s*([^\s,;\"'<>]+)"),
+    re.compile(r"(?i)\b(authorization)\b\s*[:=]\s*(bearer\s+)?([^\s,;\"'<>]+)"),
+    re.compile(r"(?i)\bbearer\s+([^\s,;\"'<>]+)"),
 )
 
 
@@ -78,13 +78,17 @@ def run_multica_command(
             message=str(exc),
         )
 
-    stdout = _sanitize_stream(completed.stdout)
-    stderr = _sanitize_stream(completed.stderr)
+    raw_stdout = _redact(completed.stdout)
+    raw_stderr = _redact(completed.stderr)
+    stdout = _truncate(raw_stdout)
+    stderr = _truncate(raw_stderr)
     ok = int(completed.returncode) == 0
     return MulticaCommandResult(
         ok=ok,
         command_key=key,
         returncode=int(completed.returncode),
+        raw_stdout=raw_stdout,
+        raw_stderr=raw_stderr,
         stdout=stdout,
         stderr=stderr,
         error_code="" if ok else "multica_nonzero_exit",
@@ -148,13 +152,17 @@ def run_multica_argv(
             message=str(exc),
         )
 
-    stdout = _sanitize_stream(completed.stdout)
-    stderr = _sanitize_stream(completed.stderr)
+    raw_stdout = _redact(completed.stdout)
+    raw_stderr = _redact(completed.stderr)
+    stdout = _truncate(raw_stdout)
+    stderr = _truncate(raw_stderr)
     ok = int(completed.returncode) == 0
     return MulticaCommandResult(
         ok=ok,
         command_key=key,
         returncode=int(completed.returncode),
+        raw_stdout=raw_stdout,
+        raw_stderr=raw_stderr,
         stdout=stdout,
         stderr=stderr,
         error_code="" if ok else "multica_nonzero_exit",
@@ -163,11 +171,28 @@ def run_multica_argv(
 
 
 def _sanitize_stream(value: object, *, limit: int = MAX_STREAM_CHARS) -> str:
+    """Redact + truncate (for display).  Prefer _redact + _truncate in new code."""
     if isinstance(value, bytes):
         text = value.decode("utf-8", errors="replace")
     else:
         text = str(value or "")
     text = _redact_sensitive_text(text)
+    if len(text) > limit:
+        return text[:limit].rstrip() + "...<truncated>"
+    return text
+
+
+def _redact(value: object) -> str:
+    """Redact sensitive info without truncating."""
+    if isinstance(value, bytes):
+        text = value.decode("utf-8", errors="replace")
+    else:
+        text = str(value or "")
+    return _redact_sensitive_text(text)
+
+
+def _truncate(text: str, *, limit: int = MAX_STREAM_CHARS) -> str:
+    """Truncate to limit for display purposes."""
     if len(text) > limit:
         return text[:limit].rstrip() + "...<truncated>"
     return text

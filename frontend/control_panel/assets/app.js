@@ -1589,7 +1589,7 @@
       if (rd && (rd.stdout_head || rd.stderr_head || rd.parse_warnings)) {
         html += '<div style="margin-top:10px;padding:10px;border-radius:10px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);font-size:11px">' +
           '<div style="font-weight:700;margin-bottom:6px;color:#92400e">调试信息 (raw_debug)</div>' +
-          '<div>stdout_len: ' + (rd.stdout_len || 0) + ' / stderr_len: ' + (rd.stderr_len || 0) + '</div>' +
+          '<div>raw_stdout_len: ' + (rd.raw_stdout_len || 0) + ' (截断后 stdout_len: ' + (rd.stdout_len || 0) + ') / raw_stderr_len: ' + (rd.raw_stderr_len || 0) + ' (截断后 stderr_len: ' + (rd.stderr_len || 0) + ')</div>' +
           (rd.parse_warnings ? '<div style="margin-top:4px">parse_warnings: ' + escapeHtml(String(rd.parse_warnings)) + '</div>' : '') +
           (rd.stdout_head ? '<div style="margin-top:6px;font-weight:600">stdout_head:</div><pre style="margin:4px 0 0;max-height:160px;overflow:auto;font-size:10px;line-height:1.4;white-space:pre-wrap;word-break:break-word">' + escapeHtml(rd.stdout_head) + '</pre>' : '') +
           (rd.stderr_head ? '<div style="margin-top:6px;font-weight:600">stderr_head:</div><pre style="margin:4px 0 0;max-height:160px;overflow:auto;font-size:10px;line-height:1.4;white-space:pre-wrap;word-break:break-word">' + escapeHtml(rd.stderr_head) + '</pre>' : '') +

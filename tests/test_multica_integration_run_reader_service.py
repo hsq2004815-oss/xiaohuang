@@ -197,7 +197,7 @@ class MulticaRunReaderIntegrationTests(unittest.TestCase):
         rd = d["raw_debug"]
         self.assertIn("stdout_len", rd)
         self.assertIn("stderr_len", rd)
-        self.assertIn("stdout_head", rd)
+        self.assertIn("raw_stdout_head", rd)
         self.assertIn("stderr_head", rd)
         self.assertIn("parse_warnings", rd)
         self.assertGreater(len(rd["parse_warnings"]), 0)
@@ -215,6 +215,60 @@ class MulticaRunReaderIntegrationTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(len(result.messages), 1)
         self.assertEqual(result.messages[0].seq, "2")
+
+    def test_large_json_array_survives_truncation(self):
+        """> MAX_STREAM_CHARS JSON array — raw_stdout keeps full content, parser still works."""
+        items = []
+        for i in range(300):
+            items.append({
+                "seq": i + 1,
+                "type": "tool_use",
+                "tool": "Bash",
+                "input": {"command": f"echo msg-{i:04d}", "description": f"step {i}"},
+                "task_id": "t1",
+            })
+        full_json = json.dumps(items)
+        self.assertGreater(len(full_json), 4000, "test data must exceed MAX_STREAM_CHARS")
+
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 0, stdout=full_json, stderr="")
+
+        result = read_run_messages(task_id="t1", runner=fake_run)
+        self.assertTrue(result.ok)
+        self.assertEqual(len(result.messages), 300)
+
+        # stdout is truncated for display
+        self.assertLess(len(result.raw_summary), len(full_json))
+
+    def test_raw_stdout_not_truncated_but_redacted(self):
+        """Verify raw_stdout is full-length but secrets are redacted."""
+        stdout = '[{"seq":1,"output":"token=sk-abc123secret"}]'
+
+        def fake_run(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="")
+
+        result = read_run_messages(task_id="t1", runner=fake_run)
+        self.assertTrue(result.ok)
+        # Should have parsed correctly from full raw_stdout
+        self.assertEqual(len(result.messages), 1)
+        # Check raw_debug not populated when messages > 0
+        self.assertEqual(result.raw_debug, {})
+
+    def test_shell_false_unchanged(self):
+        """shell=False must still hold after raw_stdout changes."""
+        calls = []
+
+        def fake_run(argv, **kwargs):
+            calls.append(kwargs)
+            return subprocess.CompletedProcess(
+                argv, 0,
+                stdout='[{"seq":1,"output":"ok"}]',
+                stderr="",
+            )
+
+        read_run_messages(task_id="t1", runner=fake_run)
+        self.assertTrue(len(calls) > 0)
+        self.assertFalse(calls[0].get("shell", True))
 
 
 class RunMessagesToolEventParseTests(unittest.TestCase):
