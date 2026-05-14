@@ -118,6 +118,8 @@
           </div>
           <span class="text-chat-status" id="text-chat-status">本地文本入口</span>
         </div>
+        <button class="workspace-drawer-button" id="btn-workspace-drawer-toggle" type="button" title="打开会话信息" aria-label="打开会话信息" aria-controls="text-chat-workspace" aria-expanded="false">会话</button>
+        <div class="workspace-drawer-backdrop" id="workspace-drawer-backdrop" hidden></div>
         <div class="text-chat-layout">
           <main class="text-chat-main glass-card">
             <div class="text-chat-messages" id="text-chat-messages" aria-live="polite"></div>
@@ -152,9 +154,13 @@
             <div class="text-chat-session-list" id="conv-list"></div>
           </aside>
 
-          <aside class="text-chat-workspace glass-card" id="text-chat-workspace">
-            <div class="workspace-block" id="workspace-conv-info">
+          <aside class="text-chat-workspace workspace-drawer glass-card" id="text-chat-workspace" aria-label="会话信息" aria-hidden="true">
+            <div class="workspace-drawer-header">
               <h3>会话信息</h3>
+              <button class="workspace-drawer-close" id="btn-workspace-drawer-close" type="button" title="关闭会话信息" aria-label="关闭会话信息">×</button>
+            </div>
+            <div class="workspace-block" id="workspace-conv-info">
+              <h3>当前会话</h3>
               <dl id="workspace-conv-meta">
                 <div><dt>标题</dt><dd id="ws-conv-title">--</dd></div>
                 <div><dt>消息数</dt><dd id="ws-conv-msgs">0</dd></div>

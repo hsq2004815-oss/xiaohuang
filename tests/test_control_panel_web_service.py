@@ -1350,21 +1350,39 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("if (action === 'open-diagnostics') { doOpenDiagnostics(); return; }", js)
         self.assertIn("switchSection('diagnostics')", js)
 
-    def test_chat_layout_has_right_context_workspace_column(self):
+    def test_chat_layout_has_workspace_overlay_drawer(self):
         html = self._read("frontend/control_panel/index.html")
         css = self._read("frontend/control_panel/assets/style.css")
         js = self._read("frontend/control_panel/assets/app.js")
         self.assertLess(html.index('class="text-chat-main'), html.index('class="text-chat-sessions'))
+        self.assertIn('id="btn-workspace-drawer-toggle"', html)
+        self.assertIn('id="workspace-drawer-backdrop"', html)
+        self.assertIn('id="btn-workspace-drawer-close"', html)
+        self.assertIn('class="text-chat-workspace workspace-drawer glass-card"', html)
         self.assertIn("workspace-context-summary", html)
         self.assertIn("btn-refresh-context-summary", html)
         self.assertIn("上下文状态", html)
         self.assertIn("上下文详情", html)
         self.assertIn("ws-context-token-usage", html)
         self.assertNotIn("暂无上下文摘要，点击刷新摘要生成基础摘要。", html)
-        self.assertIn(".text-chat-workspace{display:block}", css)
         self.assertIn(".context-status-grid", css)
-        self.assertIn("#section-chat .text-chat-workspace{display:block!important}", css)
-        self.assertIn("grid-template-columns:minmax(0,1fr) minmax(230px,280px) minmax(260px,320px)", css)
+        self.assertIn("--workspace-drawer-w", css)
+        self.assertIn(".workspace-drawer-button", css)
+        self.assertIn(".workspace-drawer-backdrop", css)
+        self.assertIn(".text-chat-workspace.workspace-drawer", css)
+        self.assertIn("body.workspace-drawer-open .text-chat-workspace.workspace-drawer", css)
+        self.assertIn("grid-template-columns:minmax(0,1fr) minmax(230px,280px)", css)
+        self.assertNotIn("grid-template-columns:minmax(0,1fr) minmax(230px,280px) minmax(260px,320px)", css)
+        for text in (
+            "function openWorkspaceDrawer",
+            "function closeWorkspaceDrawer",
+            "function toggleWorkspaceDrawer",
+            "function initWorkspaceDrawerControls",
+            "document.body.classList.toggle('workspace-drawer-open'",
+            "workspace-drawer-backdrop",
+            "e.key === 'Escape' && workspaceDrawerOpen",
+        ):
+            self.assertIn(text, js, f"Missing workspace drawer logic: {text}")
         self.assertIn("get_conversation_context_summary", js)
         self.assertIn("refresh_conversation_context_summary", js)
         self.assertIn("context_budget_report", js)

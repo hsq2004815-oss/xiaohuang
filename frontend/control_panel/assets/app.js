@@ -15,6 +15,7 @@
   var lastPreflightCheck = null;
   var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
   var navDrawerOpen = false;
+  var workspaceDrawerOpen = false;
   var currentShell = 'control';
   var currentSection = 'home';
   var textChatSessionId = '';
@@ -231,6 +232,7 @@
     var nav = $('sidebar');
     var backdrop = $('nav-drawer-backdrop');
 
+    if (navDrawerOpen) closeWorkspaceDrawer();
     document.body.classList.toggle('nav-drawer-open', navDrawerOpen);
     if (backdrop) backdrop.hidden = !navDrawerOpen;
     if (nav) nav.setAttribute('aria-hidden', navDrawerOpen ? 'false' : 'true');
@@ -284,6 +286,69 @@
       });
     }
     closeNavDrawer();
+  }
+
+  function setWorkspaceDrawerOpen(open) {
+    workspaceDrawerOpen = !!open;
+    var toggleBtn = $('btn-workspace-drawer-toggle');
+    var closeBtn = $('btn-workspace-drawer-close');
+    var workspace = $('text-chat-workspace');
+    var backdrop = $('workspace-drawer-backdrop');
+
+    if (workspaceDrawerOpen) closeNavDrawer();
+    document.body.classList.toggle('workspace-drawer-open', workspaceDrawerOpen);
+    if (backdrop) backdrop.hidden = !workspaceDrawerOpen;
+    if (workspace) workspace.setAttribute('aria-hidden', workspaceDrawerOpen ? 'false' : 'true');
+    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', workspaceDrawerOpen ? 'true' : 'false');
+    if (workspaceDrawerOpen && closeBtn) closeBtn.focus({ preventScroll: true });
+  }
+
+  function openWorkspaceDrawer() {
+    setWorkspaceDrawerOpen(true);
+  }
+
+  function closeWorkspaceDrawer() {
+    setWorkspaceDrawerOpen(false);
+  }
+
+  function toggleWorkspaceDrawer() {
+    setWorkspaceDrawerOpen(!workspaceDrawerOpen);
+  }
+
+  function initWorkspaceDrawerControls() {
+    var toggleBtn = $('btn-workspace-drawer-toggle');
+    var closeBtn = $('btn-workspace-drawer-close');
+    var backdrop = $('workspace-drawer-backdrop');
+
+    if (toggleBtn && toggleBtn.dataset.workspaceDrawerBound !== '1') {
+      toggleBtn.dataset.workspaceDrawerBound = '1';
+      toggleBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        toggleWorkspaceDrawer();
+      });
+    }
+    if (closeBtn && closeBtn.dataset.workspaceDrawerBound !== '1') {
+      closeBtn.dataset.workspaceDrawerBound = '1';
+      closeBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        closeWorkspaceDrawer();
+      });
+    }
+    if (backdrop && backdrop.dataset.workspaceDrawerBound !== '1') {
+      backdrop.dataset.workspaceDrawerBound = '1';
+      backdrop.addEventListener('click', function () {
+        closeWorkspaceDrawer();
+      });
+    }
+    if (document.body.dataset.workspaceDrawerEscBound !== '1') {
+      document.body.dataset.workspaceDrawerEscBound = '1';
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && workspaceDrawerOpen) {
+          closeWorkspaceDrawer();
+        }
+      });
+    }
+    closeWorkspaceDrawer();
   }
 
 
@@ -573,6 +638,7 @@
       loadTaskHistory();
     }
     closeNavDrawer();
+    if (currentSection !== 'chat') closeWorkspaceDrawer();
   }
 
   function initNav() {
@@ -2998,6 +3064,7 @@
     initDone = true;
     initNav();
     initNavDrawerControls();
+    initWorkspaceDrawerControls();
     initDrawerControls();
     initTextChat();
     initTaskHistory();
@@ -3016,6 +3083,7 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     initNavDrawerControls();
+    initWorkspaceDrawerControls();
     initDrawerControls();
     updateBridgeIndicator();
     setTimeout(function () { if (!initDone) doInit(); }, 800);
