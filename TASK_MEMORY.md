@@ -1,5 +1,18 @@
 # Task Memory
 
+## Current Snapshot（2026-05-14）— V1.5-C5G.3-B.1 Navigation Overlay Drawer
+
+- Purpose: Polish the control panel so the far-left navigation no longer consumes layout width.
+- Key files: `frontend/control_panel/index.html`, `frontend/control_panel/assets/app.js`, `frontend/control_panel/assets/style.css`, `tests/test_control_panel_web_service.py`.
+- Last completed:
+  1. Added a fixed top-left menu button and lightweight backdrop.
+  2. Converted `nav.sidebar` into a fixed overlay drawer with glass styling and active-item highlighting.
+  3. Replaced persisted sidebar-collapse JS with `openNavDrawer()`, `closeNavDrawer()`, and `toggleNavDrawer()`.
+  4. Drawer closes through backdrop click, close button, Esc, and nav item selection.
+  5. Main grid now reserves width only for main content plus the existing diagnostic drawer, not the nav.
+- Verification: focused `V13UIFrontendStructureTests`, full unittest discovery, compileall, `control_panel_web.py --help`, `voice_overlay.py --help`, and `git diff --check`.
+- Known traps: Do not reintroduce a sidebar grid column; C5G.3-B ContextPack backend and right-side context status were intentionally untouched.
+
 ## Current Snapshot（2026-05-12）— V1.5-C5F.1 Issue ID Fallback and Assign Existing Issue
 
 - Purpose: Fix C5F acceptance blocker where Multica create succeeded but XiaoHuang could not recover an assignable issue id.

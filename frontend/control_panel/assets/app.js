@@ -14,7 +14,7 @@
   var lastStartupDiagnostic = null;
   var lastPreflightCheck = null;
   var DRAWER_STORAGE_KEY = 'xiaohuang.controlPanel.drawerCollapsed';
-  var SIDEBAR_STORAGE_KEY = 'xiaohuang.controlPanel.sidebarCollapsed';
+  var navDrawerOpen = false;
   var currentShell = 'control';
   var currentSection = 'home';
   var textChatSessionId = '';
@@ -224,39 +224,66 @@
     applyDrawerState(isDrawerCollapsed());
   }
 
-  function isSidebarCollapsed() {
-    return safeLocalStorageGet(SIDEBAR_STORAGE_KEY) === '1';
+  function setNavDrawerOpen(open) {
+    navDrawerOpen = !!open;
+    var menuBtn = $('btn-nav-drawer-toggle');
+    var closeBtn = $('btn-nav-drawer-close');
+    var nav = $('sidebar');
+    var backdrop = $('nav-drawer-backdrop');
+
+    document.body.classList.toggle('nav-drawer-open', navDrawerOpen);
+    if (backdrop) backdrop.hidden = !navDrawerOpen;
+    if (nav) nav.setAttribute('aria-hidden', navDrawerOpen ? 'false' : 'true');
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', navDrawerOpen ? 'true' : 'false');
+    if (navDrawerOpen && closeBtn) closeBtn.focus({ preventScroll: true });
   }
 
-  function applySidebarCollapsedState(collapsed) {
-    var btn = $('btn-sidebar-toggle');
-    document.body.classList.toggle('sidebar-collapsed', !!collapsed);
-    if (!btn) return;
-    btn.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
-    btn.setAttribute('aria-label', collapsed ? '展开导航' : '收起导航');
-    btn.title = collapsed ? '展开导航' : '收起导航';
-    btn.textContent = collapsed ? '»' : '☰';
+  function openNavDrawer() {
+    setNavDrawerOpen(true);
   }
 
-  function setSidebarCollapsed(collapsed) {
-    safeLocalStorageSet(SIDEBAR_STORAGE_KEY, collapsed ? '1' : '0');
-    applySidebarCollapsedState(collapsed);
+  function closeNavDrawer() {
+    setNavDrawerOpen(false);
   }
 
-  function toggleSidebarCollapsed() {
-    setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+  function toggleNavDrawer() {
+    setNavDrawerOpen(!navDrawerOpen);
   }
 
-  function initSidebarControls() {
-    var btn = $('btn-sidebar-toggle');
-    if (btn && btn.dataset.sidebarBound !== '1') {
-      btn.dataset.sidebarBound = '1';
-      btn.addEventListener('click', function (e) {
+  function initNavDrawerControls() {
+    var menuBtn = $('btn-nav-drawer-toggle');
+    var closeBtn = $('btn-nav-drawer-close');
+    var backdrop = $('nav-drawer-backdrop');
+
+    if (menuBtn && menuBtn.dataset.navDrawerBound !== '1') {
+      menuBtn.dataset.navDrawerBound = '1';
+      menuBtn.addEventListener('click', function (e) {
         e.preventDefault();
-        toggleSidebarCollapsed();
+        toggleNavDrawer();
       });
     }
-    applySidebarCollapsedState(isSidebarCollapsed());
+    if (closeBtn && closeBtn.dataset.navDrawerBound !== '1') {
+      closeBtn.dataset.navDrawerBound = '1';
+      closeBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        closeNavDrawer();
+      });
+    }
+    if (backdrop && backdrop.dataset.navDrawerBound !== '1') {
+      backdrop.dataset.navDrawerBound = '1';
+      backdrop.addEventListener('click', function () {
+        closeNavDrawer();
+      });
+    }
+    if (document.body.dataset.navDrawerEscBound !== '1') {
+      document.body.dataset.navDrawerEscBound = '1';
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && navDrawerOpen) {
+          closeNavDrawer();
+        }
+      });
+    }
+    closeNavDrawer();
   }
 
 
@@ -545,6 +572,7 @@
     if (currentSection === 'tasks') {
       loadTaskHistory();
     }
+    closeNavDrawer();
   }
 
   function initNav() {
@@ -2969,7 +2997,7 @@
     if (initDone) return;
     initDone = true;
     initNav();
-    initSidebarControls();
+    initNavDrawerControls();
     initDrawerControls();
     initTextChat();
     initTaskHistory();
@@ -2987,7 +3015,7 @@
   });
 
   document.addEventListener('DOMContentLoaded', function () {
-    initSidebarControls();
+    initNavDrawerControls();
     initDrawerControls();
     updateBridgeIndicator();
     setTimeout(function () { if (!initDone) doInit(); }, 800);

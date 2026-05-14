@@ -1202,7 +1202,10 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         for text in ("首页", "对话", "任务", "工具", "诊断", "设置"):
             self.assertIn(text, html, f"Missing localized text: {text}")
         self.assertIn("文本对话", html, "Top text chat entry should remain")
-        self.assertIn('id="btn-sidebar-toggle"', html)
+        self.assertIn('id="btn-nav-drawer-toggle"', html)
+        self.assertIn('id="btn-nav-drawer-close"', html)
+        self.assertIn('id="nav-drawer-backdrop"', html)
+        self.assertNotIn('id="btn-sidebar-toggle"', html)
         for section in ("home", "chat", "tasks", "tools", "diagnostics", "settings"):
             self.assertIn(f'data-section="{section}"', html, f"Missing app shell nav section: {section}")
         for old_section in ("overview", "runtime", "wake", "models", "automation", "database", "logs", "developer", "text-chat"):
@@ -1335,7 +1338,8 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn("body.non-home-page .drawer-toggle", css)
         self.assertIn("body.no-drawer-page .diagnostic-drawer", css)
         self.assertIn("body.no-drawer-page .drawer-rail", css)
-        self.assertIn("grid-template-areas:\"topbar topbar\" \"sidebar main\"", css)
+        self.assertIn("grid-template-areas:\"topbar topbar\" \"main drawer\"", css)
+        self.assertIn("grid-template-areas:\"topbar\" \"main\"", css)
 
     def test_top_diagnostics_button_opens_diagnostics_page(self):
         html = self._read("frontend/control_panel/index.html")
@@ -1415,37 +1419,48 @@ class V13UIFrontendStructureTests(unittest.TestCase):
             "display:none!important",
             "body.chat-page .app-shell",
             "grid-template-rows:minmax(0,1fr)",
-            'grid-template-areas:"sidebar main"',
-            "body.chat-page.sidebar-collapsed .app-shell",
-            "grid-template-columns:var(--sidebar-collapsed-w) minmax(0,1fr)",
+            'grid-template-areas:"main"',
+            "grid-template-columns:minmax(0,1fr)",
             "body.chat-page #section-chat .text-chat-header",
             "body.chat-page #section-chat .text-chat-layout",
         ):
             self.assertIn(text, css, f"Missing chat focus mode rule: {text}")
 
-    def test_sidebar_has_collapsible_state(self):
+    def test_nav_uses_overlay_drawer_state(self):
         html = self._read("frontend/control_panel/index.html")
         js = self._read("frontend/control_panel/assets/app.js")
         css = self._read("frontend/control_panel/assets/style.css")
+        for text in (
+            "function openNavDrawer",
+            "function closeNavDrawer",
+            "function toggleNavDrawer",
+            "function initNavDrawerControls",
+            "document.body.classList.toggle('nav-drawer-open'",
+            "nav-drawer-backdrop",
+            "e.key === 'Escape'",
+            "closeNavDrawer();",
+        ):
+            self.assertIn(text, js, f"Missing nav drawer logic: {text}")
         for text in (
             "SIDEBAR_STORAGE_KEY",
             "xiaohuang.controlPanel.sidebarCollapsed",
             "function toggleSidebarCollapsed",
             "function applySidebarCollapsedState",
-            "document.body.classList.toggle('sidebar-collapsed'",
-            "safeLocalStorageSet(SIDEBAR_STORAGE_KEY",
             "initSidebarControls()",
         ):
-            self.assertIn(text, js, f"Missing sidebar collapse logic: {text}")
+            self.assertNotIn(text, js, f"Old sidebar collapse logic should be removed: {text}")
         for text in (
-            "--sidebar-collapsed-w",
-            "body.sidebar-collapsed .app-shell",
-            "body.sidebar-collapsed.non-home-page .app-shell",
-            "body.sidebar-collapsed .sidebar-text{display:none}",
+            "--nav-drawer-w",
+            ".nav-menu-button",
+            ".nav-drawer-backdrop",
+            ".sidebar.nav-drawer",
+            "body.nav-drawer-open .sidebar.nav-drawer",
+            "position:fixed",
             ".sidebar-collapse-btn",
         ):
-            self.assertIn(text, css, f"Missing sidebar collapse style: {text}")
-        self.assertIn('class="sidebar-collapse-btn"', html)
+            self.assertIn(text, css, f"Missing nav drawer style: {text}")
+        self.assertIn('class="nav-menu-button"', html)
+        self.assertIn('class="sidebar nav-drawer"', html)
 
     def test_html_has_bridge_indicator(self):
         html = self._read("frontend/control_panel/index.html")

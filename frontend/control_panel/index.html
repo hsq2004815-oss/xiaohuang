@@ -9,6 +9,9 @@
 <body>
   <div id="control-shell" class="control-shell active">
   <div class="app-shell" id="app-shell">
+    <button class="nav-menu-button" id="btn-nav-drawer-toggle" type="button" title="打开导航" aria-label="打开导航" aria-controls="sidebar" aria-expanded="false">☰</button>
+    <div class="nav-drawer-backdrop" id="nav-drawer-backdrop" hidden></div>
+
     <!-- Top Bar -->
     <header class="topbar glass-card" id="topbar">
       <div class="topbar-left">
@@ -30,11 +33,11 @@
       </div>
     </header>
 
-    <!-- Left Sidebar -->
-    <nav class="sidebar" id="sidebar">
+    <!-- Navigation Drawer -->
+    <nav class="sidebar nav-drawer" id="sidebar" aria-label="主导航" aria-hidden="true">
       <div class="sidebar-header">
         <span class="sidebar-brand">导航</span>
-        <button class="sidebar-collapse-btn" id="btn-sidebar-toggle" type="button" title="收起导航" aria-label="收起导航" aria-pressed="false">☰</button>
+        <button class="sidebar-collapse-btn" id="btn-nav-drawer-close" type="button" title="关闭导航" aria-label="关闭导航">×</button>
       </div>
       <div class="sidebar-section">
         <div class="sidebar-label">导航</div>
