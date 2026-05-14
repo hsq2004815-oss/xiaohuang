@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from xiaohuang.conversation_context_pack_service import build_task_context_text
+from xiaohuang.conversation_context_metadata_service import get_context_state
+from xiaohuang.conversation_context_usage_service import (
+    ContextBudgetConfig,
+    build_context_budget_report,
+)
 from xiaohuang.conversation_history_service import ConversationHistoryStore
 
 
@@ -37,6 +43,7 @@ class ControlPanelContextSummaryApi:
             context = self._history_store.get_conversation_context(conversation_id)
             snapshot = self._history_store.build_basic_context_snapshot(conversation_id)
             data = _with_derived_fields(context, snapshot)
+            data = _with_context_state_fields(data, snapshot, self._history_store)
             data["snapshot"] = snapshot
             return _ok(data=data, message="上下文摘要已加载")
         except ValueError:
@@ -63,6 +70,7 @@ class ControlPanelContextSummaryApi:
             data = _with_derived_fields(updated.to_dict(), snapshot)
             data["conversation_id"] = updated.id
             data["updated_at"] = updated.updated_at
+            data = _with_context_state_fields(data, snapshot, self._history_store)
             data["snapshot"] = snapshot
             return _ok(data=data, message="上下文摘要已刷新")
         except ValueError:
@@ -92,6 +100,7 @@ class ControlPanelContextSummaryApi:
             result = _with_derived_fields(updated.to_dict(), snapshot)
             result["conversation_id"] = updated.id
             result["updated_at"] = updated.updated_at
+            result = _with_context_state_fields(result, snapshot, self._history_store)
             result["snapshot"] = snapshot
             return _ok(data=result, message="上下文摘要已更新")
         except ValueError:
@@ -205,6 +214,47 @@ def _with_derived_fields(context: dict, snapshot: dict) -> dict:
         "blockers": list(snapshot.get("blockers") or []),
         "updated_at": context.get("updated_at") or "",
     }
+
+
+def _with_context_state_fields(data: dict, snapshot: dict, history_store: ConversationHistoryStore) -> dict:
+    conversation_id = str(data.get("conversation_id") or snapshot.get("conversation_id") or "")
+    state = get_context_state(history_store, conversation_id) if conversation_id else {}
+    cfg = ContextBudgetConfig()
+    recent_messages = list(snapshot.get("recent_messages") or [])[-cfg.preserve_recent_messages:]
+    tasks = history_store.get_bound_tasks(conversation_id) if conversation_id else []
+    task_text = build_task_context_text(tasks, max_chars=cfg.max_task_summary_chars)
+    budget = build_context_budget_report(
+        compact_summary=str(state.get("compact_summary") or ""),
+        recent_messages=recent_messages,
+        task_context_text=task_text,
+        current_user_text="",
+        config=cfg,
+    )
+    result = dict(data)
+    result.update({
+        "compact_summary": state.get("compact_summary") or "",
+        "compact_count": int(state.get("compact_count") or 0),
+        "recent_message_count": len(recent_messages),
+        "bound_task_count": len(tasks),
+        "context_loaded": bool(snapshot.get("message_count") or tasks or state.get("compact_summary")),
+        "context_budget_report": budget.to_dict(),
+        "context_status_summary": _format_context_status(len(recent_messages), len(tasks), int(state.get("compact_count") or 0), budget),
+    })
+    return result
+
+
+def _format_context_status(
+    recent_count: int,
+    task_count: int,
+    compact_count: int,
+    budget,
+) -> str:
+    loaded = "已加载" if recent_count or task_count or compact_count else "未生成"
+    return (
+        f"上下文{loaded} / 最近消息 {recent_count} 条 / "
+        f"Compact {compact_count} 次 / Token {budget.estimated_total_tokens}/{budget.context_token_limit} / "
+        f"绑定任务 {task_count} 个"
+    )
 
 
 def _coerce_constraints(value: Any, *, fallback: list[str] | None = None) -> list[str]:

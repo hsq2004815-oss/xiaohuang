@@ -840,15 +840,29 @@
     var status = $('ws-context-status');
     var next = $('ws-context-next');
     var constraints = $('ws-context-constraints');
+    var loaded = $('ws-context-loaded');
+    var recentCount = $('ws-context-recent-count');
+    var compactCount = $('ws-context-compact-count');
+    var tokenUsage = $('ws-context-token-usage');
+    var boundCount = $('ws-context-bound-count');
+    var budgetReport = $('ws-context-budget-report');
+    var budget = data && data.context_budget_report ? data.context_budget_report : {};
+    var compactSummary = data && data.compact_summary ? data.compact_summary : '';
     var hasSummary = !!(data && (
-      data.context_summary || data.current_goal || data.current_status ||
-      data.next_step || (data.important_constraints && data.important_constraints.length)
+      data.context_loaded || data.context_summary || compactSummary || data.current_goal ||
+      data.current_status || data.next_step || (data.important_constraints && data.important_constraints.length)
     ));
-    if (empty) empty.style.display = hasSummary ? 'none' : 'block';
+    if (empty) {
+      empty.style.display = hasSummary ? 'none' : 'block';
+      empty.textContent = textChatSessionId ? '上下文状态将在下一轮对话后更新。' : '上下文状态将在选择对话后加载。';
+    }
     if (fields) fields.style.display = hasSummary ? 'block' : 'none';
     if (summaryText) {
-      summaryText.style.display = data && data.context_summary ? 'block' : 'none';
-      summaryText.textContent = data && data.context_summary ? data.context_summary : '';
+      var detailText = '';
+      if (data && data.context_summary) detailText += 'Context summary:\n' + data.context_summary;
+      if (compactSummary) detailText += (detailText ? '\n\n' : '') + 'Compact summary:\n' + compactSummary;
+      summaryText.style.display = detailText ? 'block' : 'none';
+      summaryText.textContent = detailText;
     }
     if (goal) goal.textContent = data && data.current_goal ? data.current_goal : '--';
     if (status) status.textContent = data && data.current_status ? data.current_status : '--';
@@ -856,6 +870,25 @@
     if (constraints) {
       var items = data && data.important_constraints ? data.important_constraints : [];
       constraints.textContent = items.length ? items.join('；') : '--';
+    }
+    if (loaded) loaded.textContent = data && data.context_loaded ? '已加载' : '未生成';
+    if (recentCount) recentCount.textContent = String((data && data.recent_message_count) || 0) + ' 条';
+    if (compactCount) compactCount.textContent = String((data && data.compact_count) || 0) + ' 次';
+    if (tokenUsage) {
+      var used = budget.estimated_total_tokens || 0;
+      var free = budget.free_tokens || 0;
+      tokenUsage.textContent = used + ' used / ' + free + ' free';
+    }
+    if (boundCount) boundCount.textContent = String((data && data.bound_task_count) || 0) + ' 个';
+    if (budgetReport) {
+      if (budget && budget.context_token_limit) {
+        budgetReport.textContent = 'estimated=' + (budget.estimated_total_tokens || 0) +
+          ' / limit=' + budget.context_token_limit +
+          ' / free=' + (budget.free_tokens || 0) +
+          ' / compact=' + (budget.should_compact ? 'yes' : 'no');
+      } else {
+        budgetReport.textContent = '--';
+      }
     }
     renderContextSummaryButton();
   }
@@ -2217,6 +2250,7 @@
         blocked_panel_command: data.blocked_panel_command,
         llm_configured: data.llm_configured
       }, data.requires_confirmation ? data.pending_task : null, data.execution_result || null);
+      loadConversationContextSummary(textChatSessionId);
     }).catch(function (e) {
       appendTextChatMessage('assistant', '文本消息处理出错：' + e, { source: 'js_error' });
     }).finally(function () {

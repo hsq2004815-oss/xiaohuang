@@ -24,5 +24,6 @@ class TextInteractionResult:
     blocked_panel_command: bool = False
     requires_confirmation: bool = False
     pending_task: dict[str, Any] | None = None
+    context_pack: dict[str, Any] | None = None
     latency_ms: int = 0
     error: str = ""

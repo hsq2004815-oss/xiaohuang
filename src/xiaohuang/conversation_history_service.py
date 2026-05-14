@@ -246,6 +246,33 @@ class ConversationHistoryStore:
                     CREATE UNIQUE INDEX IF NOT EXISTS idx_multica_task_primary
                         ON conversation_multica_tasks(task_id)
                         WHERE task_id != '' AND is_primary_binding = 1;
+
+                    CREATE TABLE IF NOT EXISTS conversation_context_state (
+                        conversation_id TEXT PRIMARY KEY,
+                        compact_summary TEXT NOT NULL DEFAULT '',
+                        compact_count INTEGER NOT NULL DEFAULT 0,
+                        last_removed_message_count INTEGER NOT NULL DEFAULT 0,
+                        last_compacted_message_id TEXT NOT NULL DEFAULT '',
+                        last_compacted_at TEXT NOT NULL DEFAULT '',
+                        last_budget_report_json TEXT NOT NULL DEFAULT '{}',
+                        FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS conversation_compaction_events (
+                        id TEXT PRIMARY KEY,
+                        conversation_id TEXT NOT NULL,
+                        compact_summary TEXT NOT NULL,
+                        removed_message_count INTEGER NOT NULL DEFAULT 0,
+                        preserved_recent_count INTEGER NOT NULL DEFAULT 0,
+                        estimated_tokens_before INTEGER NOT NULL DEFAULT 0,
+                        estimated_tokens_after INTEGER NOT NULL DEFAULT 0,
+                        created_at TEXT NOT NULL,
+                        meta_json TEXT NOT NULL DEFAULT '{}',
+                        FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_context_events_conv
+                        ON conversation_compaction_events(conversation_id, created_at);
                 """)
                 self._ensure_conversation_context_columns(conn)
                 conn.commit()
@@ -447,6 +474,8 @@ class ConversationHistoryStore:
             conn = self._connect()
             try:
                 conn.execute("DELETE FROM messages WHERE conversation_id=?", (conversation_id,))
+                conn.execute("DELETE FROM conversation_compaction_events WHERE conversation_id=?", (conversation_id,))
+                conn.execute("DELETE FROM conversation_context_state WHERE conversation_id=?", (conversation_id,))
                 conn.execute(
                     "UPDATE conversations SET message_count=0, last_preview='', updated_at=? WHERE id=?",
                     (_now_iso(), conversation_id),
@@ -460,6 +489,8 @@ class ConversationHistoryStore:
         with self._lock:
             conn = self._connect()
             try:
+                compaction_events = conn.execute("DELETE FROM conversation_compaction_events").rowcount
+                context_state = conn.execute("DELETE FROM conversation_context_state").rowcount
                 bound_tasks = conn.execute("DELETE FROM conversation_multica_tasks").rowcount
                 messages = conn.execute("DELETE FROM messages").rowcount
                 conversations = conn.execute("DELETE FROM conversations").rowcount
@@ -468,6 +499,8 @@ class ConversationHistoryStore:
                     "deleted_conversations": max(0, conversations),
                     "deleted_messages": max(0, messages),
                     "deleted_bound_tasks": max(0, bound_tasks),
+                    "deleted_context_state": max(0, context_state),
+                    "deleted_compaction_events": max(0, compaction_events),
                 }
             finally:
                 conn.close()

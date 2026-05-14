@@ -169,12 +169,17 @@ class ControlPanelConversationApi:
             if isinstance(payload, dict):
                 text = str(payload.get("text") or "")
                 session_id = str(payload.get("session_id") or "control_panel")
+                conversation_id = str(payload.get("conversation_id") or payload.get("session_id") or "")
+            else:
+                conversation_id = ""
 
             result = self._run_text_turn(
                 text,
                 session_store=self._session_store,
                 session_id=session_id,
                 config_path=self._resolve_config_path(),
+                conversation_id=conversation_id or None,
+                history_store=self._history_store,
             )
             data = asdict(result)
             if data.get("requires_confirmation") and isinstance(data.get("pending_task"), dict):

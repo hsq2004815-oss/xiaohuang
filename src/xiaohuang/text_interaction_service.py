@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from xiaohuang.app_config_service import load_config
 from xiaohuang.llm_reply_service import load_llm_provider_config
@@ -43,6 +44,8 @@ def run_text_interaction_turn(
     session_store: TextInteractionSessionStore,
     session_id: str = "default",
     config_path: Path | str | None = None,
+    conversation_id: str | None = None,
+    history_store: Any | None = None,
 ) -> TextInteractionResult:
     started = time.perf_counter()
     sid = str(session_id or "default").strip() or "default"
@@ -85,7 +88,12 @@ def run_text_interaction_turn(
     app_config = load_config(config_path)
     llm_config = load_llm_provider_config(app_config.llm)
     session = session_store.get_or_create(sid)
-    context_text = session.memory.build_context_text()
+    context_text, context_pack = _build_turn_context(
+        conversation_id=conversation_id,
+        user_text=user_text,
+        history_store=history_store,
+        legacy_memory_context=session.memory.build_context_text(),
+    )
 
     pipeline_config = ReplyPipelineConfig(
         enable_llm=bool(app_config.llm.enabled),
@@ -116,7 +124,27 @@ def run_text_interaction_turn(
         reply_source=reply_source,
         has_llm_key=bool(llm_config.api_key),
         llm_configured=bool(app_config.llm.enabled and llm_config.is_configured),
+        context_pack=context_pack,
     )
+
+
+def _build_turn_context(
+    *,
+    conversation_id: str | None,
+    user_text: str,
+    history_store: Any | None,
+    legacy_memory_context: str,
+) -> tuple[str, dict | None]:
+    if conversation_id and history_store is not None:
+        try:
+            from xiaohuang.conversation_context_engine import build_context_pack_for_turn
+
+            built = build_context_pack_for_turn(conversation_id, user_text, history_store)
+            if built.context_text and built.context_pack is not None:
+                return built.context_text, built.context_pack.to_dict()
+        except Exception:
+            pass
+    return legacy_memory_context, None
 
 
 def _generate_text_only_pipeline_result(
@@ -165,6 +193,7 @@ def _result(
     blocked_panel_command: bool = False,
     requires_confirmation: bool = False,
     pending_task: dict | None = None,
+    context_pack: dict | None = None,
     error: str = "",
 ) -> TextInteractionResult:
     return TextInteractionResult(
@@ -178,6 +207,7 @@ def _result(
         blocked_panel_command=blocked_panel_command,
         requires_confirmation=requires_confirmation,
         pending_task=pending_task,
+        context_pack=context_pack,
         latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
         error=error,
     )

@@ -1353,12 +1353,17 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertLess(html.index('class="text-chat-main'), html.index('class="text-chat-sessions'))
         self.assertIn("workspace-context-summary", html)
         self.assertIn("btn-refresh-context-summary", html)
-        self.assertIn("暂无上下文摘要，点击刷新摘要生成基础摘要。", html)
+        self.assertIn("上下文状态", html)
+        self.assertIn("上下文详情", html)
+        self.assertIn("ws-context-token-usage", html)
+        self.assertNotIn("暂无上下文摘要，点击刷新摘要生成基础摘要。", html)
         self.assertIn(".text-chat-workspace{display:block}", css)
+        self.assertIn(".context-status-grid", css)
         self.assertIn("#section-chat .text-chat-workspace{display:block!important}", css)
         self.assertIn("grid-template-columns:minmax(0,1fr) minmax(230px,280px) minmax(260px,320px)", css)
         self.assertIn("get_conversation_context_summary", js)
         self.assertIn("refresh_conversation_context_summary", js)
+        self.assertIn("context_budget_report", js)
 
     def test_chat_layout_has_internal_scroll_container(self):
         css = self._read("frontend/control_panel/assets/style.css")

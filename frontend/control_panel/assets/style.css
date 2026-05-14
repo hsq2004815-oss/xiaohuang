@@ -829,6 +829,22 @@ select.glass-input{cursor:pointer}
 .workspace-block-head h3{margin:0}
 .workspace-block-head button{width:auto;margin:0;padding:5px 10px;font-size:11px;white-space:nowrap}
 .context-summary-empty{margin:0;color:var(--text-muted);font-size:12px;line-height:1.55}
+.context-status-grid{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 10px
+}
+.context-status-grid div{
+  min-width:0;margin:0;padding:8px;border-radius:10px;background:rgba(255,255,255,0.48);
+  border:1px solid rgba(15,23,42,0.06)
+}
+.context-status-grid dt{font-size:11px}
+.context-status-grid dd{font-size:12px;font-weight:800;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.context-summary-details{margin-top:10px}
+.context-summary-details summary{
+  cursor:pointer;color:var(--accent-blue);font-size:12px;font-weight:900;list-style:none
+}
+.context-summary-details summary::-webkit-details-marker{display:none}
+.context-summary-details summary:after{content:"›";float:right;transition:transform .18s ease}
+.context-summary-details[open] summary:after{transform:rotate(90deg)}
 .context-summary-fields{display:none}
 .context-summary-fields dd{word-break:break-word}
 .context-summary-text{
