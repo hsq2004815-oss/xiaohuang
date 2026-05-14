@@ -12,7 +12,7 @@
   5. Main grid now reserves width only for main content plus the existing diagnostic drawer, not the nav.
 - Verification: focused `V13UIFrontendStructureTests`, full unittest discovery, compileall, `control_panel_web.py --help`, `voice_overlay.py --help`, and `git diff --check`.
 - Known traps: Do not reintroduce a sidebar grid column; C5G.3-B ContextPack backend and right-side context status were intentionally untouched.
-- Follow-up: The conversation workspace (`text-chat-workspace`) was later changed from a third chat column into a right-side overlay drawer with `btn-workspace-drawer-toggle`; keep context/status element IDs intact so C5G.3-B rendering continues to work.
+- Follow-up: The conversation workspace (`text-chat-workspace`) was later changed from a third chat column into a right-side overlay drawer opened from each conversation card's `会话详情` button; keep context/status element IDs intact so C5G.3-B rendering continues to work.
 
 ## Current Snapshot（2026-05-12）— V1.5-C5F.1 Issue ID Fallback and Assign Existing Issue
 

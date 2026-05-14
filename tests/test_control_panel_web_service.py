@@ -1355,7 +1355,7 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         css = self._read("frontend/control_panel/assets/style.css")
         js = self._read("frontend/control_panel/assets/app.js")
         self.assertLess(html.index('class="text-chat-main'), html.index('class="text-chat-sessions'))
-        self.assertIn('id="btn-workspace-drawer-toggle"', html)
+        self.assertNotIn('id="btn-workspace-drawer-toggle"', html)
         self.assertIn('id="workspace-drawer-backdrop"', html)
         self.assertIn('id="btn-workspace-drawer-close"', html)
         self.assertIn('class="text-chat-workspace workspace-drawer glass-card"', html)
@@ -1367,12 +1367,15 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertNotIn("暂无上下文摘要，点击刷新摘要生成基础摘要。", html)
         self.assertIn(".context-status-grid", css)
         self.assertIn("--workspace-drawer-w", css)
-        self.assertIn(".workspace-drawer-button", css)
         self.assertIn(".workspace-drawer-backdrop", css)
         self.assertIn(".text-chat-workspace.workspace-drawer", css)
+        self.assertIn(".text-chat-session-detail", css)
         self.assertIn("body.workspace-drawer-open .text-chat-workspace.workspace-drawer", css)
+        self.assertIn("backdrop-filter:none", css)
         self.assertIn("grid-template-columns:minmax(0,1fr) minmax(230px,280px)", css)
         self.assertNotIn("grid-template-columns:minmax(0,1fr) minmax(230px,280px) minmax(260px,320px)", css)
+        self.assertIn("text-chat-session-detail", js)
+        self.assertIn("data-conv-detail-id", js)
         for text in (
             "function openWorkspaceDrawer",
             "function closeWorkspaceDrawer",

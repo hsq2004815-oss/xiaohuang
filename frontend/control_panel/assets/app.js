@@ -290,7 +290,6 @@
 
   function setWorkspaceDrawerOpen(open) {
     workspaceDrawerOpen = !!open;
-    var toggleBtn = $('btn-workspace-drawer-toggle');
     var closeBtn = $('btn-workspace-drawer-close');
     var workspace = $('text-chat-workspace');
     var backdrop = $('workspace-drawer-backdrop');
@@ -299,7 +298,10 @@
     document.body.classList.toggle('workspace-drawer-open', workspaceDrawerOpen);
     if (backdrop) backdrop.hidden = !workspaceDrawerOpen;
     if (workspace) workspace.setAttribute('aria-hidden', workspaceDrawerOpen ? 'false' : 'true');
-    if (toggleBtn) toggleBtn.setAttribute('aria-expanded', workspaceDrawerOpen ? 'true' : 'false');
+    document.querySelectorAll('.text-chat-session-detail').forEach(function (btn) {
+      var isCurrent = btn.getAttribute('data-conv-detail-id') === textChatSessionId;
+      btn.setAttribute('aria-expanded', (workspaceDrawerOpen && isCurrent) ? 'true' : 'false');
+    });
     if (workspaceDrawerOpen && closeBtn) closeBtn.focus({ preventScroll: true });
   }
 
@@ -316,17 +318,9 @@
   }
 
   function initWorkspaceDrawerControls() {
-    var toggleBtn = $('btn-workspace-drawer-toggle');
     var closeBtn = $('btn-workspace-drawer-close');
     var backdrop = $('workspace-drawer-backdrop');
 
-    if (toggleBtn && toggleBtn.dataset.workspaceDrawerBound !== '1') {
-      toggleBtn.dataset.workspaceDrawerBound = '1';
-      toggleBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        toggleWorkspaceDrawer();
-      });
-    }
     if (closeBtn && closeBtn.dataset.workspaceDrawerBound !== '1') {
       closeBtn.dataset.workspaceDrawerBound = '1';
       closeBtn.addEventListener('click', function (e) {
@@ -751,17 +745,32 @@
       var activeClass = c.id === textChatSessionId ? ' active' : '';
       var taskBadge = c.task_count ? '<small>' + c.task_count + ' 个任务</small>' : '';
       var preview = (c.last_preview || '').substring(0, 40);
-      return '<button class="text-chat-session' + activeClass + '" type="button" data-conv-id="' + escapeHtml(c.id) + '">' +
-        '<span>' + escapeHtml(c.title || '新对话') + '</span>' +
-        (preview ? '<small>' + escapeHtml(preview) + '</small>' : '') +
-        taskBadge +
-        '</button>';
+      var expanded = workspaceDrawerOpen && c.id === textChatSessionId ? 'true' : 'false';
+      return '<div class="text-chat-session' + activeClass + '" data-conv-id="' + escapeHtml(c.id) + '">' +
+        '<button class="text-chat-session-main" type="button" data-conv-id="' + escapeHtml(c.id) + '">' +
+          '<span>' + escapeHtml(c.title || '新对话') + '</span>' +
+          (preview ? '<small>' + escapeHtml(preview) + '</small>' : '') +
+          taskBadge +
+        '</button>' +
+        '<button class="text-chat-session-detail" type="button" data-conv-detail-id="' + escapeHtml(c.id) + '" aria-controls="text-chat-workspace" aria-expanded="' + expanded + '">会话详情</button>' +
+        '</div>';
     }).join('');
 
-    el.querySelectorAll('.text-chat-session').forEach(function (btn) {
+    el.querySelectorAll('.text-chat-session-main').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var convId = btn.getAttribute('data-conv-id') || '';
         if (convId && convId !== textChatSessionId) switchConversation(convId);
+      });
+    });
+    el.querySelectorAll('.text-chat-session-detail').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var convId = btn.getAttribute('data-conv-detail-id') || '';
+        if (convId && convId !== textChatSessionId) {
+          switchConversation(convId);
+          openWorkspaceDrawer();
+          return;
+        }
+        toggleWorkspaceDrawer();
       });
     });
   }
