@@ -2225,7 +2225,7 @@ body.chat-page .main-workspace{
 .workspace-drawer-backdrop{
   position:fixed;
   inset:0;
-  z-index:210;
+  z-index:520;
   background:rgba(15,23,42,0.03);
   backdrop-filter:none;
   -webkit-backdrop-filter:none;
@@ -2233,12 +2233,13 @@ body.chat-page .main-workspace{
 .workspace-drawer-backdrop[hidden]{display:none}
 
 .text-chat-workspace.workspace-drawer,
+#text-chat-workspace.workspace-drawer,
 #section-chat .text-chat-workspace.workspace-drawer{
   position:fixed;
   top:14px;
   right:14px;
   bottom:14px;
-  z-index:220;
+  z-index:530;
   display:block!important;
   width:min(var(--workspace-drawer-w),calc(100vw - 28px));
   max-width:calc(100vw - 28px);
@@ -2260,6 +2261,7 @@ body.chat-page .main-workspace{
   transition:transform .28s var(--ease-reveal),opacity .2s var(--ease-reveal),visibility .2s var(--ease-reveal);
 }
 body.workspace-drawer-open .text-chat-workspace.workspace-drawer,
+body.workspace-drawer-open #text-chat-workspace.workspace-drawer,
 .text-chat-workspace.workspace-drawer.open{
   transform:translateX(0);
   opacity:1;
@@ -2305,6 +2307,7 @@ body.workspace-drawer-open .text-chat-workspace.workspace-drawer,
 
 @media(max-width:1100px){
   .text-chat-workspace.workspace-drawer,
+  #text-chat-workspace.workspace-drawer,
   #section-chat .text-chat-workspace.workspace-drawer{
     grid-column:auto;
     max-height:none;
@@ -2313,6 +2316,7 @@ body.workspace-drawer-open .text-chat-workspace.workspace-drawer,
 
 @media(max-width:520px){
   .text-chat-workspace.workspace-drawer,
+  #text-chat-workspace.workspace-drawer,
   #section-chat .text-chat-workspace.workspace-drawer{
     top:8px;
     right:8px;

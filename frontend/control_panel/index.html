@@ -118,7 +118,6 @@
           </div>
           <span class="text-chat-status" id="text-chat-status">本地文本入口</span>
         </div>
-        <div class="workspace-drawer-backdrop" id="workspace-drawer-backdrop" hidden></div>
         <div class="text-chat-layout">
           <main class="text-chat-main glass-card">
             <div class="text-chat-messages" id="text-chat-messages" aria-live="polite"></div>
@@ -151,60 +150,6 @@
             <input class="glass-input text-chat-search" type="text" placeholder="搜索对话..." disabled>
             <div class="text-chat-label">对话列表</div>
             <div class="text-chat-session-list" id="conv-list"></div>
-          </aside>
-
-          <aside class="text-chat-workspace workspace-drawer glass-card" id="text-chat-workspace" aria-label="会话信息" aria-hidden="true">
-            <div class="workspace-drawer-header">
-              <h3>会话信息</h3>
-              <button class="workspace-drawer-close" id="btn-workspace-drawer-close" type="button" title="关闭会话信息" aria-label="关闭会话信息">×</button>
-            </div>
-            <div class="workspace-block" id="workspace-conv-info">
-              <h3>当前会话</h3>
-              <dl id="workspace-conv-meta">
-                <div><dt>标题</dt><dd id="ws-conv-title">--</dd></div>
-                <div><dt>消息数</dt><dd id="ws-conv-msgs">0</dd></div>
-                <div><dt>更新时间</dt><dd id="ws-conv-updated">--</dd></div>
-              </dl>
-            </div>
-            <div class="workspace-block context-summary-block" id="workspace-context-summary">
-              <div class="workspace-block-head">
-                <h3>上下文状态</h3>
-                <button class="glass-pill" id="btn-refresh-context-summary" type="button">刷新摘要</button>
-              </div>
-              <dl class="context-status-grid" id="ws-context-status-grid">
-                <div><dt>上下文</dt><dd id="ws-context-loaded">未生成</dd></div>
-                <div><dt>最近消息</dt><dd id="ws-context-recent-count">0 条</dd></div>
-                <div><dt>Compact</dt><dd id="ws-context-compact-count">0 次</dd></div>
-                <div><dt>Token</dt><dd id="ws-context-token-usage">0/0</dd></div>
-                <div><dt>绑定任务</dt><dd id="ws-context-bound-count">0 个</dd></div>
-              </dl>
-              <p class="context-summary-empty" id="ws-context-empty">上下文状态将在选择对话后加载。</p>
-              <details class="context-summary-details" id="ws-context-details">
-                <summary>上下文详情</summary>
-                <dl class="context-summary-fields" id="ws-context-fields">
-                  <div><dt>目标</dt><dd id="ws-context-goal">--</dd></div>
-                  <div><dt>状态</dt><dd id="ws-context-status">--</dd></div>
-                  <div><dt>下一步</dt><dd id="ws-context-next">--</dd></div>
-                  <div><dt>约束</dt><dd id="ws-context-constraints">--</dd></div>
-                  <div><dt>预算</dt><dd id="ws-context-budget-report">--</dd></div>
-                </dl>
-                <pre class="context-summary-text" id="ws-context-summary-text"></pre>
-              </details>
-            </div>
-            <div class="workspace-block" id="workspace-bound-tasks">
-              <h3>绑定任务 <span id="ws-task-count">(0)</span></h3>
-              <div id="ws-task-status-badges" class="task-status-badges"></div>
-              <div id="ws-task-list" class="bound-task-list">
-                <p class="bound-task-empty">当前对话还没有绑定任务</p>
-              </div>
-            </div>
-            <div class="workspace-block" id="workspace-project-info">
-              <h3>项目 / 路径信息</h3>
-              <dl>
-                <div><dt>项目路径</dt><dd id="ws-project-path">--</dd></div>
-                <div><dt>Git 分支</dt><dd id="ws-git-branch">--</dd></div>
-              </dl>
-            </div>
           </aside>
         </div>
       </section>
@@ -325,6 +270,61 @@
         </div>
       </section>
     </main>
+
+    <div class="workspace-drawer-backdrop" id="workspace-drawer-backdrop" hidden></div>
+    <aside class="text-chat-workspace workspace-drawer glass-card" id="text-chat-workspace" aria-label="会话信息" aria-hidden="true">
+      <div class="workspace-drawer-header">
+        <h3>会话信息</h3>
+        <button class="workspace-drawer-close" id="btn-workspace-drawer-close" type="button" title="关闭会话信息" aria-label="关闭会话信息">×</button>
+      </div>
+      <div class="workspace-block" id="workspace-conv-info">
+        <h3>当前会话</h3>
+        <dl id="workspace-conv-meta">
+          <div><dt>标题</dt><dd id="ws-conv-title">--</dd></div>
+          <div><dt>消息数</dt><dd id="ws-conv-msgs">0</dd></div>
+          <div><dt>更新时间</dt><dd id="ws-conv-updated">--</dd></div>
+        </dl>
+      </div>
+      <div class="workspace-block context-summary-block" id="workspace-context-summary">
+        <div class="workspace-block-head">
+          <h3>上下文状态</h3>
+          <button class="glass-pill" id="btn-refresh-context-summary" type="button">刷新摘要</button>
+        </div>
+        <dl class="context-status-grid" id="ws-context-status-grid">
+          <div><dt>上下文</dt><dd id="ws-context-loaded">未生成</dd></div>
+          <div><dt>最近消息</dt><dd id="ws-context-recent-count">0 条</dd></div>
+          <div><dt>Compact</dt><dd id="ws-context-compact-count">0 次</dd></div>
+          <div><dt>Token</dt><dd id="ws-context-token-usage">0/0</dd></div>
+          <div><dt>绑定任务</dt><dd id="ws-context-bound-count">0 个</dd></div>
+        </dl>
+        <p class="context-summary-empty" id="ws-context-empty">上下文状态将在选择对话后加载。</p>
+        <details class="context-summary-details" id="ws-context-details">
+          <summary>上下文详情</summary>
+          <dl class="context-summary-fields" id="ws-context-fields">
+            <div><dt>目标</dt><dd id="ws-context-goal">--</dd></div>
+            <div><dt>状态</dt><dd id="ws-context-status">--</dd></div>
+            <div><dt>下一步</dt><dd id="ws-context-next">--</dd></div>
+            <div><dt>约束</dt><dd id="ws-context-constraints">--</dd></div>
+            <div><dt>预算</dt><dd id="ws-context-budget-report">--</dd></div>
+          </dl>
+          <pre class="context-summary-text" id="ws-context-summary-text"></pre>
+        </details>
+      </div>
+      <div class="workspace-block" id="workspace-bound-tasks">
+        <h3>绑定任务 <span id="ws-task-count">(0)</span></h3>
+        <div id="ws-task-status-badges" class="task-status-badges"></div>
+        <div id="ws-task-list" class="bound-task-list">
+          <p class="bound-task-empty">当前对话还没有绑定任务</p>
+        </div>
+      </div>
+      <div class="workspace-block" id="workspace-project-info">
+        <h3>项目 / 路径信息</h3>
+        <dl>
+          <div><dt>项目路径</dt><dd id="ws-project-path">--</dd></div>
+          <div><dt>Git 分支</dt><dd id="ws-git-branch">--</dd></div>
+        </dl>
+      </div>
+    </aside>
 
     <!-- Right Diagnostic Drawer -->
     <aside class="diagnostic-drawer glass-card" id="drawer">
