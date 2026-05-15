@@ -1370,12 +1370,16 @@ class V13UIFrontendStructureTests(unittest.TestCase):
         self.assertIn(".workspace-drawer-backdrop", css)
         self.assertIn(".text-chat-workspace.workspace-drawer", css)
         self.assertIn(".text-chat-session-detail", css)
+        self.assertIn(".text-chat-workspace.workspace-drawer.open", css)
         self.assertIn("body.workspace-drawer-open .text-chat-workspace.workspace-drawer", css)
         self.assertIn("backdrop-filter:none", css)
+        self.assertIn("z-index:220", css)
         self.assertIn("grid-template-columns:minmax(0,1fr) minmax(230px,280px)", css)
         self.assertNotIn("grid-template-columns:minmax(0,1fr) minmax(230px,280px) minmax(260px,320px)", css)
         self.assertIn("text-chat-session-detail", js)
         self.assertIn("data-conv-detail-id", js)
+        self.assertIn("workspace.classList.toggle('open'", js)
+        self.assertIn("event.stopPropagation()", js)
         for text in (
             "function openWorkspaceDrawer",
             "function closeWorkspaceDrawer",

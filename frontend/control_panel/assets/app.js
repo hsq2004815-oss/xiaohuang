@@ -297,12 +297,18 @@
     if (workspaceDrawerOpen) closeNavDrawer();
     document.body.classList.toggle('workspace-drawer-open', workspaceDrawerOpen);
     if (backdrop) backdrop.hidden = !workspaceDrawerOpen;
-    if (workspace) workspace.setAttribute('aria-hidden', workspaceDrawerOpen ? 'false' : 'true');
+    if (workspace) {
+      workspace.classList.toggle('open', workspaceDrawerOpen);
+      workspace.setAttribute('aria-hidden', workspaceDrawerOpen ? 'false' : 'true');
+    }
     document.querySelectorAll('.text-chat-session-detail').forEach(function (btn) {
       var isCurrent = btn.getAttribute('data-conv-detail-id') === textChatSessionId;
       btn.setAttribute('aria-expanded', (workspaceDrawerOpen && isCurrent) ? 'true' : 'false');
     });
-    if (workspaceDrawerOpen && closeBtn) closeBtn.focus({ preventScroll: true });
+    if (workspaceDrawerOpen && closeBtn) {
+      try { closeBtn.focus({ preventScroll: true }); }
+      catch (e) { closeBtn.focus(); }
+    }
   }
 
   function openWorkspaceDrawer() {
@@ -763,14 +769,16 @@
       });
     });
     el.querySelectorAll('.text-chat-session-detail').forEach(function (btn) {
-      btn.addEventListener('click', function () {
+      btn.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
         var convId = btn.getAttribute('data-conv-detail-id') || '';
         if (convId && convId !== textChatSessionId) {
           switchConversation(convId);
           openWorkspaceDrawer();
           return;
         }
-        toggleWorkspaceDrawer();
+        openWorkspaceDrawer();
       });
     });
   }
