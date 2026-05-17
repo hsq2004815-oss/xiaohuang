@@ -210,8 +210,8 @@ def _generate_text_only_pipeline_result(
 def _unwrap_final_json_reply(text: str) -> str:
     """Defensive unwrap: if text is a raw 'final' protocol JSON, extract content.
 
-    This is a safety net — the agent_turn_loop already unwraps correctly,
-    but this ensures raw JSON never leaks to the UI through any code path.
+    Also catches non-protocol JSON (tool output leakage) and replaces it
+    with a safe fallback so raw JSON never reaches the user-facing chat bubble.
     """
     import json as _json
 
@@ -224,10 +224,26 @@ def _unwrap_final_json_reply(text: str) -> str:
         obj = _json.loads(stripped)
     except (_json.JSONDecodeError, ValueError):
         return text
-    if isinstance(obj, dict) and obj.get("type") == "final" and isinstance(obj.get("content"), str):
+    if not isinstance(obj, dict):
+        return text
+
+    # Protocol final → extract content
+    if obj.get("type") == "final" and isinstance(obj.get("content"), str):
         content = obj["content"].strip()
         if content:
             return content
+
+    # Detect tool output JSON that leaked (has tool-specific keys)
+    _tool_json_keys = {"tasks", "brief", "conversation_id", "source", "count"}
+    if _tool_json_keys & set(obj.keys()):
+        # It's raw tool output — try to format it as natural language
+        from xiaohuang.tool_runtime.agent_turn_loop import _try_format_tool_json
+        tool_name = "get_multica_bound_tasks_readonly" if "tasks" in obj else (
+            "search_database_brief_readonly" if "brief" in obj else ""
+        )
+        formatted = _try_format_tool_json(tool_name, stripped) if tool_name else ""
+        return formatted or "我暂时没有生成有效回复。"
+
     return text
 
 
@@ -297,17 +313,20 @@ def _try_tool_turn(
             enable_readonly_tools=True,
         )
 
-        # Build context dict for get_current_conversation_context tool
-        ctx = {}
+        # Build context dict for conversation-aware tools
+        ctx = {
+            "conversation_id": conversation_id,
+        }
         if context_pack:
-            ctx = {
-                "conversation_id": conversation_id,
+            ctx.update({
                 "current_goal": context_pack.get("current_goal", ""),
                 "current_status": context_pack.get("current_status", ""),
                 "next_step": context_pack.get("next_step", ""),
                 "important_constraints": context_pack.get("important_constraints", []),
                 "compact_summary": context_pack.get("compact_summary", ""),
-            }
+            })
+        if history_store is not None:
+            ctx["history_store"] = history_store
 
         result = run_readonly_tool_turn(
             conversation_id=conversation_id,

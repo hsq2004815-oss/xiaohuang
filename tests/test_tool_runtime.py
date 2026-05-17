@@ -121,7 +121,7 @@ class TestToolRegistry(TestCase):
         self.assertIn("test_tool", schema)
         self.assertIn("test desc", schema)
 
-    def test_build_default_registry_has_4_tools(self):
+    def test_build_default_registry_has_6_tools(self):
         registry = build_default_registry()
         names = {t.name for t in registry.list_tools()}
         expected = {
@@ -129,12 +129,14 @@ class TestToolRegistry(TestCase):
             "list_project_files_readonly",
             "read_project_file_readonly",
             "search_project_text_readonly",
+            "get_multica_bound_tasks_readonly",
+            "search_database_brief_readonly",
         }
         self.assertEqual(names, expected)
 
     def test_len_and_contains(self):
         registry = build_default_registry()
-        self.assertEqual(len(registry), 4)
+        self.assertEqual(len(registry), 6)
         self.assertIn("read_project_file_readonly", registry)
         self.assertNotIn("shell", registry)
 
@@ -1539,8 +1541,8 @@ class TestControlPanelApiSmoke(TestCase):
 
 
 class TestReadonlyToolSpecs(TestCase):
-    def test_all_4_specs_valid(self):
-        """Verify all 4 readonly tool specs have valid names and schemas."""
+    def test_all_6_specs_valid(self):
+        """Verify all 6 readonly tool specs have valid names and schemas."""
         for spec in READONLY_TOOL_SPECS:
             self.assertTrue(_is_valid_tool_name(spec.name))
             self.assertEqual(spec.risk_level, "readonly")
@@ -1555,3 +1557,367 @@ class TestReadonlyToolSpecs(TestCase):
     def test_spec_names_are_lowercase_only(self):
         for spec in READONLY_TOOL_SPECS:
             self.assertTrue(_is_valid_tool_name(spec.name))
+
+
+# ---------------------------------------------------------------------------
+# C5H-C: get_multica_bound_tasks_readonly
+# ---------------------------------------------------------------------------
+
+
+class TestMulticaTool(TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        db_path = Path(self._tmp.name) / "test_multica.db"
+        from xiaohuang.conversation_history_service import ConversationHistoryStore
+        self._store = ConversationHistoryStore(db_path)
+        self._store.create_conversation(title="test conv")
+        self._conv_id = self._store.get_or_create_default().id
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_no_bound_tasks_returns_empty(self):
+        output, is_error = execute_readonly_tool(
+            "get_multica_bound_tasks_readonly",
+            {},
+            context={"conversation_id": self._conv_id, "history_store": self._store},
+        )
+        self.assertFalse(is_error)
+        data = json.loads(output)
+        self.assertEqual(data["conversation_id"], self._conv_id)
+        self.assertEqual(data["count"], 0)
+        self.assertEqual(data["tasks"], [])
+
+    def test_with_bound_tasks_returns_summary(self):
+        self._store.bind_multica_task(
+            conversation_id=self._conv_id,
+            issue_id="issue_1",
+            task_id="task_1",
+            title="Test Task",
+            run_status="completed",
+            review_summary="All tests passed",
+        )
+        output, is_error = execute_readonly_tool(
+            "get_multica_bound_tasks_readonly",
+            {},
+            context={"conversation_id": self._conv_id, "history_store": self._store},
+        )
+        self.assertFalse(is_error)
+        data = json.loads(output)
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["tasks"][0]["task_id"], "task_1")
+        self.assertEqual(data["tasks"][0]["title"], "Test Task")
+        self.assertEqual(data["tasks"][0]["status"], "completed")
+
+    def test_missing_conversation_id_fails(self):
+        output, is_error = execute_readonly_tool(
+            "get_multica_bound_tasks_readonly",
+            {},
+            context={"history_store": self._store},
+        )
+        self.assertTrue(is_error)
+        self.assertIn("conversation_id", output)
+
+    def test_missing_history_store_fails(self):
+        output, is_error = execute_readonly_tool(
+            "get_multica_bound_tasks_readonly",
+            {},
+            context={"conversation_id": self._conv_id},
+        )
+        self.assertTrue(is_error)
+        self.assertIn("history_store", output)
+
+    def test_tool_is_readonly(self):
+        spec = build_default_registry().get_tool("get_multica_bound_tasks_readonly")
+        self.assertIsNotNone(spec)
+        self.assertTrue(spec.readonly)
+        self.assertEqual(spec.risk_level, "readonly")
+
+
+# ---------------------------------------------------------------------------
+# C5H-C: search_database_brief_readonly
+# ---------------------------------------------------------------------------
+
+
+class TestDatabaseBriefTool(TestCase):
+    def test_normal_api_response(self):
+        from unittest.mock import patch
+        from xiaohuang.agent_handoff.database_brief_client import DatabaseBriefResult
+
+        fake_result = DatabaseBriefResult(
+            database_used=True,
+            database_status="used",
+            brief="UI design rules for glass panels: use backdrop-blur, avoid solid backgrounds",
+        )
+        with patch(
+            "xiaohuang.agent_handoff.database_brief_client.fetch_database_brief",
+            return_value=fake_result,
+        ):
+            output, is_error = execute_readonly_tool(
+                "search_database_brief_readonly",
+                {"query": "glass panel design rules", "domain": "ui_design"},
+            )
+        self.assertFalse(is_error)
+        data = json.loads(output)
+        self.assertTrue(data["ok"])
+        self.assertIn("glass", data["brief"])
+
+    def test_api_unavailable(self):
+        from unittest.mock import patch
+        from xiaohuang.agent_handoff.database_brief_client import DatabaseBriefResult
+
+        fake_result = DatabaseBriefResult(
+            database_used=False,
+            database_status="unavailable",
+            error_message="connection refused",
+        )
+        with patch(
+            "xiaohuang.agent_handoff.database_brief_client.fetch_database_brief",
+            return_value=fake_result,
+        ):
+            output, is_error = execute_readonly_tool(
+                "search_database_brief_readonly",
+                {"query": "test query"},
+            )
+        self.assertFalse(is_error)
+        data = json.loads(output)
+        self.assertFalse(data["ok"])
+        self.assertIn("unavailable", data["error"])
+
+    def test_non_json_response(self):
+        from unittest.mock import patch
+
+        with patch(
+            "xiaohuang.agent_handoff.database_brief_client.fetch_database_brief",
+            side_effect=ValueError("database brief response was not valid JSON"),
+        ):
+            output, is_error = execute_readonly_tool(
+                "search_database_brief_readonly",
+                {"query": "test"},
+            )
+        self.assertTrue(is_error)
+        self.assertIn("JSON", output)
+
+    def test_empty_query_fails(self):
+        output, is_error = execute_readonly_tool(
+            "search_database_brief_readonly",
+            {"query": ""},
+        )
+        self.assertTrue(is_error)
+        self.assertIn("不能为空", output)
+
+    def test_tool_is_readonly(self):
+        spec = build_default_registry().get_tool("search_database_brief_readonly")
+        self.assertIsNotNone(spec)
+        self.assertTrue(spec.readonly)
+        self.assertEqual(spec.risk_level, "readonly")
+
+    def test_fetch_exception_handled(self):
+        from unittest.mock import patch
+
+        with patch(
+            "xiaohuang.agent_handoff.database_brief_client.fetch_database_brief",
+            side_effect=TimeoutError("timed out"),
+        ):
+            output, is_error = execute_readonly_tool(
+                "search_database_brief_readonly",
+                {"query": "timeout test", "limit": 3},
+            )
+        self.assertTrue(is_error)
+        self.assertTrue("timed" in output.lower() or "timeout" in output.lower())
+
+
+# ---------------------------------------------------------------------------
+# C5H-C: Registry and integration
+# ---------------------------------------------------------------------------
+
+
+class TestC5HCRegression(TestCase):
+    def test_6_tools_registry_order(self):
+        registry = build_default_registry()
+        names = [t.name for t in registry.list_tools()]
+        self.assertEqual(len(names), 6)
+        # Original 4 must still be present
+        for name in ("get_current_conversation_context", "list_project_files_readonly",
+                     "read_project_file_readonly", "search_project_text_readonly"):
+            self.assertIn(name, names)
+
+    def test_new_tools_in_registry(self):
+        registry = build_default_registry()
+        self.assertIsNotNone(registry.get_tool("get_multica_bound_tasks_readonly"))
+        self.assertIsNotNone(registry.get_tool("search_database_brief_readonly"))
+
+    def test_env_rejection_still_works(self):
+        output, is_error = execute_readonly_tool(
+            "read_project_file_readonly",
+            {"path": ".env"},
+            project_root=Path(r"E:\Projects\xiaohuang"),
+        )
+        self.assertTrue(is_error)
+
+    def test_path_traversal_still_rejected(self):
+        output, is_error = execute_readonly_tool(
+            "read_project_file_readonly",
+            {"path": "../Windows/System32"},
+            project_root=Path(r"E:\Projects\xiaohuang"),
+        )
+        self.assertTrue(is_error)
+
+    def test_plain_text_chat_not_affected(self):
+        """Verify TextInteractionResult still works with new tool fields."""
+        from xiaohuang.text_interaction_models import TextInteractionResult
+        result = TextInteractionResult(ok=True, session_id="test", reply_text="你好")
+        self.assertEqual(result.reply_text, "你好")
+        self.assertIsNone(result.tool_calls)
+
+
+# ---------------------------------------------------------------------------
+# C5H-C.1: JSON tool output → natural language formatting
+# ---------------------------------------------------------------------------
+
+
+class TestToolOutputFormatting(TestCase):
+    def test_multica_tasks_formatted_naturally(self):
+        from xiaohuang.tool_runtime.agent_turn_loop import _try_format_tool_json
+        output = json.dumps({
+            "conversation_id": "abc123",
+            "tasks": [{
+                "task_id": "de4c05f1abc123def456",
+                "title": "Fix login bug",
+                "status": "in_progress",
+                "summary": "Login page returns 500 on invalid input",
+                "agent": "claude-code",
+                "messages_count": 69,
+                "tool_use_count": 29,
+                "tool_result_count": 29,
+            }],
+            "count": 1,
+        })
+        result = _try_format_tool_json("get_multica_bound_tasks_readonly", output)
+        self.assertIsNot(result, "")
+        self.assertIn("1 个 Multica 任务", result)
+        self.assertIn("de4c05f1", result)
+        self.assertIn("in_progress", result)
+        self.assertIn("69 条消息", result)
+        self.assertIn("29 次", result)
+        self.assertIn("Login page returns 500", result)
+        # Must NOT contain raw JSON markers
+        self.assertNotIn('"conversation_id"', result)
+        self.assertNotIn('"tasks"', result)
+        self.assertNotIn('"count"', result)
+
+    def test_multica_empty_tasks(self):
+        from xiaohuang.tool_runtime.agent_turn_loop import _try_format_tool_json
+        output = json.dumps({"conversation_id": "abc123", "tasks": [], "count": 0})
+        result = _try_format_tool_json("get_multica_bound_tasks_readonly", output)
+        self.assertIn("0 个 Multica 任务", result)
+        self.assertNotIn('"conversation_id"', result)
+
+    def test_multica_missing_title_uses_summary(self):
+        from xiaohuang.tool_runtime.agent_turn_loop import _try_format_tool_json
+        output = json.dumps({
+            "conversation_id": "abc",
+            "tasks": [{"task_id": "t1", "status": "completed", "summary": "Everything passed"}],
+            "count": 1,
+        })
+        result = _try_format_tool_json("get_multica_bound_tasks_readonly", output)
+        self.assertIn("t1", result)
+        self.assertIn("Everything passed", result)
+        self.assertNotIn('"summary"', result)
+
+    def test_database_brief_success_formatted(self):
+        from xiaohuang.tool_runtime.agent_turn_loop import _try_format_tool_json
+        output = json.dumps({
+            "ok": True,
+            "query": "UI design rules",
+            "domain": "ui_design",
+            "brief": "Use glass panels with backdrop-blur. Avoid solid backgrounds.",
+            "source": "http://127.0.0.1:8765/brief",
+        })
+        result = _try_format_tool_json("search_database_brief_readonly", output)
+        self.assertIn("UI design rules", result)
+        self.assertIn("ui_design", result)
+        self.assertIn("glass panels", result)
+        self.assertNotIn('"brief"', result)
+        self.assertNotIn('"ok"', result)
+        self.assertNotIn('"source"', result)
+
+    def test_database_brief_unavailable_formatted(self):
+        from xiaohuang.tool_runtime.agent_turn_loop import _try_format_tool_json
+        output = json.dumps({
+            "ok": False,
+            "error": "database_brief_unavailable",
+            "message": "API not reachable",
+            "source": "http://127.0.0.1:8765/brief",
+        })
+        result = _try_format_tool_json("search_database_brief_readonly", output)
+        self.assertIn("API not reachable", result)
+        self.assertNotIn('"message"', result)
+
+    def test_non_json_passes_through(self):
+        from xiaohuang.tool_runtime.agent_turn_loop import _try_format_tool_json
+        result = _try_format_tool_json("get_multica_bound_tasks_readonly", "plain text result")
+        self.assertEqual(result, "")
+
+    def test_unknown_tool_json_not_formatted(self):
+        from xiaohuang.tool_runtime.agent_turn_loop import _try_format_tool_json
+        result = _try_format_tool_json("unknown_tool", '{"key":"value"}')
+        self.assertEqual(result, "")
+
+
+class TestC5HC1Regression(TestCase):
+    def setUp(self):
+        self.registry = build_default_registry()
+        self.config = ReadonlyToolTurnConfig(max_tool_rounds=2, enable_readonly_tools=True)
+
+    def test_final_json_unwrap_still_works(self):
+        """C5H-B.1 regression: final JSON still unwrapped."""
+        def llm(text, *, context=""):
+            return {"text": json.dumps({"type": "final", "content": "这是最终回复"})}
+
+        result = run_readonly_tool_turn(
+            conversation_id="test", user_text="hello",
+            context_pack_render="", llm_call_func=llm,
+            registry=self.registry, config=self.config,
+        )
+        self.assertEqual(result.reply_text, "这是最终回复")
+        self.assertNotIn('"type"', result.reply_text)
+
+    def test_mixed_tool_call_still_handled(self):
+        """C5H-B.2 regression: mixed text + tool_call JSON still extracted."""
+        call_count = [0]
+
+        def llm(text, *, context=""):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return {"text": '好的。{"type":"tool_call","tool_name":"list_project_files_readonly","arguments":{"relative_dir":"src/xiaohuang/tool_runtime","max_results":3}}'}
+            return {"text": json.dumps({"type": "final", "content": "目录已列出"})}
+
+        result = run_readonly_tool_turn(
+            conversation_id="test", user_text="list dir",
+            context_pack_render="", llm_call_func=llm,
+            registry=self.registry, config=self.config,
+        )
+        self.assertNotIn('"type":"tool_call"', result.reply_text)
+
+    def test_tool_success_empty_final_uses_natural_fallback(self):
+        """C5H-B.2 + C5H-C.1: tool success + empty final → natural fallback."""
+        call_count = [0]
+
+        def llm(text, *, context=""):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return {"text": json.dumps({
+                    "type": "tool_call",
+                    "tool_name": "list_project_files_readonly",
+                    "arguments": {"relative_dir": "src/xiaohuang/tool_runtime", "max_results": 3},
+                })}
+            return {"text": json.dumps({"type": "final", "content": ""})}
+
+        result = run_readonly_tool_turn(
+            conversation_id="test", user_text="list",
+            context_pack_render="", llm_call_func=llm,
+            registry=self.registry, config=self.config,
+        )
+        self.assertNotIn('"type":', result.reply_text)
+        self.assertIn("我已读取目录", result.reply_text)

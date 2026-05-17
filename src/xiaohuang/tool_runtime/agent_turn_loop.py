@@ -334,7 +334,15 @@ def _build_tool_result_fallback(tool_calls: list[dict[str, Any]]) -> str:
 
 
 def _format_tool_output_fallback(tool_name: str, output: str) -> str:
-    """Format a tool result as user-visible fallback text."""
+    """Format a tool result as user-visible fallback text.
+
+    Detects JSON tool outputs and converts them to natural language so
+    raw JSON never reaches the user-facing chat bubble.
+    """
+    formatted = _try_format_tool_json(tool_name, output)
+    if formatted:
+        return formatted
+
     max_lines = 15
     lines = output.splitlines()
     truncated = lines[:max_lines]
@@ -346,11 +354,100 @@ def _format_tool_output_fallback(tool_name: str, output: str) -> str:
     return f"{prefix}\n\n{body}"
 
 
+def _try_format_tool_json(tool_name: str, output: str) -> str:
+    """If output is JSON from a known tool, format as natural language.
+
+    Returns empty string if output is not JSON or tool is unknown.
+    """
+    import json as _json
+
+    stripped = output.strip()
+    if not stripped.startswith("{"):
+        return ""
+    try:
+        data = _json.loads(stripped)
+    except (_json.JSONDecodeError, ValueError):
+        return ""
+
+    if not isinstance(data, dict):
+        return ""
+
+    if tool_name == "get_multica_bound_tasks_readonly":
+        return _format_multica_tasks(data)
+    if tool_name == "search_database_brief_readonly":
+        return _format_database_brief(data)
+    return ""
+
+
+def _format_multica_tasks(data: dict) -> str:
+    count = data.get("count", 0)
+    tasks = data.get("tasks") or []
+    if not isinstance(tasks, list):
+        tasks = []
+
+    lines = [f"当前会话绑定了 {count} 个 Multica 任务：" if count != 1
+             else f"当前会话绑定了 1 个 Multica 任务："]
+
+    for i, task in enumerate(tasks[:10]):
+        if not isinstance(task, dict):
+            continue
+        tid = (task.get("task_id") or task.get("title") or "?")[:40]
+        status = task.get("status") or ""
+        title = task.get("title") or ""
+        summary = task.get("summary") or ""
+        agent = task.get("agent") or ""
+        msg_count = task.get("messages_count", 0)
+        tool_use = task.get("tool_use_count", 0)
+        tool_res = task.get("tool_result_count", 0)
+
+        desc_parts = []
+        if status:
+            desc_parts.append(f"当前状态 {status}")
+        if agent:
+            desc_parts.append(f"执行者 {agent}")
+        if msg_count or tool_use or tool_res:
+            desc_parts.append(
+                f"共 {msg_count} 条消息，使用工具 {tool_use} 次，工具结果 {tool_res} 次"
+            )
+        if title and title != tid:
+            desc_parts.append(f"标题：{title[:80]}")
+        if summary:
+            desc_parts.append(f"摘要：{summary[:200]}")
+
+        line = f"  - 任务 {tid}"
+        if desc_parts:
+            line += "。" + "。".join(desc_parts)
+        lines.append(line)
+
+    return "\n".join(lines)
+
+
+def _format_database_brief(data: dict) -> str:
+    ok = data.get("ok", False)
+    if not ok:
+        msg = data.get("message") or data.get("error") or "数据库查询未返回有效结果"
+        return f"数据库查询结果：{msg}"
+
+    brief = data.get("brief") or ""
+    if not brief.strip():
+        return "数据库查询已完成，但未返回相关内容。"
+
+    if len(brief) > 2000:
+        brief = brief[:2000] + "\n\n[输出已截断]"
+
+    domain = data.get("domain") or "general"
+    query = data.get("query") or ""
+    header = f"根据「{query}」（知识域：{domain}），数据库检索结果如下："
+    return f"{header}\n\n{brief}"
+
+
 _TOOL_FALLBACK_PREFIX: dict[str, str] = {
     "list_project_files_readonly": "我已读取目录，结果如下：",
     "read_project_file_readonly": "我已读取该文件，以下是内容片段：",
     "search_project_text_readonly": "我已搜索到以下匹配结果：",
     "get_current_conversation_context": "当前对话上下文如下：",
+    "get_multica_bound_tasks_readonly": "当前会话绑定的 Multica 任务如下：",
+    "search_database_brief_readonly": "数据库检索结果如下：",
 }
 
 

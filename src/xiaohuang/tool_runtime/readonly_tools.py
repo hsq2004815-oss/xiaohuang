@@ -375,6 +375,115 @@ def search_project_text_readonly(
     return f"{info}\n\n" + "\n".join(results) if results else info + "\n(未找到匹配)"
 
 
+# ---------------------------------------------------------------------------
+# C5H-C: External readonly knowledge tools
+# ---------------------------------------------------------------------------
+
+
+def get_multica_bound_tasks_readonly(
+    arguments: dict[str, Any],
+    *,
+    context: dict[str, Any] | None = None,
+    project_root: Path | None = None,
+) -> str:
+    """Return Multica tasks bound to the current conversation.
+
+    Requires history_store and conversation_id via context dict.
+    """
+    ctx = context or {}
+    conversation_id = str(ctx.get("conversation_id") or "").strip()
+    if not conversation_id:
+        raise ValueError("缺少 conversation_id，无法查询绑定的 Multica 任务")
+
+    history_store = ctx.get("history_store")
+    if history_store is None:
+        raise ValueError("history_store 不可用，无法查询 Multica 任务绑定")
+
+    try:
+        tasks = history_store.get_bound_tasks(conversation_id)
+    except Exception as exc:
+        raise ValueError(f"查询 Multica 任务绑定失败: {exc}")
+
+    import json
+
+    task_list = []
+    for task in tasks:
+        task_list.append({
+            "task_id": task.task_id or task.issue_id or task.id,
+            "title": task.title or "",
+            "status": task.run_status or "",
+            "summary": task.review_summary or "",
+            "agent": task.agent or "",
+            "messages_count": task.messages_count,
+            "tool_use_count": task.tool_use_count,
+            "tool_result_count": task.tool_result_count,
+        })
+
+    result = {
+        "conversation_id": conversation_id,
+        "tasks": task_list,
+        "count": len(task_list),
+    }
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+def search_database_brief_readonly(
+    arguments: dict[str, Any],
+    *,
+    context: dict[str, Any] | None = None,
+    project_root: Path | None = None,
+) -> str:
+    """Query the local database /brief API for knowledge retrieval.
+
+    Uses http://127.0.0.1:8765/brief (readonly).
+    Does not read or write E:\DataBase files directly.
+    """
+    from xiaohuang.agent_handoff import database_brief_client
+
+    query = str(arguments.get("query", "") or "").strip()
+    if not query:
+        raise ValueError("查询关键词不能为空")
+    if len(query) > 500:
+        raise ValueError("查询关键词过长（上限 500 字符）")
+
+    domain = str(arguments.get("domain", "") or "").strip()
+    domains = [domain] if domain else []
+
+    limit = min(int(arguments.get("limit", 5) or 5), 10)
+
+    try:
+        result = database_brief_client.fetch_database_brief(
+            query=query,
+            domains=domains,
+            timeout=5.0,
+        )
+    except Exception as exc:
+        raise ValueError(f"数据库查询失败: {exc}")
+
+    import json
+
+    if result.database_used and result.brief:
+        brief = result.brief
+        if len(brief) > 3000:
+            brief = brief[:3000] + "\n\n[输出已截断]"
+        output = {
+            "ok": True,
+            "query": query,
+            "domain": domain or "general",
+            "brief": brief,
+            "source": database_brief_client.DEFAULT_BRIEF_ENDPOINT,
+        }
+    else:
+        output = {
+            "ok": False,
+            "error": "database_brief_unavailable",
+            "message": result.error_message or "本地数据库 API 暂时不可用",
+            "source": database_brief_client.DEFAULT_BRIEF_ENDPOINT,
+        }
+
+    return json.dumps(output, ensure_ascii=False, indent=2)
+
+
 def _format_size(size: int) -> str:
     if size < 1024:
         return f"{size}B"
@@ -435,6 +544,28 @@ READONLY_TOOL_SPECS: tuple[ToolSpec, ...] = (
             "required": ["query"],
         },
     ),
+    ToolSpec(
+        name="get_multica_bound_tasks_readonly",
+        description="读取当前会话绑定的 Multica 任务摘要（只读）",
+        input_schema={
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    ),
+    ToolSpec(
+        name="search_database_brief_readonly",
+        description="通过本地数据库 API 检索知识和规则摘要（只读，仅 localhost）",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "检索关键词或用户问题摘要"},
+                "domain": {"type": "string", "description": "知识域：backend/ui_design/automation/general，可选"},
+                "limit": {"type": "integer", "description": "返回数量上限，默认5，上限10"},
+            },
+            "required": ["query"],
+        },
+    ),
 )
 
 
@@ -447,6 +578,8 @@ _TOOL_FUNCTIONS = {
     "list_project_files_readonly": list_project_files_readonly,
     "read_project_file_readonly": read_project_file_readonly,
     "search_project_text_readonly": search_project_text_readonly,
+    "get_multica_bound_tasks_readonly": get_multica_bound_tasks_readonly,
+    "search_database_brief_readonly": search_database_brief_readonly,
 }
 
 
