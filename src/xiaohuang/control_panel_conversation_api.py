@@ -19,6 +19,26 @@ def _fail(error: str, code: str = "error") -> dict:
     return {"ok": False, "error": error, "code": code}
 
 
+def _unwrap_final_json(text: str) -> str:
+    """Defensive: if text is a raw 'final' protocol JSON, extract only content."""
+    import json as _json
+
+    if not text or not isinstance(text, str):
+        return str(text or "")
+    stripped = text.strip()
+    if not stripped.startswith("{"):
+        return text
+    try:
+        obj = _json.loads(stripped)
+    except (_json.JSONDecodeError, ValueError):
+        return text
+    if isinstance(obj, dict) and obj.get("type") == "final" and isinstance(obj.get("content"), str):
+        content = obj["content"].strip()
+        if content:
+            return content
+    return text
+
+
 class ControlPanelConversationApi:
     """Handle text conversations while preserving the legacy LLM turn path."""
 
@@ -186,8 +206,14 @@ class ControlPanelConversationApi:
                 record = self._task_registry.register(data["pending_task"])
                 data["pending_task"] = dict(record.task)
             return _ok(data=data, message="消息已回复" if result.ok else "消息处理失败")
-        except Exception:
-            return _fail("文本消息处理失败", "send_text_message_error")
+        except Exception as exc:
+            import traceback
+            tb = traceback.format_exc()
+            print(f"[control_panel_conversation_api] run_legacy_text_message_turn error:\n{tb}", flush=True)
+            return _fail(
+                "文本消息处理失败",
+                "send_text_message_error",
+            ) | {"debug_error": str(exc), "debug_traceback": tb}
 
     def send_text_message(self, payload: dict) -> dict:
         """Run the legacy LLM turn, then persist messages by conversation_id."""
@@ -219,12 +245,14 @@ class ControlPanelConversationApi:
                 response["persistence_warning"] = "failed to save user message"
 
             try:
-                reply_text = data.get("reply_text", "")
+                reply_text = _unwrap_final_json(data.get("reply_text", ""))
                 meta = {
                     "reply_source": data.get("reply_source", ""),
                     "has_llm_key": data.get("has_llm_key", False),
                     "llm_configured": data.get("llm_configured", False),
                     "latency_ms": data.get("latency_ms", 0),
+                    "tool_rounds": data.get("tool_rounds", 0),
+                    "tool_calls": data.get("tool_calls") or [],
                 }
                 pending_snapshot = None
                 if data.get("requires_confirmation") and isinstance(data.get("pending_task"), dict):

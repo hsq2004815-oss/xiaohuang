@@ -25,5 +25,7 @@ class TextInteractionResult:
     requires_confirmation: bool = False
     pending_task: dict[str, Any] | None = None
     context_pack: dict[str, Any] | None = None
+    tool_calls: list[dict[str, Any]] | None = None
+    tool_rounds: int = 0
     latency_ms: int = 0
     error: str = ""

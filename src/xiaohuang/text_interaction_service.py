@@ -95,6 +95,33 @@ def run_text_interaction_turn(
         legacy_memory_context=session.memory.build_context_text(),
     )
 
+    # --- C5H-B: readonly tool turn (opt-in via conversation_id) ---
+    if (conversation_id and app_config.llm.enabled and llm_config.is_configured):
+        tool_result = _try_tool_turn(
+            user_text=user_text,
+            conversation_id=conversation_id,
+            context_pack=context_pack,
+            context_text=context_text,
+            llm_config=llm_config,
+            app_config=app_config,
+            history_store=history_store,
+        )
+        if tool_result is not None:
+            reply_text, reply_source, tool_calls_out, tool_rounds = tool_result
+            session.memory.add_user(user_text)
+            session.memory.add_assistant(reply_text, reply_source)
+            return _result(
+                True, sid, started,
+                user_text=user_text,
+                reply_text=reply_text,
+                reply_source=reply_source,
+                has_llm_key=bool(llm_config.api_key),
+                llm_configured=True,
+                context_pack=context_pack,
+                tool_calls=tool_calls_out,
+                tool_rounds=tool_rounds,
+            )
+
     pipeline_config = ReplyPipelineConfig(
         enable_llm=bool(app_config.llm.enabled),
         enable_tts=False,
@@ -180,6 +207,131 @@ def _generate_text_only_pipeline_result(
     )
 
 
+def _unwrap_final_json_reply(text: str) -> str:
+    """Defensive unwrap: if text is a raw 'final' protocol JSON, extract content.
+
+    This is a safety net — the agent_turn_loop already unwraps correctly,
+    but this ensures raw JSON never leaks to the UI through any code path.
+    """
+    import json as _json
+
+    if not text or not isinstance(text, str):
+        return str(text or "")
+    stripped = text.strip()
+    if not stripped.startswith("{"):
+        return text
+    try:
+        obj = _json.loads(stripped)
+    except (_json.JSONDecodeError, ValueError):
+        return text
+    if isinstance(obj, dict) and obj.get("type") == "final" and isinstance(obj.get("content"), str):
+        content = obj["content"].strip()
+        if content:
+            return content
+    return text
+
+
+def _try_tool_turn(
+    *,
+    user_text: str,
+    conversation_id: str,
+    context_pack: dict | None,
+    context_text: str,
+    llm_config: Any,
+    app_config: Any,
+    history_store: Any | None,
+) -> tuple[str, str, list[dict[str, Any]], int] | None:
+    """Attempt a readonly tool turn. Returns None if tools not applicable."""
+    try:
+        from xiaohuang.tool_runtime.agent_turn_loop import (
+            run_readonly_tool_turn,
+            ReadonlyToolTurnConfig,
+        )
+        from xiaohuang.tool_runtime.tool_registry import build_default_registry
+
+        registry = build_default_registry()
+
+        # Build LLM adapter that bypasses the tool-request guard
+        def _tool_mode_llm_call(text: str, *, context: str = "") -> dict[str, Any]:
+            from xiaohuang.llm_reply_service import (
+                build_openai_compatible_chat_request,
+                _post_json,
+                _chat_completions_url,
+                _extract_reply_text,
+                _shorten_reply,
+            )
+            import json as _json
+
+            persona = app_config.assistant.persona if hasattr(app_config, "assistant") else None
+            provider = llm_config.provider or "deepseek"
+
+            payload = build_openai_compatible_chat_request(
+                text,
+                model=llm_config.model,
+                max_tokens=llm_config.max_tokens,
+                temperature=llm_config.temperature,
+                persona=persona,
+                provider=provider,
+                conversation_context=context,
+            )
+
+            try:
+                response = _post_json(
+                    _chat_completions_url(llm_config.base_url),
+                    payload,
+                    {
+                        "Authorization": f"Bearer {llm_config.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    llm_config.timeout_seconds,
+                )
+            except Exception:
+                return {"text": ""}
+
+            raw = _extract_reply_text(response)
+            reply = _shorten_reply(raw)
+            return {"text": reply or ""}
+
+        config = ReadonlyToolTurnConfig(
+            max_tool_rounds=2,
+            enable_readonly_tools=True,
+        )
+
+        # Build context dict for get_current_conversation_context tool
+        ctx = {}
+        if context_pack:
+            ctx = {
+                "conversation_id": conversation_id,
+                "current_goal": context_pack.get("current_goal", ""),
+                "current_status": context_pack.get("current_status", ""),
+                "next_step": context_pack.get("next_step", ""),
+                "important_constraints": context_pack.get("important_constraints", []),
+                "compact_summary": context_pack.get("compact_summary", ""),
+            }
+
+        result = run_readonly_tool_turn(
+            conversation_id=conversation_id,
+            user_text=user_text,
+            context_pack_render=context_text or "",
+            llm_call_func=_tool_mode_llm_call,
+            registry=registry,
+            config=config,
+            context=ctx,
+        )
+
+        # Safety net: ensure reply_text is never raw protocol JSON
+        reply_text = _unwrap_final_json_reply(result.reply_text)
+
+        return (
+            reply_text,
+            result.reply_source,
+            result.tool_calls,
+            result.tool_rounds,
+        )
+    except Exception:
+        return None
+
+
 def _result(
     ok: bool,
     session_id: str,
@@ -194,6 +346,8 @@ def _result(
     requires_confirmation: bool = False,
     pending_task: dict | None = None,
     context_pack: dict | None = None,
+    tool_calls: list[dict[str, Any]] | None = None,
+    tool_rounds: int = 0,
     error: str = "",
 ) -> TextInteractionResult:
     return TextInteractionResult(
@@ -208,6 +362,8 @@ def _result(
         requires_confirmation=requires_confirmation,
         pending_task=pending_task,
         context_pack=context_pack,
+        tool_calls=tool_calls,
+        tool_rounds=tool_rounds,
         latency_ms=max(0, int((time.perf_counter() - started) * 1000)),
         error=error,
     )
